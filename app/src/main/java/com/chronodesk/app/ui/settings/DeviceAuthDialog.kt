@@ -71,79 +71,84 @@ fun DeviceAuthDialog(
     onSuccess: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val provider = remember { RealCodexUsageProvider() }
 
     var userCode by remember { mutableStateOf<String?>(null) }
     var verifyUrl by remember { mutableStateOf("https://auth.openai.com/codex/device") }
-    var deviceAuthId by remember { mutableStateOf<String?>(null) }
-    var pollIntervalSec by remember { mutableStateOf(5L) }
     var statusText by remember { mutableStateOf("正在获取设备授权码…") }
     var isPolling by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // 启动 Device Code 流程
+    // 整个授权、轮询与换取 Token 流程统一由单一稳定的 LaunchedEffect(Unit) 驱动，
+    // 避免因 Compose 状态重组或 key 改变导致换取 Token 的协程被强制中断 (LeftCompositionCancellationException)
     LaunchedEffect(Unit) {
+        statusText = "正在获取设备授权码…"
         when (val result = provider.startDeviceAuth()) {
             is DeviceCodeResult.Success -> {
                 userCode = result.userCode
                 verifyUrl = result.verificationUrl
-                deviceAuthId = result.deviceAuthId
-                pollIntervalSec = result.intervalSeconds
+                val dId = result.deviceAuthId
+                val uCode = result.userCode
+                val interval = result.intervalSeconds
+
                 statusText = "请在浏览器打开验证页面并确认"
                 isPolling = true
+
+                while (isActive) {
+                    delay(interval * 1000L)
+                    when (val poll = provider.pollDeviceAuth(dId, uCode)) {
+                        is PollResult.Success -> {
+                            statusText = "授权成功！正在换取令牌…"
+                            val tokenRes = provider.exchangeToken(poll.authorizationCode, poll.codeVerifier)
+                            isPolling = false
+
+                            when (tokenRes) {
+                                is TokenResult.Success -> {
+                                    statusText = "登录成功！"
+                                    val acc = CodexAccount(
+                                        alias = if (slot == 0) "账号 A" else "账号 B",
+                                        credentialStatus = CredentialStatus.VALID,
+                                        authenticatedAt = System.currentTimeMillis(),
+                                        providerType = "OAUTH_DEVICE"
+                                    )
+                                    onSuccess(acc, tokenRes.refreshToken ?: "", tokenRes.accessToken)
+                                    onDismiss()
+                                    return@LaunchedEffect
+                                }
+                                is TokenResult.ExpiredOrInvalid -> {
+                                    errorMessage = tokenRes.message
+                                    statusText = "换取令牌失败"
+                                    return@LaunchedEffect
+                                }
+                                is TokenResult.TransientError -> {
+                                    errorMessage = tokenRes.message
+                                    statusText = "换取令牌失败"
+                                    return@LaunchedEffect
+                                }
+                            }
+                        }
+                        is PollResult.Pending -> {
+                            // 保持轮询
+                        }
+                        is PollResult.Expired -> {
+                            errorMessage = poll.message
+                            statusText = "授权码已过期"
+                            isPolling = false
+                            return@LaunchedEffect
+                        }
+                        is PollResult.Error -> {
+                            errorMessage = poll.message
+                            statusText = "授权失败"
+                            isPolling = false
+                            return@LaunchedEffect
+                        }
+                    }
+                }
             }
             is DeviceCodeResult.Error -> {
                 errorMessage = result.message
                 statusText = "获取授权码失败"
-            }
-        }
-    }
-
-    // 后台轮询
-    LaunchedEffect(isPolling, deviceAuthId, userCode) {
-        if (!isPolling || deviceAuthId == null || userCode == null) return@LaunchedEffect
-
-        val dId = deviceAuthId!!
-        val uCode = userCode!!
-
-        while (isActive && isPolling) {
-            delay(pollIntervalSec * 1000L)
-            when (val poll = provider.pollDeviceAuth(dId, uCode)) {
-                is PollResult.Success -> {
-                    statusText = "授权成功！正在换取令牌…"
-                    isPolling = false
-
-                    when (val tokenRes = provider.exchangeToken(poll.authorizationCode, poll.codeVerifier)) {
-                        is TokenResult.Success -> {
-                            val acc = CodexAccount(
-                                alias = if (slot == 0) "账号 A" else "账号 B",
-                                credentialStatus = CredentialStatus.VALID,
-                                authenticatedAt = System.currentTimeMillis(),
-                                providerType = "OAUTH_DEVICE"
-                            )
-                            onSuccess(acc, tokenRes.refreshToken ?: "", tokenRes.accessToken)
-                            onDismiss()
-                        }
-                        is TokenResult.ExpiredOrInvalid -> {
-                            errorMessage = tokenRes.message
-                        }
-                        is TokenResult.TransientError -> {
-                            errorMessage = tokenRes.message
-                        }
-                    }
-                }
-                is PollResult.Pending -> {
-                    // 继续轮询
-                }
-                is PollResult.Expired -> {
-                    errorMessage = poll.message
-                    isPolling = false
-                }
-                is PollResult.Error -> {
-                    errorMessage = poll.message
-                    isPolling = false
-                }
+                isPolling = false
             }
         }
     }

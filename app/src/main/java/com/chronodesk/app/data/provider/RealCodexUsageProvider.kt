@@ -30,6 +30,7 @@ class RealCodexUsageProvider : CodexUsageProvider {
                 DeviceCodeResult.Error("启动设备码授权失败: $errText")
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "startDeviceAuth error", e)
             DeviceCodeResult.Error("网络连接失败: ${e.message}")
         }
@@ -60,6 +61,7 @@ class RealCodexUsageProvider : CodexUsageProvider {
                 }
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "pollDeviceAuth transient error: ${e.message}")
             PollResult.Pending
         }
@@ -88,6 +90,7 @@ class RealCodexUsageProvider : CodexUsageProvider {
                 TokenResult.TransientError("换取 Token 失败: $err")
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "exchangeToken error", e)
             TokenResult.TransientError("网络连接超时: ${e.message}")
         }
@@ -121,6 +124,7 @@ class RealCodexUsageProvider : CodexUsageProvider {
                 }
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.w(TAG, "refreshToken network error: ${e.message}")
             TokenResult.TransientError("刷新 Token 网络失败: ${e.message}")
         }
