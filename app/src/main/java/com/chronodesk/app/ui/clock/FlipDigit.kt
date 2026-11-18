@@ -6,14 +6,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -40,16 +39,23 @@ import androidx.compose.ui.unit.sp
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
-import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TextPrimary
+
+private val TopHalfShape = GenericShape { size, _ ->
+    addRect(Rect(0f, 0f, size.width, size.height / 2f))
+}
+
+private val BottomHalfShape = GenericShape { size, _ ->
+    addRect(Rect(0f, size.height / 2f, size.width, size.height))
+}
 
 @Composable
 fun FlipDigit(
     digit: Int,
     modifier: Modifier = Modifier,
-    width: Dp = 58.dp,
-    height: Dp = 86.dp,
-    fontSize: TextUnit = 60.sp,
+    width: Dp = 64.dp,
+    height: Dp = 96.dp,
+    fontSize: TextUnit = 64.sp,
     textColor: Color = TextPrimary,
     isNightMode: Boolean = false
 ) {
@@ -64,12 +70,15 @@ fun FlipDigit(
             flipProgress.snapTo(0f)
             flipProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)
             )
+            previousDigit = currentDigit
+            flipProgress.snapTo(0f)
         }
     }
 
     val progress = flipProgress.value
+    val isFlipping = flipProgress.isRunning || progress > 0f
     val cardBg = if (isNightMode) Color(0xFF0F0F0F) else DarkSurface
     val cardBgElevated = if (isNightMode) Color(0xFF141414) else DarkSurfaceElevated
     val cardBorder = if (isNightMode) Color(0xFF1A1A1A) else DarkBorder
@@ -87,105 +96,89 @@ fun FlipDigit(
             .border(1.dp, cardBorder, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
-        // 底层静态背景
-        Column(modifier = Modifier.fillMaxSize()) {
-            // 上半部分：准备显示新数字
-            HalfDigitBox(
-                digit = currentDigit,
-                isTopHalf = true,
-                width = width,
-                height = height / 2,
-                fontSize = fontSize,
-                textColor = textColor
-            )
-            // 下半部分：显示旧数字，等待翻牌盖下
-            HalfDigitBox(
-                digit = previousDigit,
-                isTopHalf = false,
-                width = width,
-                height = height / 2,
-                fontSize = fontSize,
-                textColor = textColor
-            )
-        }
+        // 底层静态背景上半部（新数字）
+        FullDigitCard(
+            digit = currentDigit,
+            fontSize = fontSize,
+            textColor = textColor,
+            cardBg = cardBgElevated,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(TopHalfShape)
+        )
+
+        // 底层静态背景下半部（未翻转完时为旧数字，翻转完成后为新数字）
+        FullDigitCard(
+            digit = if (isFlipping) previousDigit else currentDigit,
+            fontSize = fontSize,
+            textColor = textColor,
+            cardBg = cardBg,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(BottomHalfShape)
+        )
 
         // 动态翻转叶片
-        if (progress < 0.5f) {
-            // 前半段：旧数字上半部向下折叠 (0° -> 90°)
-            val rotationAngle = -progress * 180f
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(height / 2)
-                    .align(Alignment.TopCenter)
-                    .graphicsLayer {
-                        rotationX = rotationAngle
-                        cameraDistance = 16f * density
-                        transformOrigin = TransformOrigin(0.5f, 1.0f)
-                    }
-                    .background(cardBgElevated)
-            ) {
-                HalfDigitBox(
+        if (isFlipping) {
+            if (progress < 0.5f) {
+                // 前半段：旧数字上半部向下折叠 (0° -> 90°)
+                val rotationAngle = -progress * 180f
+                FullDigitCard(
                     digit = previousDigit,
-                    isTopHalf = true,
-                    width = width,
-                    height = height / 2,
                     fontSize = fontSize,
-                    textColor = textColor
+                    textColor = textColor,
+                    cardBg = cardBgElevated,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            rotationX = rotationAngle
+                            cameraDistance = 16f * density
+                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                        }
+                        .clip(TopHalfShape)
                 )
-            }
-        } else {
-            // 后半段：新数字下半部展开落下 (90° -> 0°)
-            val rotationAngle = 180f - (progress * 180f)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(height / 2)
-                    .align(Alignment.BottomCenter)
-                    .graphicsLayer {
-                        rotationX = rotationAngle
-                        cameraDistance = 16f * density
-                        transformOrigin = TransformOrigin(0.5f, 0.0f)
-                    }
-                    .background(cardBg)
-            ) {
-                HalfDigitBox(
+            } else {
+                // 后半段：新数字下半部展开落下 (90° -> 0°)
+                val rotationAngle = 180f - (progress * 180f)
+                FullDigitCard(
                     digit = currentDigit,
-                    isTopHalf = false,
-                    width = width,
-                    height = height / 2,
                     fontSize = fontSize,
-                    textColor = textColor
+                    textColor = textColor,
+                    cardBg = cardBg,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            rotationX = rotationAngle
+                            cameraDistance = 16f * density
+                            transformOrigin = TransformOrigin(0.5f, 0.5f)
+                        }
+                        .clip(BottomHalfShape)
                 )
             }
         }
 
-        // 物理翻页时钟中央缝隙阴影分割线
+        // 翻页时钟物理中央中缝线
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(1.5.dp)
-                .background(Color(0xFF040608))
+                .height(1.dp)
+                .background(Color(0xFF000000))
                 .align(Alignment.Center)
         )
     }
 }
 
 @Composable
-private fun HalfDigitBox(
+private fun FullDigitCard(
     digit: Int,
-    isTopHalf: Boolean,
-    width: Dp,
-    height: Dp,
     fontSize: TextUnit,
-    textColor: Color
+    textColor: Color,
+    cardBg: Color,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
-            .width(width)
-            .height(height)
-            .clipToBounds(),
-        contentAlignment = if (isTopHalf) Alignment.BottomCenter else Alignment.TopCenter
+        modifier = modifier.background(cardBg),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             text = digit.toString(),
@@ -193,11 +186,7 @@ private fun HalfDigitBox(
             fontSize = fontSize,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.graphicsLayer {
-                // 将文字垂直位移使半个字符居中
-                translationY = if (isTopHalf) (height.toPx() * 0.5f) else (-height.toPx() * 0.5f)
-            }
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -206,9 +195,9 @@ private fun HalfDigitBox(
 fun FlipDigitPair(
     value: Int,
     modifier: Modifier = Modifier,
-    digitWidth: Dp = 58.dp,
-    digitHeight: Dp = 86.dp,
-    fontSize: TextUnit = 60.sp,
+    digitWidth: Dp = 64.dp,
+    digitHeight: Dp = 96.dp,
+    fontSize: TextUnit = 64.sp,
     textColor: Color = TextPrimary,
     isNightMode: Boolean = false
 ) {

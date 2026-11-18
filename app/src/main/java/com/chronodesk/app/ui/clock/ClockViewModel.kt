@@ -29,7 +29,7 @@ data class TimeState(
     val dayOfWeek: String = ""
 )
 
-class ClockViewModel(
+class ClockViewModel @JvmOverloads constructor(
     application: Application,
     val settingsRepo: ClockSettingsRepository = ClockSettingsRepository(application),
     val weatherRepo: WeatherRepository = WeatherRepository(),

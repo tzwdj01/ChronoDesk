@@ -101,7 +101,7 @@ fun ClockScreen(
     }
 
     val bgColor = if (isNightMode) NightBackground else PureBlack
-    val clockTextColor = if (isNightMode) Color(0xFF666666) else TextPrimary
+    val clockTextColor = if (isNightMode) Color(0xFFAAAAAA) else TextPrimary
 
     Box(
         modifier = modifier
@@ -284,9 +284,9 @@ fun LargeFlipClockDisplay(
     isNightMode: Boolean,
     isLarge: Boolean
 ) {
-    val digitWidth = if (isLarge) 68.dp else 60.dp
-    val digitHeight = if (isLarge) 100.dp else 90.dp
-    val fontSize = if (isLarge) 72.sp else 64.sp
+    val digitWidth = if (isLarge) 72.dp else 64.dp
+    val digitHeight = if (isLarge) 104.dp else 94.dp
+    val fontSize = if (isLarge) 68.sp else 58.sp
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
