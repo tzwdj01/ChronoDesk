@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.chronodesk.app.ui.theme.AppleNightBorder
+import com.chronodesk.app.ui.theme.AppleNightSurface
+import com.chronodesk.app.ui.theme.AppleNightSurfaceElevated
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -79,9 +82,9 @@ fun FlipDigit(
 
     val progress = flipProgress.value
     val isFlipping = flipProgress.isRunning || progress > 0f
-    val cardBg = if (isNightMode) Color(0xFF0F0F0F) else DarkSurface
-    val cardBgElevated = if (isNightMode) Color(0xFF141414) else DarkSurfaceElevated
-    val cardBorder = if (isNightMode) Color(0xFF1A1A1A) else DarkBorder
+    val cardBg = if (isNightMode) AppleNightSurface else DarkSurface
+    val cardBgElevated = if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated
+    val cardBorder = if (isNightMode) AppleNightBorder else DarkBorder
 
     Box(
         modifier = modifier

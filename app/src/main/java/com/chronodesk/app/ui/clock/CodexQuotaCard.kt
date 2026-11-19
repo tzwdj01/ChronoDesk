@@ -1,11 +1,14 @@
 package com.chronodesk.app.ui.clock
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,6 +50,13 @@ import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
 import com.chronodesk.app.data.model.CodexUsageWindow
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.ui.theme.AppleNightBorder
+import com.chronodesk.app.ui.theme.AppleNightRedMuted
+import com.chronodesk.app.ui.theme.AppleNightRedPrimary
+import com.chronodesk.app.ui.theme.AppleNightRedSecondary
+import com.chronodesk.app.ui.theme.AppleNightSurface
+import com.chronodesk.app.ui.theme.AppleNightSurfaceElevated
+import com.chronodesk.app.ui.theme.AppleNightTrack
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -65,14 +75,16 @@ fun CodexQuotaCard(
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     isNightMode: Boolean = false,
+    areControlsVisible: Boolean = true,
     onRefreshClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {},
     onCardClick: () -> Unit = {}
 ) {
-    val cardBg = if (isNightMode) Color(0xFF090909) else DarkSurface
-    val cardBorder = if (isNightMode) Color(0xFF161616) else DarkBorder
-    val primaryText = if (isNightMode) Color(0xFF777777) else TextPrimary
-    val secondaryText = if (isNightMode) Color(0xFF555555) else TextSecondary
+    val cardBg = if (isNightMode) AppleNightSurface else DarkSurface
+    val cardBorder = if (isNightMode) AppleNightBorder else DarkBorder
+    val primaryText = if (isNightMode) AppleNightRedPrimary else TextPrimary
+    val secondaryText = if (isNightMode) AppleNightRedSecondary else TextSecondary
+    val mutedText = if (isNightMode) AppleNightRedMuted else TextTertiary
 
     // 未配置账号占位卡片
     if (!account.isConfigured) {
@@ -98,13 +110,16 @@ fun CodexQuotaCard(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(TechCyan.copy(alpha = if (isNightMode) 0.1f else 0.18f)),
+                            .background(
+                                (if (isNightMode) AppleNightRedPrimary else TechCyan)
+                                    .copy(alpha = if (isNightMode) 0.15f else 0.18f)
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
-                            tint = if (isNightMode) Color(0xFF666666) else TechCyan,
+                            tint = if (isNightMode) AppleNightRedPrimary else TechCyan,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -123,17 +138,19 @@ fun CodexQuotaCard(
                     }
                 }
 
-                // 移除空槽位按钮（当有多余占位时）
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "移除",
-                        tint = secondaryText,
-                        modifier = Modifier.size(14.dp)
-                    )
+                // 移除空槽位按钮（仅在呼出操作面板时显示）
+                if (areControlsVisible) {
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "移除",
+                            tint = secondaryText,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
@@ -158,9 +175,9 @@ fun CodexQuotaCard(
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             .clickable { onCardClick() }
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 11.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             // 卡片头部：账号名称/Email、套餐、状态标签与操作按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -172,11 +189,12 @@ fun CodexQuotaCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // 账号邮箱 / 显示名称
+                    // 账号邮箱 / 显示名称 (优先显示真实邮箱)
+                    val displayEmail = snapshot?.email?.takeIf { it.isNotBlank() } ?: account.displayTitle
                     Text(
-                        text = account.displayTitle,
-                        color = if (isNightMode) Color(0xFF888888) else TechCyan,
-                        fontSize = 12.sp,
+                        text = displayEmail,
+                        color = if (isNightMode) AppleNightRedPrimary else TechCyan,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -187,12 +205,12 @@ fun CodexQuotaCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(if (isNightMode) Color(0x22333333) else DarkSurfaceElevated)
+                                .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
                             Text(
                                 text = plan,
-                                color = TextTertiary,
+                                color = if (isNightMode) AppleNightRedSecondary else TextTertiary,
                                 fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Medium
@@ -214,18 +232,31 @@ fun CodexQuotaCard(
                         else -> "未同步"
                     }
                     val statusColor = when {
-                        isLoading -> TechCyan
-                        snapshot?.isLastGood == true -> TechAmber
-                        account.credentialStatus == CredentialStatus.EXPIRED -> TechRose
-                        account.credentialStatus == CredentialStatus.VALID -> TechEmerald
-                        else -> TextTertiary
+                        isNightMode -> {
+                            when {
+                                isLoading -> AppleNightRedPrimary
+                                snapshot?.isLastGood == true -> AppleNightRedSecondary
+                                account.credentialStatus == CredentialStatus.EXPIRED -> AppleNightRedPrimary
+                                account.credentialStatus == CredentialStatus.VALID -> AppleNightRedSecondary
+                                else -> AppleNightRedMuted
+                            }
+                        }
+                        else -> {
+                            when {
+                                isLoading -> TechCyan
+                                snapshot?.isLastGood == true -> TechAmber
+                                account.credentialStatus == CredentialStatus.EXPIRED -> TechRose
+                                account.credentialStatus == CredentialStatus.VALID -> TechEmerald
+                                else -> TextTertiary
+                            }
+                        }
                     }
 
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(statusColor.copy(alpha = 0.12f))
-                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                            .background(statusColor.copy(alpha = if (isNightMode) 0.2f else 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = statusText,
@@ -235,33 +266,42 @@ fun CodexQuotaCard(
                         )
                     }
 
-                    // 单账号刷新按钮
-                    IconButton(
-                        onClick = onRefreshClick,
-                        enabled = !isLoading,
-                        modifier = Modifier.size(24.dp)
+                    // 仅当用户主动呼出控制时，显示单卡片刷新与删除按钮
+                    AnimatedVisibility(
+                        visible = areControlsVisible,
+                        enter = fadeIn(),
+                        exit = fadeOut()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新",
-                            tint = if (isLoading) TechCyan else secondaryText,
-                            modifier = Modifier
-                                .size(13.dp)
-                                .rotate(if (isLoading) spinAngle else 0f)
-                        )
-                    }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 单账号刷新按钮
+                            IconButton(
+                                onClick = onRefreshClick,
+                                enabled = !isLoading,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "刷新",
+                                    tint = if (isLoading) (if (isNightMode) AppleNightRedPrimary else TechCyan) else secondaryText,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .rotate(if (isLoading) spinAngle else 0f)
+                                )
+                            }
 
-                    // 删除/移除账号按钮
-                    IconButton(
-                        onClick = onDeleteClick,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "删除账号",
-                            tint = secondaryText.copy(alpha = 0.7f),
-                            modifier = Modifier.size(13.dp)
-                        )
+                            // 删除/移除账号按钮
+                            IconButton(
+                                onClick = onDeleteClick,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "删除账号",
+                                    tint = secondaryText.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -296,13 +336,13 @@ fun CodexQuotaCard(
                         Icon(
                             imageVector = Icons.Default.Warning,
                             contentDescription = null,
-                            tint = TechAmber,
+                            tint = if (isNightMode) AppleNightRedPrimary else TechAmber,
                             modifier = Modifier.size(10.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = snapshot.errorMessage ?: "",
-                            color = TechAmber,
+                            color = if (isNightMode) AppleNightRedSecondary else TechAmber,
                             fontSize = 9.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -314,7 +354,7 @@ fun CodexQuotaCard(
 
                 Text(
                     text = "同步: ${snapshot?.formattedQueriedAt ?: "未同步"}",
-                    color = TextTertiary,
+                    color = mutedText,
                     fontSize = 9.sp
                 )
             }
@@ -332,12 +372,12 @@ private fun QuotaProgressRow(
     val progressFraction = (remainingPercent / 100.0).toFloat().coerceIn(0f, 1f)
 
     val progressColor = when {
-        isNightMode -> Color(0xFF666666)
+        isNightMode -> AppleNightRedPrimary
         remainingPercent > 30.0 -> TechEmerald
         remainingPercent > 15.0 -> TechAmber
         else -> TechRose
     }
-    val trackColor = if (isNightMode) Color(0xFF141414) else Color(0xFF1E222A)
+    val trackColor = if (isNightMode) AppleNightTrack else Color(0xFF1E222A)
 
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Row(
@@ -347,7 +387,7 @@ private fun QuotaProgressRow(
         ) {
             Text(
                 text = label,
-                color = if (isNightMode) Color(0xFF555555) else TextSecondary,
+                color = if (isNightMode) AppleNightRedSecondary else TextSecondary,
                 fontSize = 10.sp
             )
 
@@ -358,15 +398,15 @@ private fun QuotaProgressRow(
                 ) {
                     Text(
                         text = "剩余 ${remainingPercent.toInt()}%",
-                        color = if (isNightMode) Color(0xFF777777) else progressColor,
-                        fontSize = 10.sp,
+                        color = if (isNightMode) AppleNightRedPrimary else progressColor,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                     val countdown = window.formattedCountdown()
                     if (countdown != "已就绪") {
                         Text(
                             text = "重置 $countdown",
-                            color = TextTertiary,
+                            color = if (isNightMode) AppleNightRedMuted else TextTertiary,
                             fontSize = 9.sp
                         )
                     }
@@ -374,7 +414,7 @@ private fun QuotaProgressRow(
             } else {
                 Text(
                     text = "暂无数据",
-                    color = TextTertiary,
+                    color = if (isNightMode) AppleNightRedMuted else TextTertiary,
                     fontSize = 9.sp
                 )
             }
@@ -384,8 +424,8 @@ private fun QuotaProgressRow(
             progress = { progressFraction },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp)),
+                .height(4.5.dp)
+                .clip(RoundedCornerShape(2.5.dp)),
             color = progressColor,
             trackColor = trackColor
         )

@@ -8,6 +8,7 @@ data class CodexUsageSnapshot(
     val accountId: String,
     val accountAlias: String,
     val credentialStatus: CredentialStatus,
+    val email: String? = null,
     val primaryWindow: CodexUsageWindow? = null,    // 通常是 5小时限额
     val secondaryWindow: CodexUsageWindow? = null,  // 通常是 7天/周限额
     val creditsBalance: Double? = null,
@@ -49,15 +50,17 @@ data class CodexUsageSnapshot(
             message: String,
             lastGood: CodexUsageSnapshot? = null
         ): CodexUsageSnapshot {
-            return lastGood?.copy(
-                isLastGood = true,
-                errorMessage = message
-            ) ?: CodexUsageSnapshot(
+            return CodexUsageSnapshot(
                 accountId = accountId,
                 accountAlias = alias,
                 credentialStatus = status,
-                queriedAt = System.currentTimeMillis(),
-                isLastGood = false,
+                email = lastGood?.email,
+                primaryWindow = lastGood?.primaryWindow,
+                secondaryWindow = lastGood?.secondaryWindow,
+                creditsBalance = lastGood?.creditsBalance,
+                planName = lastGood?.planName,
+                queriedAt = lastGood?.queriedAt,
+                isLastGood = lastGood != null,
                 errorMessage = message
             )
         }

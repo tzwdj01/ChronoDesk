@@ -44,7 +44,21 @@ interface CodexUsageApi {
         @Header("Accept") accept: String = "application/json",
         @Header("OpenAI-Beta") beta: String = "codex-1"
     ): Response<WhamResetCreditsResponse>
+
+    @GET("backend-api/me")
+    suspend fun getMe(
+        @Header("Authorization") authHeader: String,
+        @Header("User-Agent") userAgent: String = "codex-cli",
+        @Header("Accept") accept: String = "application/json"
+    ): Response<ChatGPTMeResponse>
 }
+
+data class ChatGPTMeResponse(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("picture") val picture: String? = null
+)
 
 data class DeviceCodeResponse(
     @SerializedName("device_auth_id") val deviceAuthId: String,

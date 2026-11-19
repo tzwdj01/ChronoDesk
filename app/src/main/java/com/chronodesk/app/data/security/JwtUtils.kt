@@ -28,22 +28,46 @@ object JwtUtils {
                 email = profile?.optString("email", "")?.takeIf { it.isNotBlank() && it.contains("@") }
             }
 
-            // 3. preferred_username 字段
+            // 3. OpenAI auth 结构: https://api.openai.com/auth
+            if (email == null) {
+                val auth = json.optJSONObject("https://api.openai.com/auth")
+                email = auth?.optString("email", "")?.takeIf { it.isNotBlank() && it.contains("@") }
+            }
+
+            // 4. preferred_username 字段
             if (email == null) {
                 email = json.optString("preferred_username", "").takeIf { it.isNotBlank() && it.contains("@") }
             }
 
-            // 4. sub 字段若为邮箱
+            // 5. sub 字段若包含邮箱
             if (email == null) {
                 val sub = json.optString("sub", "")
                 if (sub.contains("@")) {
-                    email = sub.substringAfter("|")
+                    email = if (sub.contains("|")) sub.substringAfter("|") else sub
                 }
             }
 
             email
         } catch (e: Exception) {
             Log.w(TAG, "Failed to decode JWT payload: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * 从 JWT Token 中提取 chatgpt_account_id
+     */
+    fun extractChatGptAccountId(jwt: String?): String? {
+        if (jwt.isNullOrBlank()) return null
+        return try {
+            val parts = jwt.split(".")
+            if (parts.size < 2) return null
+            val payloadBytes = Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+            val jsonString = String(payloadBytes, Charsets.UTF_8)
+            val json = JSONObject(jsonString)
+            json.optString("chatgpt_account_id", "").takeIf { it.isNotBlank() }
+                ?: json.optJSONObject("https://api.openai.com/auth")?.optString("chatgpt_account_id", "")?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
             null
         }
     }

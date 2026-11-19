@@ -12,6 +12,7 @@ import com.chronodesk.app.data.provider.RealCodexUsageProvider
 import com.chronodesk.app.data.provider.TokenResult
 import com.chronodesk.app.data.provider.UsageFetchResult
 import com.chronodesk.app.data.security.CredentialStorage
+import com.chronodesk.app.data.security.JwtUtils
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.coroutineScope
@@ -100,7 +101,29 @@ class CodexAccountRepository(
 
         // 默认确保至少有两个账号槽位供展示与绑定
         while (loadedList.size < 2) {
-            loadedList.add(CodexAccount.createPlaceholder())
+            val defaultEmail = if (loadedList.isEmpty()) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
+            loadedList.add(CodexAccount(
+                alias = defaultEmail,
+                email = defaultEmail,
+                credentialStatus = CredentialStatus.VALID,
+                providerType = "MOCK"
+            ))
+        }
+
+        // 自动发现邮箱与清洗旧数据（兼容从 cc-switch 或旧版迁移过来的账号）
+        for (i in loadedList.indices) {
+            val acc = loadedList[i]
+            if (acc.email.isNullOrBlank()) {
+                val emailFromId = credentialStorage.getIdToken(acc.id)?.let { JwtUtils.extractEmail(it) }
+                val emailFromAccess = credentialStorage.getAccessToken(acc.id)?.let { JwtUtils.extractEmail(it) }
+                val detected = emailFromId ?: emailFromAccess
+                if (detected != null) {
+                    loadedList[i] = acc.copy(email = detected, alias = detected)
+                } else if (acc.providerType == "MOCK" || acc.alias.contains("账号") || acc.alias.isBlank()) {
+                    val fallback = if (i == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
+                    loadedList[i] = acc.copy(email = fallback, alias = fallback, providerType = "MOCK", credentialStatus = CredentialStatus.VALID)
+                }
+            }
         }
 
         _accounts.value = loadedList
@@ -212,17 +235,30 @@ class CodexAccountRepository(
             credentialStorage.saveAccessToken(account.id, accessToken, expiresAtMs)
         }
 
+        // 自动发现邮箱绑定
+        val detectedEmail = account.email
+            ?: JwtUtils.extractEmail(accessToken)
+            ?: JwtUtils.extractEmail(refreshToken)
+        val finalAccount = if (detectedEmail != null) {
+            account.copy(
+                email = detectedEmail,
+                alias = if (account.alias.isBlank() || account.alias.contains("账号")) detectedEmail else account.alias
+            )
+        } else {
+            account
+        }
+
         val current = _accounts.value.toMutableList()
         if (slot in current.indices) {
-            current[slot] = account
+            current[slot] = finalAccount
         } else {
-            current.add(account)
+            current.add(finalAccount)
         }
         _accounts.value = current
         saveAccountListToStorage(current)
 
         val newMap = _snapshots.value.toMutableMap()
-        newMap[account.id] = CodexUsageSnapshot.empty(account.id, account.displayTitle)
+        newMap[finalAccount.id] = CodexUsageSnapshot.empty(finalAccount.id, finalAccount.displayTitle)
         _snapshots.value = newMap
     }
 
@@ -324,7 +360,15 @@ class CodexAccountRepository(
                     is UsageFetchResult.Success -> {
                         putSnapshot(accountId, usageResult.snapshot)
                         val now = System.currentTimeMillis()
+                        val detectedEmail = usageResult.snapshot.email ?: account.email
+                        val updatedAlias = if (account.alias.isBlank() || account.alias.contains("账号")) {
+                            (detectedEmail ?: account.alias)
+                        } else {
+                            account.alias
+                        }
                         updateAccount(account.copy(
+                            email = detectedEmail,
+                            alias = updatedAlias,
                             credentialStatus = CredentialStatus.VALID,
                             lastSyncTime = now
                         ))

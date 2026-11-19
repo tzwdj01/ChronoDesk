@@ -4,5 +4,6 @@ build/
 **/.gradle/
 local.properties
 *.apk
+*.png
 .DS_Store
 scratch/

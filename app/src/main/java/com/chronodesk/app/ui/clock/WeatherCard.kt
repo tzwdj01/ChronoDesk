@@ -32,6 +32,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.WeatherInfo
+import com.chronodesk.app.ui.theme.AppleNightBorder
+import com.chronodesk.app.ui.theme.AppleNightRedMuted
+import com.chronodesk.app.ui.theme.AppleNightRedPrimary
+import com.chronodesk.app.ui.theme.AppleNightRedSecondary
+import com.chronodesk.app.ui.theme.AppleNightSurface
+import com.chronodesk.app.ui.theme.AppleNightSurfaceElevated
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -48,11 +54,11 @@ fun WeatherCapsule(
     isNightMode: Boolean = false,
     onCardClick: () -> Unit = {}
 ) {
-    val cardBg = if (isNightMode) Color(0x33101010) else DarkSurface.copy(alpha = 0.85f)
-    val cardBorder = if (isNightMode) Color(0x33222222) else DarkBorder
-    val primaryText = if (isNightMode) Color(0xFF777777) else TextPrimary
-    val secondaryText = if (isNightMode) Color(0xFF555555) else TextSecondary
-    val iconColor = if (isNightMode) Color(0xFF666666) else TechAmber
+    val cardBg = if (isNightMode) AppleNightSurface else DarkSurface.copy(alpha = 0.85f)
+    val cardBorder = if (isNightMode) AppleNightBorder else DarkBorder
+    val primaryText = if (isNightMode) AppleNightRedPrimary else TextPrimary
+    val secondaryText = if (isNightMode) AppleNightRedSecondary else TextSecondary
+    val iconColor = if (isNightMode) AppleNightRedPrimary else TechAmber
 
     val (_, iconType) = WeatherInfo.decodeWmoCode(weather.weatherCode)
     val weatherIcon: ImageVector = when (iconType) {
@@ -106,19 +112,19 @@ fun WeatherCapsule(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(if (isNightMode) Color(0x22333333) else DarkSurfaceElevated)
+                    .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.LocationOn,
                     contentDescription = null,
-                    tint = TechCyan.copy(alpha = if (isNightMode) 0.4f else 0.85f),
+                    tint = if (isNightMode) AppleNightRedPrimary else TechCyan.copy(alpha = 0.85f),
                     modifier = Modifier.size(11.dp)
                 )
                 Spacer(modifier = Modifier.width(2.dp))
                 Text(
                     text = weather.cityName,
-                    color = if (isNightMode) Color(0xFF666666) else TechCyan,
+                    color = if (isNightMode) AppleNightRedPrimary else TechCyan,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -133,13 +139,13 @@ fun WeatherCapsule(
                     Icon(
                         imageVector = Icons.Default.WaterDrop,
                         contentDescription = null,
-                        tint = if (isNightMode) Color(0xFF444444) else TechCyan.copy(alpha = 0.7f),
+                        tint = if (isNightMode) AppleNightRedSecondary else TechCyan.copy(alpha = 0.7f),
                         modifier = Modifier.size(11.dp)
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     Text(
                         text = "${weather.humidity}%",
-                        color = if (isNightMode) Color(0xFF555555) else TextTertiary,
+                        color = if (isNightMode) AppleNightRedMuted else TextTertiary,
                         fontSize = 11.sp
                     )
                 }
@@ -148,13 +154,13 @@ fun WeatherCapsule(
                     Icon(
                         imageVector = Icons.Default.Air,
                         contentDescription = null,
-                        tint = if (isNightMode) Color(0xFF444444) else TextTertiary,
+                        tint = if (isNightMode) AppleNightRedSecondary else TextTertiary,
                         modifier = Modifier.size(11.dp)
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     Text(
                         text = "${weather.windSpeed}m/s",
-                        color = if (isNightMode) Color(0xFF555555) else TextTertiary,
+                        color = if (isNightMode) AppleNightRedMuted else TextTertiary,
                         fontSize = 11.sp
                     )
                 }

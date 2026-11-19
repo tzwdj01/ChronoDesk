@@ -146,10 +146,10 @@ class ClockViewModel @JvmOverloads constructor(
     }
 
     fun toggleNightMode(): String {
-        val next = when (settings.value.nightModeOption) {
-            "AUTO" -> "FORCE_DAY"
-            "FORCE_DAY" -> "FORCE_NIGHT"
-            else -> "AUTO"
+        val next = if (_isNightMode.value) {
+            "FORCE_DAY"
+        } else {
+            "FORCE_NIGHT"
         }
         val updated = settings.value.copy(nightModeOption = next)
         updateSettings(updated)

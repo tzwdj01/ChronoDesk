@@ -158,9 +158,23 @@ class RealCodexUsageProvider : CodexUsageProvider {
                     val credits = body?.credits?.parseBalance()
                     val plan = mapPlanType(body?.planType)
 
+                    // 自动探针：调用 /backend-api/me 获取真实注册邮箱，或从 Token 提取
+                    var detectedEmail: String? = null
+                    try {
+                        val meResp = NetworkClient.usageApi.getMe(authHeader)
+                        if (meResp.isSuccessful && !meResp.body()?.email.isNullOrBlank()) {
+                            detectedEmail = meResp.body()!!.email
+                        }
+                    } catch (_: Exception) {}
+
+                    if (detectedEmail.isNullOrBlank()) {
+                        detectedEmail = com.chronodesk.app.data.security.JwtUtils.extractEmail(accessToken)
+                    }
+
                     val snapshot = CodexUsageSnapshot(
                         accountId = accountId,
-                        accountAlias = accountAlias,
+                        accountAlias = detectedEmail ?: accountAlias,
+                        email = detectedEmail,
                         credentialStatus = CredentialStatus.VALID,
                         primaryWindow = primary,
                         secondaryWindow = secondary,

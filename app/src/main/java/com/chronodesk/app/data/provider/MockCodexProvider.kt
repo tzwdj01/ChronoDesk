@@ -85,9 +85,11 @@ class MockCodexProvider(
             resetAtUnix = nowSec + resetInWeekly
         )
 
+        val mockEmail = if (slotIndex == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
         val snapshot = CodexUsageSnapshot(
             accountId = accountId,
-            accountAlias = accountAlias,
+            accountAlias = mockEmail,
+            email = mockEmail,
             credentialStatus = CredentialStatus.VALID,
             primaryWindow = primary,
             secondaryWindow = secondary,

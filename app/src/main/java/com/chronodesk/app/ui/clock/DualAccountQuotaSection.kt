@@ -1,11 +1,14 @@
 package com.chronodesk.app.ui.clock
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,9 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DarkMode
@@ -42,6 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
+import com.chronodesk.app.ui.theme.AppleNightBorder
+import com.chronodesk.app.ui.theme.AppleNightRedMuted
+import com.chronodesk.app.ui.theme.AppleNightRedPrimary
+import com.chronodesk.app.ui.theme.AppleNightRedSecondary
+import com.chronodesk.app.ui.theme.AppleNightSurface
+import com.chronodesk.app.ui.theme.AppleNightSurfaceElevated
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -59,6 +66,7 @@ fun MultiAccountQuotaSection(
     nightModeOption: String,
     modifier: Modifier = Modifier,
     isNightMode: Boolean = false,
+    areControlsVisible: Boolean = false,
     onAddAccount: () -> Unit = {},
     onRefreshAccount: (accountId: String) -> Unit = {},
     onDeleteAccount: (accountId: String) -> Unit = {},
@@ -78,11 +86,16 @@ fun MultiAccountQuotaSection(
         label = "spinAngleAll"
     )
 
+    val buttonBg = if (isNightMode) AppleNightSurface else DarkSurface
+    val buttonBorder = if (isNightMode) AppleNightBorder else DarkBorder
+    val buttonText = if (isNightMode) AppleNightRedPrimary else TextPrimary
+    val buttonIcon = if (isNightMode) AppleNightRedPrimary else TechCyan
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 顶部操作行：标题、账号数、添加按钮、全部刷新、日夜切换、设置
+        // 顶部操作行：标题、账号数、以及呼出时才显示的按钮组（添加、全部刷新、日夜切换、设置）
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -94,7 +107,7 @@ fun MultiAccountQuotaSection(
             ) {
                 Text(
                     text = "CODEX 额度监控",
-                    color = if (isNightMode) Color(0xFF666666) else TechCyan,
+                    color = if (isNightMode) AppleNightRedPrimary else TechCyan,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -104,111 +117,120 @@ fun MultiAccountQuotaSection(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (isNightMode) Color(0x22333333) else DarkSurfaceElevated)
+                        .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
                         .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
                         text = "${configuredCount}个账号",
-                        color = TextTertiary,
+                        color = if (isNightMode) AppleNightRedSecondary else TextTertiary,
                         fontSize = 9.sp
                     )
                 }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // 添加账号按钮
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isNightMode) Color(0xFF111111) else DarkSurface)
-                        .border(1.dp, if (isNightMode) Color(0xFF1E1E1E) else DarkBorder, RoundedCornerShape(6.dp))
-                        .clickable { onAddAccount() }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
+            // 右侧区域：呼出时显示操作按钮；常态下展示轻触提示
+            if (areControlsVisible) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 添加账号按钮
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(buttonBg)
+                            .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                            .clickable { onAddAccount() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "添加账号",
+                                tint = buttonIcon,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "添加",
+                                color = buttonText,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // 全部刷新按钮
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(buttonBg)
+                            .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                            .clickable(enabled = !isRefreshingAll) { onRefreshAll() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "全部刷新",
+                                tint = if (isRefreshingAll) (if (isNightMode) AppleNightRedPrimary else TechCyan) else buttonText,
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .rotate(if (isRefreshingAll) spinAngle else 0f)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "刷新",
+                                color = buttonText,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // 日夜切换快捷按钮
+                    val nightIcon = when (nightModeOption) {
+                        "FORCE_DAY" -> Icons.Default.LightMode
+                        "FORCE_NIGHT" -> Icons.Default.Nightlight
+                        else -> Icons.Default.DarkMode
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(buttonBg)
+                            .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                            .clickable { onToggleNightMode() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "添加账号",
-                            tint = if (isNightMode) Color(0xFF777777) else TechCyan,
+                            imageVector = nightIcon,
+                            contentDescription = "日夜模式切换",
+                            tint = buttonIcon,
                             modifier = Modifier.size(12.dp)
                         )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "添加",
-                            color = if (isNightMode) Color(0xFF777777) else TextPrimary,
-                            fontSize = 11.sp
-                        )
                     }
-                }
 
-                // 全部刷新按钮
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isNightMode) Color(0xFF111111) else DarkSurface)
-                        .border(1.dp, if (isNightMode) Color(0xFF1E1E1E) else DarkBorder, RoundedCornerShape(6.dp))
-                        .clickable(enabled = !isRefreshingAll) { onRefreshAll() }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 设置按钮
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(buttonBg)
+                            .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                            .clickable { onSettingsClick() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "全部刷新",
-                            tint = if (isRefreshingAll) TechCyan else (if (isNightMode) Color(0xFF777777) else TextPrimary),
-                            modifier = Modifier
-                                .size(12.dp)
-                                .rotate(if (isRefreshingAll) spinAngle else 0f)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "刷新",
-                            color = if (isNightMode) Color(0xFF777777) else TextPrimary,
-                            fontSize = 11.sp
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = buttonText,
+                            modifier = Modifier.size(12.dp)
                         )
                     }
                 }
-
-                // 日夜切换快捷按钮
-                val nightIcon = when (nightModeOption) {
-                    "FORCE_DAY" -> Icons.Default.LightMode
-                    "FORCE_NIGHT" -> Icons.Default.Nightlight
-                    else -> Icons.Default.DarkMode
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isNightMode) Color(0xFF111111) else DarkSurface)
-                        .border(1.dp, if (isNightMode) Color(0xFF1E1E1E) else DarkBorder, RoundedCornerShape(6.dp))
-                        .clickable { onToggleNightMode() }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = nightIcon,
-                        contentDescription = "日夜模式切换",
-                        tint = if (isNightMode) Color(0xFF777777) else TextPrimary,
-                        modifier = Modifier.size(12.dp)
-                    )
-                }
-
-                // 设置按钮
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isNightMode) Color(0xFF111111) else DarkSurface)
-                        .border(1.dp, if (isNightMode) Color(0xFF1E1E1E) else DarkBorder, RoundedCornerShape(6.dp))
-                        .clickable { onSettingsClick() }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "设置",
-                        tint = if (isNightMode) Color(0xFF777777) else TextPrimary,
-                        modifier = Modifier.size(12.dp)
-                    )
-                }
+            } else {
+                Text(
+                    text = "轻触呼出",
+                    color = if (isNightMode) AppleNightRedMuted else TextTertiary,
+                    fontSize = 9.5.sp
+                )
             }
         }
 
@@ -223,6 +245,7 @@ fun MultiAccountQuotaSection(
                     snapshot = snapshots[account.id],
                     isLoading = loadingMap[account.id] == true,
                     isNightMode = isNightMode,
+                    areControlsVisible = areControlsVisible,
                     onRefreshClick = { onRefreshAccount(account.id) },
                     onDeleteClick = { onDeleteAccount(account.id) },
                     onCardClick = { onAccountClick(account) },
@@ -272,6 +295,7 @@ fun DualAccountQuotaSection(
         nightModeOption = "AUTO",
         modifier = modifier,
         isNightMode = isNightMode,
+        areControlsVisible = true,
         onAddAccount = onAccountBClick,
         onRefreshAccount = { id -> if (id == accountA?.id) onRefreshA() else onRefreshB() },
         onDeleteAccount = {},
