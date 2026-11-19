@@ -10,7 +10,8 @@ data class CodexAccount(
     val credentialStatus: CredentialStatus = CredentialStatus.NOT_LOGGED_IN,
     val authenticatedAt: Long = System.currentTimeMillis(),
     val lastSyncTime: Long? = null,
-    val providerType: String = "OAUTH_DEVICE" // OAUTH_DEVICE, DIRECT_TOKEN, MOCK
+    val providerType: String = "OAUTH_DEVICE", // OAUTH_DEVICE, DIRECT_TOKEN, MOCK
+    val modelProvider: String = "CHATGPT"      // CHATGPT, DEEPSEEK, GEMINI, CLAUDE
 ) {
     /**
      * 账号显示名称：优先显示真实登录邮箱（如 user@gmail.com），其次为用户自定义别名

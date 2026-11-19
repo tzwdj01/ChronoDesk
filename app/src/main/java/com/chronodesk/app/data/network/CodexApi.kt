@@ -88,6 +88,8 @@ data class WhamUsageResponse(
 )
 
 data class WhamRateLimit(
+    @SerializedName("allowed") val allowed: Boolean? = true,
+    @SerializedName("limit_reached") val limitReached: Boolean? = false,
     @SerializedName("primary_window") val primaryWindow: WhamLimitWindow? = null,
     @SerializedName("secondary_window") val secondaryWindow: WhamLimitWindow? = null
 )

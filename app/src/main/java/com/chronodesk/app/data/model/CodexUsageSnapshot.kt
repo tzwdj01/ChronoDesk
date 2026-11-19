@@ -15,7 +15,9 @@ data class CodexUsageSnapshot(
     val planName: String? = null,
     val queriedAt: Long? = null,
     val isLastGood: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val limitReached: Boolean = false,
+    val modelProvider: String = "CHATGPT"
 ) {
     val formattedQueriedAt: String
         get() {
@@ -61,7 +63,8 @@ data class CodexUsageSnapshot(
                 planName = lastGood?.planName,
                 queriedAt = lastGood?.queriedAt,
                 isLastGood = lastGood != null,
-                errorMessage = message
+                errorMessage = message,
+                limitReached = lastGood?.limitReached ?: false
             )
         }
     }

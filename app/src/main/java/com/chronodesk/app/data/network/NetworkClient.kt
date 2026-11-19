@@ -1,17 +1,51 @@
 package com.chronodesk.app.data.network
 
+import android.util.Log
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 object NetworkClient {
 
+    private const val TAG = "NetworkClient"
+
+    /**
+     * 智能代理选择器：
+     * 针对 OpenAI 认证与用量查询端点 (auth.openai.com, chatgpt.com)，
+     * 自动优先尝试本地 127.0.0.1:1082 (ADB 反向代理/Shadowrocket) 及 127.0.0.1:7890 (Clash)，
+     * 随后自动回退至直连 (NO_PROXY)，确保网络在任何环境下无缝畅通。
+     */
+    private val smartProxySelector = object : ProxySelector() {
+        override fun select(uri: URI?): List<Proxy> {
+            val host = uri?.host ?: ""
+            if (host.contains("openai.com") || host.contains("chatgpt.com")) {
+                return listOf(
+                    Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 1082)),
+                    Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 7890)),
+                    Proxy.NO_PROXY
+                )
+            }
+            return listOf(Proxy.NO_PROXY)
+        }
+
+        override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
+            Log.w(TAG, "Proxy route to $uri via $sa failed: ${ioe?.message}")
+        }
+    }
+
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .proxySelector(smartProxySelector)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .addInterceptor(AuthLoggingInterceptor())
             .build()
     }

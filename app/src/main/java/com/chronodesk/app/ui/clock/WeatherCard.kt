@@ -5,11 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,21 +31,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.WeatherInfo
-import com.chronodesk.app.ui.theme.AppleNightBorder
-import com.chronodesk.app.ui.theme.AppleNightRedMuted
-import com.chronodesk.app.ui.theme.AppleNightRedPrimary
-import com.chronodesk.app.ui.theme.AppleNightRedSecondary
-import com.chronodesk.app.ui.theme.AppleNightSurface
-import com.chronodesk.app.ui.theme.AppleNightSurfaceElevated
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
-import com.chronodesk.app.ui.theme.DarkSurfaceElevated
+import com.chronodesk.app.ui.theme.InkBorder
+import com.chronodesk.app.ui.theme.InkSurface
+import com.chronodesk.app.ui.theme.InkTextPrimary
+import com.chronodesk.app.ui.theme.InkTextSecondary
+import com.chronodesk.app.ui.theme.InkTextTertiary
 import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
 
+/**
+ * 极简气象胶囊卡片（与参考图完全一致的一体式横条胶囊）
+ */
 @Composable
 fun WeatherCapsule(
     weather: WeatherInfo,
@@ -57,11 +55,12 @@ fun WeatherCapsule(
     isCompact: Boolean = false,
     onCardClick: () -> Unit = {}
 ) {
-    val cardBg = if (isNightMode) AppleNightSurface else DarkSurface.copy(alpha = 0.9f)
-    val cardBorder = if (isNightMode) AppleNightBorder else DarkBorder
-    val primaryText = if (isNightMode) AppleNightRedPrimary else TextPrimary
-    val secondaryText = if (isNightMode) AppleNightRedSecondary else TextSecondary
-    val iconColor = if (isNightMode) AppleNightRedPrimary else TechAmber
+    val cardBg = if (isNightMode) DarkSurface.copy(alpha = 0.9f) else InkSurface
+    val cardBorder = if (isNightMode) DarkBorder else InkBorder
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val dividerColor = if (isNightMode) TextTertiary.copy(alpha = 0.5f) else InkTextTertiary.copy(alpha = 0.6f)
+    val iconColor = TechAmber
 
     val (_, iconType) = WeatherInfo.decodeWmoCode(weather.weatherCode)
     val weatherIcon: ImageVector = when (iconType) {
@@ -75,153 +74,105 @@ fun WeatherCapsule(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 12.dp else 14.dp))
+            .clip(RoundedCornerShape(if (isCompact) 18.dp else 22.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 12.dp else 14.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 18.dp else 22.dp))
             .clickable { onCardClick() }
             .padding(
-                horizontal = if (isCompact) 12.dp else 16.dp,
-                vertical = if (isCompact) 8.dp else 10.dp
+                horizontal = if (isCompact) 12.dp else 18.dp,
+                vertical = if (isCompact) 6.dp else 7.5.dp
             )
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp)
         ) {
-            // 第一行：主要天气信息 + 城市定位 + 空气质量
+            // 天气图标 + 温度 + 状况
             Row(
-                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                // 左侧：图标 + 温度 + 天气描述
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 10.dp)
-                ) {
-                    Icon(
-                        imageVector = weatherIcon,
-                        contentDescription = weather.weatherDescription,
-                        tint = iconColor,
-                        modifier = Modifier.size(if (isCompact) 22.dp else 26.dp)
-                    )
-
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            text = "${weather.temperature.toInt()}°C",
-                            color = primaryText,
-                            fontSize = if (isCompact) 16.5.sp else 19.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(if (isCompact) 5.dp else 7.dp))
-                        Text(
-                            text = weather.weatherDescription,
-                            color = if (isNightMode) AppleNightRedSecondary else TechCyan,
-                            fontSize = if (isCompact) 12.sp else 13.5.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                // 右侧：城市定位胶囊 + AQI 优
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // 城市胶囊
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = if (isNightMode) AppleNightRedPrimary else TechCyan.copy(alpha = 0.85f),
-                            modifier = Modifier.size(if (isCompact) 10.dp else 12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = weather.cityName,
-                            color = if (isNightMode) AppleNightRedPrimary else TechCyan,
-                            fontSize = if (isCompact) 10.5.sp else 11.5.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    // 空气质量标签
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "AQI 32 优",
-                            color = if (isNightMode) AppleNightRedSecondary else Color(0xFF10B981),
-                            fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = weatherIcon,
+                    contentDescription = weather.weatherDescription,
+                    tint = iconColor,
+                    modifier = Modifier.size(if (isCompact) 17.dp else 20.dp)
+                )
+                Text(
+                    text = "${weather.temperature.toInt()}°C",
+                    color = primaryText,
+                    fontSize = if (isCompact) 13.5.sp else 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = weather.weatherDescription,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 11.5.sp else 12.5.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
 
-            // 分割线
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(0.6.dp)
-                    .background(
-                        if (isNightMode) AppleNightBorder.copy(alpha = 0.6f)
-                        else DarkBorder.copy(alpha = 0.8f)
-                    )
-            )
+            // 分隔符
+            Text(text = "｜", color = dividerColor, fontSize = 11.sp)
 
-            // 第二行：精细气象遥测指标（相对湿度、风向风速、体感温度）
+            // 城市定位
             Row(
-                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                // 湿度
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.WaterDrop,
-                        contentDescription = null,
-                        tint = if (isNightMode) AppleNightRedSecondary else TechCyan.copy(alpha = 0.8f),
-                        modifier = Modifier.size(if (isCompact) 11.dp else 13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "相对湿度 ${weather.humidity}%",
-                        color = if (isNightMode) AppleNightRedMuted else TextSecondary,
-                        fontSize = if (isCompact) 10.sp else 11.sp
-                    )
-                }
-
-                // 风速
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Air,
-                        contentDescription = null,
-                        tint = if (isNightMode) AppleNightRedSecondary else TextSecondary,
-                        modifier = Modifier.size(if (isCompact) 11.dp else 13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "风速 ${weather.windSpeed}m/s",
-                        color = if (isNightMode) AppleNightRedMuted else TextSecondary,
-                        fontSize = if (isCompact) 10.sp else 11.sp
-                    )
-                }
-
-                // 体感温度（估算 = 气温 - 风速修正）
-                val apparentTemp = (weather.temperature - (weather.windSpeed * 0.15f)).toInt()
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = if (isNightMode) TechCyan else Color(0xFF16A34A),
+                    modifier = Modifier.size(if (isCompact) 13.dp else 14.dp)
+                )
                 Text(
-                    text = "体感 $apparentTemp°C",
-                    color = if (isNightMode) AppleNightRedMuted else TextTertiary,
-                    fontSize = if (isCompact) 10.sp else 11.sp
+                    text = weather.cityName,
+                    color = primaryText,
+                    fontSize = if (isCompact) 11.5.sp else 12.5.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // 分隔符
+            Text(text = "｜", color = dividerColor, fontSize = 11.sp)
+
+            // 相对湿度
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.WaterDrop,
+                    contentDescription = null,
+                    tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                    modifier = Modifier.size(if (isCompact) 12.dp else 13.dp)
+                )
+                Text(
+                    text = "湿度 ${weather.humidity}%",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 11.sp else 12.sp
+                )
+            }
+
+            // 分隔符
+            Text(text = "｜", color = dividerColor, fontSize = 11.sp)
+
+            // 风速
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Air,
+                    contentDescription = null,
+                    tint = if (isNightMode) TechCyan else Color(0xFF64748B),
+                    modifier = Modifier.size(if (isCompact) 12.dp else 13.dp)
+                )
+                Text(
+                    text = "风速 ${weather.windSpeed} m/s",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 11.sp else 12.sp
                 )
             }
         }

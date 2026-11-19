@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.chronodesk.app.data.utils.LunarCalendarHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -26,7 +27,9 @@ data class TimeState(
     val minute: Int = 0,
     val second: Int = 0,
     val dateString: String = "",
-    val dayOfWeek: String = ""
+    val fullDateString: String = "",
+    val dayOfWeek: String = "",
+    val lunarDateString: String = ""
 )
 
 class ClockViewModel @JvmOverloads constructor(
@@ -182,6 +185,18 @@ class ClockViewModel @JvmOverloads constructor(
         accountRepo.updateAccountAlias(slot, newAlias)
     }
 
+    fun saveDeepSeekApiKey(apiKey: String) {
+        accountRepo.saveDeepSeekApiKey(apiKey)
+        val deepSeekAcc = accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }
+        if (deepSeekAcc != null) {
+            refreshAccount(deepSeekAcc.id)
+        }
+    }
+
+    fun getDeepSeekApiKey(): String? {
+        return accountRepo.getDeepSeekApiKey()
+    }
+
     private fun getCurrentTimeState(is24Hour: Boolean): TimeState {
         val cal = Calendar.getInstance()
         val hour = if (is24Hour) {
@@ -194,15 +209,19 @@ class ClockViewModel @JvmOverloads constructor(
         val second = cal.get(Calendar.SECOND)
 
         val dateSdf = SimpleDateFormat("M月d日", Locale.CHINESE)
+        val fullDateSdf = SimpleDateFormat("yyyy年M月d日", Locale.CHINESE)
         val weekSdf = SimpleDateFormat("EEEE", Locale.CHINESE)
         val now = Date()
+        val lunar = LunarCalendarHelper.getLunarString(cal)
 
         return TimeState(
             hour = hour,
             minute = minute,
             second = second,
             dateString = dateSdf.format(now),
-            dayOfWeek = weekSdf.format(now)
+            fullDateString = fullDateSdf.format(now),
+            dayOfWeek = weekSdf.format(now),
+            lunarDateString = lunar
         )
     }
 }

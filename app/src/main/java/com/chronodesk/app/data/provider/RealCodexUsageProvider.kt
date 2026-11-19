@@ -138,9 +138,11 @@ class RealCodexUsageProvider : CodexUsageProvider {
     ): UsageFetchResult {
         return try {
             val authHeader = "Bearer $accessToken"
+            val effectiveAccountId = chatgptAccountId
+                ?: com.chronodesk.app.data.security.JwtUtils.extractChatGptAccountId(accessToken)
             val response = NetworkClient.usageApi.getUsage(
                 authHeader = authHeader,
-                accountId = chatgptAccountId
+                accountId = effectiveAccountId
             )
 
             when (response.code()) {
@@ -149,6 +151,7 @@ class RealCodexUsageProvider : CodexUsageProvider {
                 }
                 200 -> {
                     val body = response.body()
+                    val limitReached = body?.rateLimit?.limitReached == true || body?.rateLimit?.allowed == false
                     val primary = body?.rateLimit?.primaryWindow?.let {
                         CodexUsageWindow.fromRaw(it.usedPercent, it.limitWindowSeconds, it.resetAt)
                     }
@@ -171,6 +174,8 @@ class RealCodexUsageProvider : CodexUsageProvider {
                         detectedEmail = com.chronodesk.app.data.security.JwtUtils.extractEmail(accessToken)
                     }
 
+                    Log.i(TAG, "fetchUsage success for $detectedEmail: limitReached=$limitReached, primary=${primary?.remainingPercent}%, secondary=${secondary?.remainingPercent}%")
+
                     val snapshot = CodexUsageSnapshot(
                         accountId = accountId,
                         accountAlias = detectedEmail ?: accountAlias,
@@ -182,7 +187,8 @@ class RealCodexUsageProvider : CodexUsageProvider {
                         planName = plan,
                         queriedAt = System.currentTimeMillis(),
                         isLastGood = false,
-                        errorMessage = null
+                        errorMessage = null,
+                        limitReached = limitReached
                     )
                     UsageFetchResult.Success(snapshot)
                 }

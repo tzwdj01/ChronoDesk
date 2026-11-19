@@ -2,16 +2,12 @@ package com.chronodesk.app.ui.clock
 
 import android.content.res.Configuration
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,10 +26,19 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,11 +46,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,22 +63,27 @@ import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.ui.settings.AccountManagerDialog
 import com.chronodesk.app.ui.settings.DeviceAuthDialog
 import com.chronodesk.app.ui.settings.SettingsDialog
-import com.chronodesk.app.ui.theme.AppleNightBorder
-import com.chronodesk.app.ui.theme.AppleNightRedMuted
-import com.chronodesk.app.ui.theme.AppleNightRedPrimary
-import com.chronodesk.app.ui.theme.AppleNightRedSecondary
-import com.chronodesk.app.ui.theme.AppleNightSurfaceElevated
+import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
-import com.chronodesk.app.ui.theme.DarkSurfaceElevated
-import com.chronodesk.app.ui.theme.NightBackground
-import com.chronodesk.app.ui.theme.PureBlack
+import com.chronodesk.app.ui.theme.DarkColon
+import com.chronodesk.app.ui.theme.DarkSurface
+import com.chronodesk.app.ui.theme.InkBackground
+import com.chronodesk.app.ui.theme.InkBorder
+import com.chronodesk.app.ui.theme.InkColon
+import com.chronodesk.app.ui.theme.InkSurface
+import com.chronodesk.app.ui.theme.InkTextPrimary
+import com.chronodesk.app.ui.theme.InkTextSecondary
+import com.chronodesk.app.ui.theme.InkTextTertiary
+import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ClockScreen(
     viewModel: ClockViewModel,
@@ -93,7 +105,9 @@ fun ClockScreen(
     val isNightMode by viewModel.isNightMode.collectAsState()
     val burnInShift by viewModel.burnInShift.collectAsState()
 
-    // 交互式 HUD 控制状态：默认隐匿，仅展示极简时钟与额度看板，轻触呼出，6秒无操作自动隐藏
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
+
     var areControlsVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(areControlsVisible) {
@@ -116,10 +130,13 @@ fun ClockScreen(
     }
 
     selectedAccountToManage?.let { account ->
+        val chatGptAccs = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
+        val slotIdx = if (account.modelProvider == "DEEPSEEK") 2 else if (chatGptAccs.indexOfFirst { it.id == account.id } == 1) 1 else 0
         AccountManagerDialog(
-            initialSlot = if (accounts.indexOfFirst { it.id == account.id } == 1) 1 else 0,
-            accountA = accounts.getOrNull(0),
-            accountB = accounts.getOrNull(1),
+            initialSlot = slotIdx,
+            accountA = chatGptAccs.getOrNull(0),
+            accountB = chatGptAccs.getOrNull(1),
+            currentDeepSeekApiKey = viewModel.getDeepSeekApiKey(),
             onDismiss = { selectedAccountToManage = null },
             onSaveAccount = { slot, acc, ref, accTok ->
                 viewModel.saveAccount(slot, acc, ref, accTok)
@@ -131,6 +148,11 @@ fun ClockScreen(
             },
             onUpdateAlias = { slot, alias ->
                 viewModel.updateAccountAlias(slot, alias)
+            },
+            onSaveDeepSeekApiKey = { key ->
+                viewModel.saveDeepSeekApiKey(key)
+                selectedAccountToManage = null
+                Toast.makeText(context, "DeepSeek API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -148,12 +170,8 @@ fun ClockScreen(
         )
     }
 
-    // 颜色系统：夜间采用 Apple StandBy 航空暗红单色体系；日间采用极客高对比荧光冷白与赛博青
-    val bgColor = if (isNightMode) NightBackground else PureBlack
-    val clockTextColor = if (isNightMode) AppleNightRedPrimary else TextPrimary
-    val dateTextColor = if (isNightMode) AppleNightRedSecondary else TextSecondary
-    val dayOfWeekTextColor = if (isNightMode) AppleNightRedPrimary else TechCyan
-    val dotTextColor = if (isNightMode) AppleNightRedMuted else TextTertiary
+    // 主题色彩体系自适应
+    val bgColor = if (isNightMode) DarkBackground else InkBackground
 
     BoxWithConstraints(
         modifier = modifier
@@ -166,297 +184,292 @@ fun ClockScreen(
                 areControlsVisible = !areControlsVisible
             }
             .offset {
-                // OLED 烧屏微幅像素位移
                 IntOffset(burnInShift.first.roundToInt(), burnInShift.second.roundToInt())
             }
     ) {
         val screenHeight = maxHeight
         val isCompactHeight = screenHeight < 380.dp
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    areControlsVisible = !areControlsVisible
+        // 背景绘制：日间水墨写意山水 / 夜间赛博深空微光流线
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            if (!isNightMode) {
+                // 远山 (浅灰淡墨)
+                val farMountain = Path().apply {
+                    moveTo(0f, h * 0.88f)
+                    cubicTo(w * 0.15f, h * 0.72f, w * 0.38f, h * 0.86f, w * 0.58f, h * 0.76f)
+                    cubicTo(w * 0.78f, h * 0.68f, w * 0.90f, h * 0.82f, w, h * 0.74f)
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
                 }
-                .padding(
-                    horizontal = if (isCompactHeight) 12.dp else 18.dp,
-                    vertical = if (isCompactHeight) 8.dp else 12.dp
-                )
-        ) {
-            if (isLandscape) {
-                // ================= 黄金比例横屏布局 =================
-                // 针对 16:9 小米 6 (640dp 视口) 与 2K 小米 11 Ultra 自适应权重
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 12.dp else 18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 左侧黄金区域：大号机械翻牌时钟 + 日期星期 + 天气胶囊
-                    Column(
-                        modifier = Modifier
-                            .weight(if (isCompactHeight) 1.28f else 1.4f)
-                            .fillMaxHeight(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // 顶部系统状态标头（与右侧 CODEX 标头严格对齐）
+                drawPath(farMountain, color = Color(0xFFDDD7CC).copy(alpha = 0.22f))
+
+                // 近山 (水墨层叠)
+                val nearMountain = Path().apply {
+                    moveTo(0f, h * 0.93f)
+                    cubicTo(w * 0.25f, h * 0.85f, w * 0.48f, h * 0.96f, w * 0.75f, h * 0.86f)
+                    cubicTo(w * 0.88f, h * 0.82f, w * 0.95f, h * 0.90f, w, h * 0.84f)
+                    lineTo(w, h)
+                    lineTo(0f, h)
+                    close()
+                }
+                drawPath(nearMountain, color = Color(0xFFD0C9BC).copy(alpha = 0.28f))
+            } else {
+                // 夜间赛博微光曲线（科技深蓝微光与青蓝流线）
+                val cyberCurve1 = Path().apply {
+                    moveTo(0f, h * 0.95f)
+                    cubicTo(w * 0.2f, h * 0.80f, w * 0.4f, h * 0.98f, w * 0.6f, h * 0.90f)
+                }
+                drawPath(cyberCurve1, color = TechCyan.copy(alpha = 0.08f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f))
+
+                val cyberCurve2 = Path().apply {
+                    moveTo(0f, h * 0.88f)
+                    cubicTo(w * 0.3f, h * 0.75f, w * 0.55f, h * 0.92f, w * 0.85f, h * 0.85f)
+                }
+                drawPath(cyberCurve2, color = TechCyan.copy(alpha = 0.04f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f))
+            }
+        }
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            // ================= 顶部公共导航栏 =================
+            ClockTopBar(
+                isNightMode = isNightMode,
+                accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK") },
+                nightModeOption = settings.nightModeOption,
+                onAddAccount = {
+                    selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                },
+                onRefreshAll = {
+                    viewModel.refreshAll()
+                    Toast.makeText(context, "已触发全量额度刷新", Toast.LENGTH_SHORT).show()
+                },
+                onToggleNightMode = {
+                    val next = viewModel.toggleNightMode()
+                    val msg = if (next == "FORCE_NIGHT") "已切换为：深色科技模式" else "已切换为：水墨墨水屏模式"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                },
+                onOpenSettings = { showSettingsDialog = true }
+            )
+
+            // ================= 中间区域：HorizontalPager 双页滑屏 =================
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) { page ->
+                if (page == 0) {
+                    // 第一页：主页面 (大时钟 + 日期/星期/农历 + 气象 + AI 额度看板)
+                    if (isLandscape) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = if (isCompactHeight) 14.dp else 22.dp),
+                            horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 14.dp else 24.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            // 左侧：视觉中心 —— 大尺寸翻牌时钟 + 公历农历 + 气象胶囊
+                            Column(
+                                modifier = Modifier
+                                    .weight(if (isCompactHeight) 1.45f else 1.6f)
+                                    .fillMaxHeight(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Text(
-                                    text = "CHRONODESK // 01",
-                                    color = if (isNightMode) AppleNightRedPrimary else TechCyan,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
+                                // 翻牌数字时钟
+                                LargeFlipClockDisplay(
+                                    hour = timeState.hour,
+                                    minute = timeState.minute,
+                                    second = if (settings.showSeconds) timeState.second else null,
+                                    isNightMode = isNightMode,
+                                    isCompact = isCompactHeight,
+                                    onClick = { areControlsVisible = !areControlsVisible }
                                 )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
-                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 15.dp))
+
+                                // 公历日期 + 星期 + 农历完整呈现
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                                 ) {
+                                    // 公历日期 (如: 11月19日)
                                     Text(
-                                        text = "DESKTOP",
-                                        color = if (isNightMode) AppleNightRedSecondary else TextTertiary,
-                                        fontSize = 9.sp,
+                                        text = timeState.dateString,
+                                        color = if (isNightMode) TextPrimary else InkTextPrimary,
+                                        fontSize = if (isCompactHeight) 14.sp else 16.5.sp,
                                         fontWeight = FontWeight.Medium
                                     )
+
+                                    if (!isNightMode) {
+                                        Text(
+                                            text = "·",
+                                            color = InkTextTertiary,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+
+                                    // 星期 (如: 星期四)
+                                    Text(
+                                        text = timeState.dayOfWeek,
+                                        color = if (isNightMode) TechCyan else InkTextPrimary,
+                                        fontSize = if (isCompactHeight) 14.sp else 16.5.sp,
+                                        fontWeight = if (isNightMode) FontWeight.SemiBold else FontWeight.Medium
+                                    )
+
+                                    Text(
+                                        text = "·",
+                                        color = if (isNightMode) TextTertiary else InkTextTertiary,
+                                        fontSize = 14.sp
+                                    )
+
+                                    // 农历 (如: 农历十月初十)
+                                    Text(
+                                        text = timeState.lunarDateString,
+                                        color = if (isNightMode) TextSecondary else InkTextSecondary,
+                                        fontSize = if (isCompactHeight) 13.5.sp else 15.5.sp,
+                                        fontWeight = FontWeight.Normal
+                                    )
                                 }
+
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 14.dp))
+
+                                // 天气胶囊卡片
+                                WeatherCapsule(
+                                    weather = weather,
+                                    isNightMode = isNightMode,
+                                    isCompact = isCompactHeight,
+                                    onCardClick = {
+                                        viewModel.refreshAll()
+                                        Toast.makeText(context, "正在刷新天气与位置…", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
                             }
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            // 右侧：多模型/多账号 AI 额度监控看板 (ChatGPT, DeepSeek, Gemini, Claude)
+                            Column(
+                                modifier = Modifier
+                                    .weight(1.0f)
+                                    .fillMaxHeight(),
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(5.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isNightMode) AppleNightRedPrimary else Color(0xFF10B981))
-                                )
-                                Text(
-                                    text = "NORMAL",
-                                    color = if (isNightMode) AppleNightRedSecondary else TextTertiary,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Medium
+                                MultiAccountQuotaSection(
+                                    accounts = accounts,
+                                    snapshots = snapshots,
+                                    loadingMap = loadingMap,
+                                    isRefreshingAll = isRefreshingAll,
+                                    nightModeOption = settings.nightModeOption,
+                                    isNightMode = isNightMode,
+                                    areControlsVisible = areControlsVisible,
+                                    isCompact = isCompactHeight,
+                                    onAddAccount = { viewModel.addAccount() },
+                                    onRefreshAccount = { id -> viewModel.refreshAccount(id) },
+                                    onDeleteAccount = { id -> viewModel.removeAccountById(id) },
+                                    onAccountClick = { acc ->
+                                        if (!acc.isConfigured) {
+                                            showDeviceAuthDialogForAccount = acc
+                                        } else {
+                                            selectedAccountToManage = acc
+                                        }
+                                    },
+                                    onRefreshAll = { viewModel.refreshAll() },
+                                    onToggleNightMode = { viewModel.toggleNightMode() },
+                                    onSettingsClick = { showSettingsDialog = true },
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
-
-                        // 自适应机械翻页时钟 (小米 11 Ultra 饱满铺满，小米 6 紧凑无任何溢出裁剪)
-                        LargeFlipClockDisplay(
-                            hour = timeState.hour,
-                            minute = timeState.minute,
-                            second = if (settings.showSeconds && !isNightMode) timeState.second else null,
-                            textColor = clockTextColor,
-                            isNightMode = isNightMode,
-                            isCompact = isCompactHeight,
-                            onClick = { areControlsVisible = !areControlsVisible }
-                        )
-
-                        // 日期与星期 HUD 胶囊
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    } else {
+                        // 竖屏备用自适应
+                        Column(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
-                                .padding(horizontal = 10.dp, vertical = 2.5.dp)
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Text(
-                                text = timeState.dateString,
-                                color = dateTextColor,
-                                fontSize = if (isCompactHeight) 12.sp else 14.sp,
-                                fontWeight = FontWeight.Medium
+                            LargeFlipClockDisplay(
+                                hour = timeState.hour,
+                                minute = timeState.minute,
+                                second = if (settings.showSeconds) timeState.second else null,
+                                isNightMode = isNightMode,
+                                isCompact = false
                             )
-                            Text(
-                                text = "·",
-                                color = dotTextColor,
-                                fontSize = if (isCompactHeight) 12.sp else 14.sp
-                            )
-                            Text(
-                                text = timeState.dayOfWeek,
-                                color = dayOfWeekTextColor,
-                                fontSize = if (isCompactHeight) 12.sp else 14.sp,
-                                fontWeight = FontWeight.SemiBold
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(text = timeState.dateString, color = if (isNightMode) TextPrimary else InkTextPrimary, fontSize = 15.sp)
+                                Text(text = timeState.dayOfWeek, color = if (isNightMode) TechCyan else InkTextPrimary, fontSize = 15.sp)
+                                Text(text = "·", color = TextTertiary)
+                                Text(text = timeState.lunarDateString, color = if (isNightMode) TextSecondary else InkTextSecondary, fontSize = 15.sp)
+                            }
+
+                            WeatherCapsule(weather = weather, isNightMode = isNightMode)
+
+                            MultiAccountQuotaSection(
+                                accounts = accounts,
+                                snapshots = snapshots,
+                                loadingMap = loadingMap,
+                                isRefreshingAll = isRefreshingAll,
+                                nightModeOption = settings.nightModeOption,
+                                isNightMode = isNightMode,
+                                areControlsVisible = areControlsVisible,
+                                onAddAccount = { viewModel.addAccount() },
+                                onRefreshAccount = { id -> viewModel.refreshAccount(id) },
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
-
-                        // 天气胶囊卡片（位于时间下方，铺满左侧）
-                        WeatherCapsule(
-                            weather = weather,
-                            isNightMode = isNightMode,
-                            isCompact = isCompactHeight,
-                            modifier = Modifier.fillMaxWidth(),
-                            onCardClick = {
-                                viewModel.refreshAll()
-                                Toast.makeText(context, "正在刷新天气与位置…", Toast.LENGTH_SHORT).show()
-                            }
-                        )
                     }
-
-                    // 右侧区域：ChatGPT / Codex 多账号额度监控
-                    Column(
-                        modifier = Modifier
-                            .weight(1.0f)
-                            .fillMaxHeight(),
-                        verticalArrangement = Arrangement.Top
-                    ) {
-                        MultiAccountQuotaSection(
-                            accounts = accounts,
-                            snapshots = snapshots,
-                            loadingMap = loadingMap,
-                            isRefreshingAll = isRefreshingAll,
-                            nightModeOption = settings.nightModeOption,
-                            isNightMode = isNightMode,
-                            areControlsVisible = areControlsVisible,
-                            isCompact = isCompactHeight,
-                            onAddAccount = {
-                                viewModel.addAccount()
-                            },
-                            onRefreshAccount = { id ->
-                                viewModel.refreshAccount(id)
-                            },
-                            onDeleteAccount = { id ->
-                                viewModel.removeAccountById(id)
-                            },
-                            onAccountClick = { acc ->
-                                if (!acc.isConfigured) {
-                                    showDeviceAuthDialogForAccount = acc
-                                } else {
-                                    selectedAccountToManage = acc
-                                }
-                            },
-                            onRefreshAll = {
-                                viewModel.refreshAll()
-                            },
-                            onToggleNightMode = {
-                                val newMode = viewModel.toggleNightMode()
-                                val modeMsg = when (newMode) {
-                                    "FORCE_DAY" -> "已切换至：强制日间模式"
-                                    "FORCE_NIGHT" -> "已切换至：强制夜间模式 (Apple StandBy 极夜红)"
-                                    else -> "已切换至：自动模式 (22:00-07:00)"
-                                }
-                                Toast.makeText(context, modeMsg, Toast.LENGTH_SHORT).show()
-                            },
-                            onSettingsClick = {
-                                showSettingsDialog = true
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                }
-            } else {
-                // ================= 竖屏优雅备用布局 =================
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LargeFlipClockDisplay(
-                        hour = timeState.hour,
-                        minute = timeState.minute,
-                        second = if (settings.showSeconds && !isNightMode) timeState.second else null,
-                        textColor = clockTextColor,
-                        isNightMode = isNightMode,
-                        isCompact = false
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = timeState.dateString,
-                            color = dateTextColor,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(text = "·", color = dotTextColor, fontSize = 15.sp)
-                        Text(
-                            text = timeState.dayOfWeek,
-                            color = dayOfWeekTextColor,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    WeatherCapsule(
-                        weather = weather,
-                        isNightMode = isNightMode,
-                        isCompact = false,
-                        onCardClick = { viewModel.refreshAll() },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    MultiAccountQuotaSection(
+                } else {
+                    // 第二页：扩展页面 (AI 模型 Token 监控、官方接口遥测与系统运行状态)
+                    ClockExtensionPage(
                         accounts = accounts,
                         snapshots = snapshots,
-                        loadingMap = loadingMap,
-                        isRefreshingAll = isRefreshingAll,
-                        nightModeOption = settings.nightModeOption,
+                        settings = settings,
                         isNightMode = isNightMode,
-                        areControlsVisible = areControlsVisible,
-                        isCompact = false,
-                        onAddAccount = { viewModel.addAccount() },
-                        onRefreshAccount = { id -> viewModel.refreshAccount(id) },
-                        onDeleteAccount = { id -> viewModel.removeAccountById(id) },
-                        onAccountClick = { acc ->
-                            if (!acc.isConfigured) {
-                                showDeviceAuthDialogForAccount = acc
-                            } else {
-                                selectedAccountToManage = acc
-                            }
+                        onRefreshAll = {
+                            viewModel.refreshAll()
+                            Toast.makeText(context, "已触发全量网关同步", Toast.LENGTH_SHORT).show()
                         },
-                        onRefreshAll = { viewModel.refreshAll() },
-                        onToggleNightMode = { viewModel.toggleNightMode() },
-                        onSettingsClick = { showSettingsDialog = true },
-                        modifier = Modifier.fillMaxWidth()
+                        onOpenSettings = { showSettingsDialog = true },
+                        onManageAccount = {
+                            selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
 
-            // 呼出控制时的底部智能浮动胶囊提示
-            AnimatedVisibility(
-                visible = areControlsVisible,
-                enter = fadeIn() + slideInVertically { it / 2 },
-                exit = fadeOut() + slideOutVertically { it / 2 },
+            // ================= 底部：双页面指示器小圆点 [ ● ○ ] =================
+            Row(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 6.dp)
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isNightMode) AppleNightSurfaceElevated else DarkSurfaceElevated)
-                        .border(
-                            1.dp,
-                            if (isNightMode) AppleNightBorder else DarkBorder,
-                            RoundedCornerShape(12.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "控制面板已呼出 · 轻触任意处收起 (6秒自动隐匿)",
-                        color = if (isNightMode) AppleNightRedSecondary else TextSecondary,
-                        fontSize = 10.sp
+                for (i in 0 until 2) {
+                    val isSelected = pagerState.currentPage == i
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .height(5.dp)
+                            .width(if (isSelected) 16.dp else 5.dp)
+                            .clip(RoundedCornerShape(2.5.dp))
+                            .background(
+                                if (isSelected) {
+                                    if (isNightMode) TechCyan else InkTextPrimary
+                                } else {
+                                    if (isNightMode) DarkBorder else InkBorder
+                                }
+                            )
+                            .clickable {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(i)
+                                }
+                            }
                     )
                 }
             }
@@ -464,26 +477,205 @@ fun ClockScreen(
     }
 }
 
+/**
+ * 屏幕顶栏：左侧品牌标语，右侧控制胶囊按钮
+ */
+@Composable
+private fun ClockTopBar(
+    isNightMode: Boolean,
+    accountCount: Int,
+    nightModeOption: String,
+    onAddAccount: () -> Unit,
+    onRefreshAll: () -> Unit,
+    onToggleNightMode: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val buttonBg = if (isNightMode) DarkSurface else InkSurface
+    val buttonBorder = if (isNightMode) DarkBorder else InkBorder
+    val buttonText = if (isNightMode) TextPrimary else InkTextPrimary
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextTertiary else InkTextSecondary
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 左侧标题与副标题
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (isNightMode) {
+                Box(
+                    modifier = Modifier
+                        .size(15.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(TechCyan.copy(alpha = 0.15f))
+                        .border(1.dp, TechCyan, RoundedCornerShape(3.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .background(TechCyan, CircleShape)
+                    )
+                }
+            }
+
+            Text(
+                text = "CODEX 额度监控",
+                color = primaryText,
+                fontSize = 14.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+            )
+
+            Text(
+                text = "｜",
+                color = if (isNightMode) DarkBorder else InkBorder,
+                fontSize = 12.sp
+            )
+
+            Text(
+                text = if (isNightMode) "AI 账号 · 配额 · 使用监控" else "AI 额度 · 时钟 · 提醒 · 同步",
+                color = secondaryText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal
+            )
+        }
+
+        // 右侧操作按钮组
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 账号管理 / 添加账号按钮
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(buttonBg)
+                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .clickable { onAddAccount() }
+                    .padding(horizontal = 10.dp, vertical = 4.5.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "添加账号",
+                        tint = if (isNightMode) TechCyan else InkTextPrimary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = if (isNightMode) "添加账号" else "账号管理 ($accountCount)",
+                        color = buttonText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // 全部刷新按钮
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(buttonBg)
+                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .clickable { onRefreshAll() }
+                    .padding(horizontal = 9.dp, vertical = 4.5.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "刷新全部",
+                        tint = buttonText,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "刷新",
+                        color = buttonText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // 日夜/水墨主题切换按钮
+            val themeIcon = if (isNightMode) Icons.Default.LightMode else Icons.Default.DarkMode
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(buttonBg)
+                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .clickable { onToggleNightMode() }
+                    .padding(horizontal = 8.dp, vertical = 4.5.dp)
+            ) {
+                Icon(
+                    imageVector = themeIcon,
+                    contentDescription = "日夜主题切换",
+                    tint = if (isNightMode) TechAmber else InkTextPrimary,
+                    modifier = Modifier.size(12.5.dp)
+                )
+            }
+
+            // 设置按钮
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(buttonBg)
+                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .clickable { onOpenSettings() }
+                    .padding(horizontal = if (isNightMode) 8.dp else 10.dp, vertical = 4.5.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "设置",
+                        tint = buttonText,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    if (!isNightMode) {
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "设置",
+                            color = buttonText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 大号翻牌时钟组件（时、分大翻牌，秒针双位水平并排放置于右侧居中）
+ */
 @Composable
 fun LargeFlipClockDisplay(
     hour: Int,
     minute: Int,
     second: Int?,
-    textColor: Color,
     isNightMode: Boolean,
     isCompact: Boolean = false,
     onClick: () -> Unit = {}
 ) {
     // 动态黄金比例：
-    // 小米 11 Ultra (大屏高分辨率)：94dp × 148dp (字号 94sp)
-    // 小米 6 (紧凑 16:9 屏幕，高 < 380dp)：70dp × 130dp (字号 82sp)，秒针立式叠放 24dp × 38dp (字号 20sp)
-    val digitWidth = if (isCompact) 70.dp else 94.dp
-    val digitHeight = if (isCompact) 130.dp else 148.dp
-    val fontSize = if (isCompact) 82.sp else 94.sp
+    // 小米 11 Ultra (大屏高分辨率 411dp 视口高度)：时分 74dp × 142dp (字号 92sp)，秒针 28dp × 46dp (字号 22sp)
+    // 小米 6 (紧凑 360dp 视口高度)：时分 60dp × 114dp (字号 72sp)，秒针 22dp × 36dp (字号 18sp)
+    val digitWidth = if (isCompact) 60.dp else 74.dp
+    val digitHeight = if (isCompact) 114.dp else 142.dp
+    val fontSize = if (isCompact) 72.sp else 92.sp
 
-    val secDigitWidth = if (isCompact) 24.dp else 30.dp
-    val secDigitHeight = if (isCompact) 38.dp else 46.dp
-    val secFontSize = if (isCompact) 20.sp else 24.sp
+    val secDigitWidth = if (isCompact) 22.dp else 28.dp
+    val secDigitHeight = if (isCompact) 36.dp else 46.dp
+    val secFontSize = if (isCompact) 18.sp else 22.sp
 
     Row(
         modifier = Modifier.clickable(
@@ -499,11 +691,10 @@ fun LargeFlipClockDisplay(
             digitWidth = digitWidth,
             digitHeight = digitHeight,
             fontSize = fontSize,
-            textColor = textColor,
             isNightMode = isNightMode
         )
 
-        // 呼吸冒号分割符
+        // 冒号
         BlinkingColon(isNightMode = isNightMode, isCompact = isCompact)
 
         // 分钟翻牌
@@ -512,21 +703,35 @@ fun LargeFlipClockDisplay(
             digitWidth = digitWidth,
             digitHeight = digitHeight,
             fontSize = fontSize,
-            textColor = textColor,
             isNightMode = isNightMode
         )
 
-        // 秒钟翻牌：立式双位叠放，大幅释放横向宽度，科技感仪表盘风格
+        // 秒钟翻牌：水平双位并排翻牌，完美对应参考图设计
         if (second != null) {
-            Spacer(modifier = Modifier.width(if (isCompact) 6.dp else 8.dp))
-            StackedFlipDigitPair(
-                value = second,
-                digitWidth = secDigitWidth,
-                digitHeight = secDigitHeight,
-                fontSize = secFontSize,
-                textColor = if (isNightMode) AppleNightRedSecondary else TechCyan,
-                isNightMode = isNightMode
-            )
+            Spacer(modifier = Modifier.width(if (isCompact) 8.dp else 12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                val tens = (second.coerceIn(0, 99)) / 10
+                val units = (second.coerceIn(0, 99)) % 10
+                FlipDigit(
+                    digit = tens,
+                    width = secDigitWidth,
+                    height = secDigitHeight,
+                    fontSize = secFontSize,
+                    textColor = if (isNightMode) TechCyan else null,
+                    isNightMode = isNightMode
+                )
+                FlipDigit(
+                    digit = units,
+                    width = secDigitWidth,
+                    height = secDigitHeight,
+                    fontSize = secFontSize,
+                    textColor = if (isNightMode) TechCyan else null,
+                    isNightMode = isNightMode
+                )
+            }
         }
     }
 }
@@ -545,11 +750,11 @@ fun BlinkingColon(isNightMode: Boolean, isCompact: Boolean = false) {
         )
     }
 
-    val colonColor = if (isNightMode) AppleNightRedPrimary else TechCyan
+    val colonColor = if (isNightMode) DarkColon else InkColon
     val dotSize = if (isCompact) 5.dp else 6.5.dp
     val dotSpacing = if (isCompact) 12.dp else 16.dp
-    val colonHeight = if (isCompact) 68.dp else 84.dp
-    val hPadding = if (isCompact) 6.dp else 8.dp
+    val colonHeight = if (isCompact) 65.dp else 84.dp
+    val hPadding = if (isCompact) 6.dp else 10.dp
 
     Box(
         modifier = Modifier

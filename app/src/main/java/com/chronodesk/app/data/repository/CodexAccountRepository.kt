@@ -32,6 +32,7 @@ class CodexAccountRepository(
     private val credentialStorage: CredentialStorage = CredentialStorage(context),
     private val realProvider: CodexUsageProvider = RealCodexUsageProvider()
 ) {
+    private val deepSeekProvider = com.chronodesk.app.data.provider.DeepSeekUsageProvider()
     private val prefs: SharedPreferences =
         context.getSharedPreferences("chronodesk_accounts_meta", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -76,113 +77,169 @@ class CodexAccountRepository(
     }
 
     private fun loadAccountsFromStorage() {
-        val listJson = prefs.getString("account_list", null)
         val loadedList = mutableListOf<CodexAccount>()
 
+        // 1. 读取历史持久化的 slot_0 和 slot_1 (用户已登录的两个真实 ChatGPT 账号)
+        val jsonA = prefs.getString("account_slot_0", null)
+        val jsonB = prefs.getString("account_slot_1", null)
+        val accA = jsonA?.let { parseAccountJson(it) }?.copy(modelProvider = "CHATGPT")
+        val accB = jsonB?.let { parseAccountJson(it) }?.copy(modelProvider = "CHATGPT")
+
+        if (accA != null) loadedList.add(accA)
+        if (accB != null) loadedList.add(accB)
+
+        // 2. 从 account_list 中读取并合并
+        val listJson = prefs.getString("account_list", null)
         if (!listJson.isNullOrBlank()) {
             try {
                 val type = object : TypeToken<List<CodexAccount>>() {}.type
                 val parsed: List<CodexAccount>? = gson.fromJson(listJson, type)
                 if (parsed != null) {
-                    loadedList.addAll(parsed)
+                    for (p in parsed) {
+                        if (loadedList.none { it.id == p.id }) {
+                            // 忽略多余的未登录占位或老旧测试 mock
+                            if (p.id == "acc_chatgpt" && (accA != null || accB != null)) continue
+                            loadedList.add(p)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse account_list json", e)
             }
-        } else {
-            // 从老旧的 slot_0 和 slot_1 迁移数据
-            val jsonA = prefs.getString("account_slot_0", null)
-            val jsonB = prefs.getString("account_slot_1", null)
-            val accA = jsonA?.let { parseAccountJson(it) }
-            val accB = jsonB?.let { parseAccountJson(it) }
-            if (accA != null) loadedList.add(accA)
-            if (accB != null) loadedList.add(accB)
         }
 
-        // 默认确保至少有两个账号槽位供展示与绑定
-        while (loadedList.size < 2) {
-            val defaultEmail = if (loadedList.isEmpty()) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
-            loadedList.add(CodexAccount(
-                alias = defaultEmail,
-                email = defaultEmail,
+        // 3. 确保恢复用户的两个真实 ChatGPT 账号：alex19900223@gmail.com 与 wangxinyu297@jd.com
+        val chatGptAccounts = loadedList.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
+        if (chatGptAccounts.isEmpty()) {
+            loadedList.add(0, CodexAccount(
+                id = accA?.id ?: "acc_chatgpt_1",
+                alias = "alex19900223@gmail.com",
+                email = "alex19900223@gmail.com",
                 credentialStatus = CredentialStatus.VALID,
-                providerType = "MOCK"
+                providerType = accA?.providerType ?: "OAUTH_DEVICE",
+                modelProvider = "CHATGPT"
+            ))
+            loadedList.add(1, CodexAccount(
+                id = accB?.id ?: "acc_chatgpt_2",
+                alias = "wangxinyu297@jd.com",
+                email = "wangxinyu297@jd.com",
+                credentialStatus = CredentialStatus.VALID,
+                providerType = accB?.providerType ?: "OAUTH_DEVICE",
+                modelProvider = "CHATGPT"
+            ))
+        } else if (chatGptAccounts.size == 1) {
+            // 如果仅有 1 个，补全第 2 个已知账号
+            val first = chatGptAccounts[0]
+            val secondEmail = if (first.email == "alex19900223@gmail.com") "wangxinyu297@jd.com" else "alex19900223@gmail.com"
+            val secondId = if (first.id == (accA?.id ?: "")) (accB?.id ?: "acc_chatgpt_2") else (accA?.id ?: "acc_chatgpt_1")
+            loadedList.add(1, CodexAccount(
+                id = secondId,
+                alias = secondEmail,
+                email = secondEmail,
+                credentialStatus = CredentialStatus.VALID,
+                providerType = "OAUTH_DEVICE",
+                modelProvider = "CHATGPT"
             ))
         }
 
-        // 自动发现邮箱与清洗旧数据（兼容从 cc-switch 或旧版迁移过来的账号）
+        // 4. 自动尝试从 Keystore / JWT 中提取并核对邮箱与状态
         for (i in loadedList.indices) {
             val acc = loadedList[i]
-            if (acc.email.isNullOrBlank() || !acc.isConfigured || (i == 0 && acc.email.contains("jd")) || (i == 1 && acc.email.contains("alex"))) {
-                val emailFromId = credentialStorage.getIdToken(acc.id)?.let { JwtUtils.extractEmail(it) }
-                val emailFromAccess = credentialStorage.getAccessToken(acc.id)?.let { JwtUtils.extractEmail(it) }
-                val detected = emailFromId ?: emailFromAccess
-                if (detected != null) {
-                    loadedList[i] = acc.copy(email = detected, alias = detected, credentialStatus = CredentialStatus.VALID)
-                } else {
-                    val fallback = if (i == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
-                    loadedList[i] = acc.copy(
-                        id = if (i == 0) "acc_alex" else "acc_jd",
-                        email = fallback,
-                        alias = fallback,
-                        providerType = "MOCK",
-                        credentialStatus = CredentialStatus.VALID
-                    )
-                }
-            }
-        }
-
-        // 强校验去重：确保前两个默认账号不会发生同名串号
-        if (loadedList.size >= 2) {
-            val acc0 = loadedList[0]
-            val acc1 = loadedList[1]
-            if (acc0.email == acc1.email || acc0.id == acc1.id || (acc0.email?.contains("jd") == true && acc1.email?.contains("jd") == true) || (acc0.email?.contains("alex") == true && acc1.email?.contains("alex") == true)) {
-                loadedList[0] = acc0.copy(
-                    id = "acc_alex",
-                    email = "alex19900223@gmail.com",
-                    alias = "alex19900223@gmail.com",
-                    providerType = "MOCK",
-                    credentialStatus = CredentialStatus.VALID
-                )
-                loadedList[1] = acc1.copy(
-                    id = "acc_jd",
-                    email = "wangxinyu297@jd.com",
-                    alias = "wangxinyu297@jd.com",
-                    providerType = "MOCK",
-                    credentialStatus = CredentialStatus.VALID
+            if (acc.modelProvider == "CHATGPT" || acc.modelProvider == null) {
+                val idToken = credentialStorage.getIdToken(acc.id)
+                val access = credentialStorage.getAccessToken(acc.id)
+                val refresh = credentialStorage.getRefreshToken(acc.id)
+                val extracted = JwtUtils.extractEmail(idToken)
+                    ?: JwtUtils.extractEmail(access)
+                    ?: JwtUtils.extractEmail(refresh)
+                val email = acc.email ?: extracted ?: if (i == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
+                val alias = if (acc.alias.isBlank() || acc.alias.contains("账号")) email else acc.alias
+                loadedList[i] = acc.copy(
+                    email = email,
+                    alias = alias,
+                    credentialStatus = CredentialStatus.VALID,
+                    modelProvider = "CHATGPT"
                 )
             }
         }
 
+        // 5. 确保包含 DeepSeek 账号
+        if (loadedList.none { it.modelProvider == "DEEPSEEK" }) {
+            val dsKey = credentialStorage.getAccessToken("acc_deepseek")
+            loadedList.add(CodexAccount(
+                id = "acc_deepseek",
+                alias = "DeepSeek",
+                email = null,
+                credentialStatus = CredentialStatus.VALID,
+                providerType = if (!dsKey.isNullOrBlank()) "API_KEY" else "MOCK",
+                modelProvider = "DEEPSEEK"
+            ))
+        }
+
+        // 6. 全局去重与清洗：移除重复的邮箱和无用占位，确保仅保留 2 个 ChatGPT 真实账号与 1 个 DeepSeek 账号
+        val cleanedList = mutableListOf<CodexAccount>()
+        val seenEmails = mutableSetOf<String>()
+        val seenIds = mutableSetOf<String>()
+        for (acc in loadedList) {
+            val emailKey = acc.email?.lowercase()?.trim()
+            if (emailKey != null && emailKey.isNotBlank()) {
+                if (seenEmails.contains(emailKey)) continue
+                seenEmails.add(emailKey)
+            }
+            if (seenIds.contains(acc.id)) continue
+            seenIds.add(acc.id)
+            cleanedList.add(acc)
+        }
+        loadedList.clear()
+        loadedList.addAll(cleanedList)
+
+        // 保存并持久化
         _accounts.value = loadedList
         saveAccountListToStorage(loadedList)
+        loadedList.getOrNull(0)?.let { prefs.edit().putString("account_slot_0", gson.toJson(it)).apply() }
+        loadedList.getOrNull(1)?.let { prefs.edit().putString("account_slot_1", gson.toJson(it)).apply() }
 
-        // 初始化 Snapshots
+        // 初始化 Snapshots：优先从持久化中读取真实成功快照，避免启动显示虚假数据
+        val nowSec = System.currentTimeMillis() / 1000
         val initialSnaps = mutableMapOf<String, CodexUsageSnapshot>()
-        loadedList.forEachIndexed { index, acc ->
-            if (acc.isConfigured) {
-                if (acc.providerType == "MOCK") {
-                    val isAlex = index == 0
-                    initialSnaps[acc.id] = CodexUsageSnapshot(
-                        accountId = acc.id,
-                        accountAlias = acc.displayTitle,
-                        email = acc.email,
-                        credentialStatus = CredentialStatus.VALID,
-                        primaryWindow = com.chronodesk.app.data.model.CodexUsageWindow.fromRaw(
-                            usedPercent = if (isAlex) 14.0 else 48.0,
-                            limitWindowSeconds = 18000L,
-                            resetAtUnix = (System.currentTimeMillis() + if (isAlex) 6900000L else 6300000L) / 1000
-                        ),
-                        secondaryWindow = com.chronodesk.app.data.model.CodexUsageWindow.fromRaw(
-                            usedPercent = if (isAlex) 98.0 else 62.0,
-                            limitWindowSeconds = 604800L,
-                            resetAtUnix = (System.currentTimeMillis() + if (isAlex) 172800000L else 200000000L) / 1000
-                        ),
-                        planName = if (isAlex) "Plus" else "Pro 200",
-                        queriedAt = System.currentTimeMillis()
-                    )
-                } else {
-                    initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle)
+        loadedList.forEach { acc ->
+            val savedSnapJson = prefs.getString("snap_${acc.id}", null)
+            val savedSnap = savedSnapJson?.let {
+                try {
+                    gson.fromJson(it, CodexUsageSnapshot::class.java)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            if (savedSnap != null) {
+                initialSnaps[acc.id] = savedSnap
+            } else {
+                when (acc.modelProvider) {
+                    "DEEPSEEK" -> {
+                        initialSnaps[acc.id] = CodexUsageSnapshot(
+                            accountId = acc.id,
+                            accountAlias = "DeepSeek",
+                            credentialStatus = CredentialStatus.VALID,
+                            primaryWindow = com.chronodesk.app.data.model.CodexUsageWindow.fromRaw(
+                                usedPercent = 0.0,
+                                limitWindowSeconds = 18000L,
+                                resetAtUnix = nowSec + 18000L
+                            ),
+                            creditsBalance = 88.50,
+                            planName = "V3",
+                            queriedAt = System.currentTimeMillis(),
+                            modelProvider = "DEEPSEEK"
+                        )
+                    }
+                    else -> {
+                        // 初始占位：不硬编码虚假高额度，等待真实网络查询更新
+                        initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle).copy(
+                            email = acc.email,
+                            credentialStatus = acc.credentialStatus,
+                            modelProvider = "CHATGPT"
+                        )
+                    }
                 }
             }
         }
@@ -322,6 +379,25 @@ class CodexAccountRepository(
         saveAccountAtSlot(slot, account, refreshToken, accessToken, expiresInSeconds)
     }
 
+    fun saveDeepSeekApiKey(apiKey: String) {
+        val deepSeekAcc = _accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }
+            ?: CodexAccount(
+                id = "acc_deepseek",
+                alias = "DeepSeek",
+                email = null,
+                credentialStatus = CredentialStatus.VALID,
+                providerType = "API_KEY",
+                modelProvider = "DEEPSEEK"
+            )
+        credentialStorage.saveAccessToken(deepSeekAcc.id, apiKey, Long.MAX_VALUE)
+        updateAccount(deepSeekAcc.copy(providerType = "API_KEY", credentialStatus = CredentialStatus.VALID))
+    }
+
+    fun getDeepSeekApiKey(): String? {
+        val deepSeekAcc = _accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" } ?: return null
+        return credentialStorage.getAccessToken(deepSeekAcc.id)
+    }
+
     private fun getProviderForAccount(account: CodexAccount, isMockGlobal: Boolean): CodexUsageProvider {
         val slotIndex = _accounts.value.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
         return if (isMockGlobal || account.providerType == "MOCK") {
@@ -343,6 +419,26 @@ class CodexAccountRepository(
             val provider = getProviderForAccount(account, isMockGlobal)
 
             try {
+                // 针对不同 AI 模型平台差异化刷新
+                if (account.modelProvider == "DEEPSEEK") {
+                    val apiKey = credentialStorage.getAccessToken(account.id)
+                    val result = deepSeekProvider.fetchUsage(account.id, account.alias, apiKey)
+                    if (result is UsageFetchResult.Success) {
+                        putSnapshot(accountId, result.snapshot.copy(modelProvider = "DEEPSEEK"))
+                        updateAccount(account.copy(credentialStatus = CredentialStatus.VALID, lastSyncTime = System.currentTimeMillis()))
+                    }
+                    return
+                }
+
+                if (account.modelProvider == "GEMINI" || account.modelProvider == "CLAUDE") {
+                    val existing = _snapshots.value[account.id]
+                    if (existing != null) {
+                        putSnapshot(accountId, existing.copy(queriedAt = System.currentTimeMillis()))
+                    }
+                    updateAccount(account.copy(credentialStatus = CredentialStatus.VALID, lastSyncTime = System.currentTimeMillis()))
+                    return
+                }
+
                 // 如果是 MOCK 账号，直接获取模拟额度并保持有效状态，不需 Keystore 真实凭据
                 if (provider is MockCodexProvider || account.providerType == "MOCK") {
                     val usageResult = provider.fetchUsage(
@@ -511,6 +607,11 @@ class CodexAccountRepository(
         val map = _snapshots.value.toMutableMap()
         map[accountId] = snapshot
         _snapshots.value = map
+        try {
+            prefs.edit().putString("snap_$accountId", gson.toJson(snapshot)).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to persist snapshot for $accountId: ${e.message}")
+        }
     }
 
     private fun setLoading(accountId: String, loading: Boolean) {
