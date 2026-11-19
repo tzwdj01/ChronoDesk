@@ -95,12 +95,12 @@ fun ModelProviderLogo(
     ) {
         when (provider) {
             AiModelProvider.CHATGPT -> {
-                // OpenAI / ChatGPT 官方六瓣几何花环矢量图标
+                // OpenAI / ChatGPT 官方六瓣几何花环高清图标 (支持暗色与水墨双模式精准着色)
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_chatgpt_logo),
+                    painter = painterResource(id = R.drawable.ic_chatgpt_clean),
                     contentDescription = "ChatGPT",
                     tint = brandColor,
-                    modifier = Modifier.size(size * 0.62f)
+                    modifier = Modifier.size(size * 0.65f)
                 )
             }
 
