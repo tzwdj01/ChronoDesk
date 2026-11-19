@@ -15,7 +15,9 @@ data class ClockSettings(
     val autoLocation: Boolean = true,
     val cityName: String = "深圳",
     val latitude: Double = 22.5431,
-    val longitude: Double = 114.0579
+    val longitude: Double = 114.0579,
+    val quotaWidthPercent: Int = 38,       // 右侧额度看板宽度占比 (28% ~ 50%)
+    val quotaCardDensity: String = "NORMAL" // COMPACT, NORMAL, SPACIOUS
 ) {
     /**
      * 判断当前是否处于夜间模式（支持自动时间段切换或手动强制切换）

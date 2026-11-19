@@ -14,15 +14,34 @@ data class CodexAccount(
     val modelProvider: String = "CHATGPT"      // CHATGPT, DEEPSEEK, GEMINI, CLAUDE
 ) {
     /**
-     * 账号显示名称：优先显示真实登录邮箱（如 user@gmail.com），其次为用户自定义别名
+     * 脱敏邮箱：例如 wa***7@jd.com, al***3@gmail.com，避免个人真实信息泄露
+     */
+    val maskedEmail: String?
+        get() {
+            val em = email?.trim() ?: return null
+            val atIdx = em.indexOf('@')
+            if (atIdx <= 0) return em.take(2) + "***"
+            val username = em.substring(0, atIdx)
+            val domain = em.substring(atIdx) // 包含 @
+            val maskedUser = when {
+                username.length <= 2 -> "${username.first()}***"
+                username.length <= 4 -> "${username.first()}***${username.last()}"
+                else -> "${username.take(2)}***${username.takeLast(1)}"
+            }
+            return "$maskedUser$domain"
+        }
+
+    /**
+     * 账号显示名称：
+     * 1. 优先展示用户自定义别名（不等于原始邮箱且非空）
+     * 2. 其次展示脱敏邮箱（如 wa***7@jd.com），坚决不暴露完整邮箱
      */
     val displayTitle: String
         get() = when {
-            !email.isNullOrBlank() -> email
-            alias.isNotBlank() && !alias.matches(Regex("账号\\s*[A-Za-z0-9]+.*")) -> alias
-            alias.isNotBlank() -> alias.replace(Regex("账号\\s*[A-Za-z0-9]+\\s*"), "").ifBlank { "Codex 账号" }
+            alias.isNotBlank() && alias != email && !alias.matches(Regex("账号\\s*[A-Za-z0-9]+.*")) -> alias
+            !maskedEmail.isNullOrBlank() -> maskedEmail!!
             !chatgptAccountId.isNullOrBlank() -> "Account (${chatgptAccountId.take(8)})"
-            else -> "未绑定账号"
+            else -> if (modelProvider == "DEEPSEEK") "DeepSeek" else "ChatGPT 账号"
         }
 
     val isConfigured: Boolean

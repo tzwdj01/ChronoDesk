@@ -1,5 +1,6 @@
 package com.chronodesk.app.ui.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -72,6 +75,7 @@ fun AccountManagerDialog(
     onUpdateAlias: (slot: Int, newAlias: String) -> Unit,
     onSaveDeepSeekApiKey: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(initialSlot.coerceIn(0, 2)) }
     val currentAccount = when (selectedTab) {
         0 -> accountA
@@ -81,8 +85,12 @@ fun AccountManagerDialog(
 
     var showDeviceAuthDialog by remember { mutableStateOf(false) }
     var showDirectTokenDialog by remember { mutableStateOf(false) }
-    var aliasEdit by remember {
-        mutableStateOf(currentAccount?.email ?: currentAccount?.displayTitle ?: if (selectedTab == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com")
+    var aliasEdit by remember(selectedTab, currentAccount?.id) {
+        mutableStateOf(
+            if (currentAccount?.alias != currentAccount?.email && !currentAccount?.alias.isNullOrBlank() && !currentAccount?.alias!!.contains("账号")) {
+                currentAccount.alias
+            } else ""
+        )
     }
     var deepSeekKeyInput by remember { mutableStateOf(currentDeepSeekApiKey ?: "") }
 
@@ -203,7 +211,7 @@ fun AccountManagerDialog(
                             ) {
                                 Text(text = "账号绑定邮箱", color = TextTertiary, fontSize = 11.sp)
                                 Text(
-                                    text = currentAccount.email ?: currentAccount.alias,
+                                    text = currentAccount.maskedEmail ?: currentAccount.displayTitle,
                                     color = TextPrimary,
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold
@@ -231,6 +239,54 @@ fun AccountManagerDialog(
                             ) {
                                 Text(text = "接入类型", color = TextTertiary, fontSize = 11.sp)
                                 Text(text = "Codex OAuth 2.0 PKCE", color = TextSecondary, fontSize = 11.sp)
+                            }
+
+                            HorizontalDivider(
+                                color = DarkBorder.copy(alpha = 0.6f),
+                                thickness = 0.8.dp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+
+                            Text(
+                                text = "自定义显示名称 (优先展示，避免邮箱暴露)：",
+                                color = TextTertiary,
+                                fontSize = 11.sp
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = aliasEdit,
+                                    onValueChange = { aliasEdit = it },
+                                    placeholder = { Text("例如：主力账号、工作号", fontSize = 11.5.sp, color = TextTertiary) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = DarkSurface,
+                                        unfocusedContainerColor = DarkSurface,
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedIndicatorColor = TechCyan,
+                                        unfocusedIndicatorColor = DarkBorder
+                                    )
+                                )
+                                Button(
+                                    onClick = {
+                                        onUpdateAlias(selectedTab, aliasEdit.trim())
+                                        Toast.makeText(context, "已更新账号显示名称", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = TechCyan.copy(alpha = 0.22f),
+                                        contentColor = TechCyan
+                                    )
+                                ) {
+                                    Text("保存名称", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

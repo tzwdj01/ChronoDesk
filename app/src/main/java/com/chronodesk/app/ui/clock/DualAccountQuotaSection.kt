@@ -88,6 +88,7 @@ fun MultiAccountQuotaSection(
     isNightMode: Boolean = false,
     areControlsVisible: Boolean = false,
     isCompact: Boolean = false,
+    cardDensity: String = "NORMAL",
     onAddAccount: () -> Unit = {},
     onRefreshAccount: (accountId: String) -> Unit = {},
     onDeleteAccount: (accountId: String) -> Unit = {},
@@ -99,9 +100,15 @@ fun MultiAccountQuotaSection(
     val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
     val deepSeekAccount = accounts.firstOrNull { it.modelProvider == "DEEPSEEK" }
 
+    val spacing = when (cardDensity) {
+        "COMPACT" -> if (isCompact) 5.dp else 6.5.dp
+        "SPACIOUS" -> if (isCompact) 9.dp else 12.dp
+        else -> if (isCompact) 7.dp else 9.dp
+    }
+
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(if (isCompact) 7.dp else 9.dp)
+        verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
         // 1. 同一订阅商：OpenAI / ChatGPT 专属大框
         ChatGptUnifiedSubscriptionBox(
@@ -179,25 +186,11 @@ fun ChatGptUnifiedSubscriptionBox(
                         isNightMode = isNightMode
                     )
                     Text(
-                        text = "ChatGPT Plus",
+                        text = "ChatGPT",
                         color = primaryText,
                         fontSize = if (isCompact) 13.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.5.dp))
-                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = "Plus",
-                            color = secondaryText,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
                 }
 
                 // 状态标签
@@ -352,7 +345,7 @@ private fun SingleAccountQuotaItem(
             .clickable { onAccountClick() },
         verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.dp)
     ) {
-        // 账号标识行：邮箱 / 别名 + 状态徽标 + 呼出操作按钮
+        // 账号标识行：别名/脱敏邮箱 + 套餐徽标(Plus/Pro) + 重置次数 + 状态徽标 + 呼出操作按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -369,13 +362,44 @@ private fun SingleAccountQuotaItem(
                         .background(if (isNightMode) (if (isFullyExhausted) TechRose else TechCyan) else (if (isFullyExhausted) InkWarningRed else InkStatusGreen), CircleShape)
                 )
                 Text(
-                    text = account.email ?: account.displayTitle,
+                    text = account.displayTitle,
                     color = primaryText,
                     fontSize = if (isCompact) 11.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val plan = snapshot?.planName?.ifBlank { "Plus" } ?: "Plus"
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = plan,
+                        color = secondaryText,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                val resetCredits = snapshot?.resetCreditsCount
+                if (resetCredits != null && resetCredits > 0) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (isNightMode) TechCyan.copy(alpha = 0.15f) else InkProgressTrack)
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "重置:${resetCredits}次",
+                            color = if (isNightMode) TechCyan else InkProgress,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             Row(
@@ -432,7 +456,7 @@ private fun SingleAccountQuotaItem(
             }
         }
 
-        // 5 小时额度行
+        // 5 小时额度行 (对齐起始位置与 100% 进度条长度)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -445,12 +469,13 @@ private fun SingleAccountQuotaItem(
                 Text(
                     text = "5小时额度",
                     color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.sp
+                    fontSize = if (isCompact) 9.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
                 )
                 LinearProgressIndicator(
                     progress = { (primaryPercent / 100.0).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier
-                        .width(if (isCompact) 75.dp else 92.dp)
+                        .width(if (isCompact) 75.dp else 88.dp)
                         .height(4.5.dp)
                         .clip(RoundedCornerShape(2.5.dp)),
                     color = primaryProgressColor,
@@ -465,7 +490,7 @@ private fun SingleAccountQuotaItem(
             )
         }
 
-        // 周额度行
+        // 周额度行 (对齐起始位置与 100% 进度条长度，展示精确到期时间)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -478,20 +503,30 @@ private fun SingleAccountQuotaItem(
                 Text(
                     text = "周额度",
                     color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.sp
+                    fontSize = if (isCompact) 9.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
                 )
                 LinearProgressIndicator(
                     progress = { (secondaryPercent / 100.0).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier
-                        .width(if (isCompact) 75.dp else 92.dp)
+                        .width(if (isCompact) 75.dp else 88.dp)
                         .height(4.5.dp)
                         .clip(RoundedCornerShape(2.5.dp)),
                     color = secondaryProgressColor,
                     trackColor = trackColor
                 )
             }
+            val weekResetText = if (secondaryWindow?.resetAtUnix != null) {
+                "剩余 ${secondaryPercent.toInt()}% · ${secondaryWindow.formattedFullDateTime()} 到期"
+            } else if (secondaryWindow != null) {
+                "剩余 ${secondaryPercent.toInt()}% · 重置 $secondaryCountdown"
+            } else if (isLoading) {
+                "同步中..."
+            } else {
+                "剩余 0% · 待同步"
+            }
             Text(
-                text = if (secondaryWindow != null) "剩余 ${secondaryPercent.toInt()}% · 重置 $secondaryCountdown" else if (isLoading) "同步中..." else "剩余 0% · 待同步",
+                text = weekResetText,
                 color = if (isSecondaryExhausted && isNightMode) TechRose else mutedText,
                 fontSize = if (isCompact) 8.5.sp else 9.sp,
                 maxLines = 1

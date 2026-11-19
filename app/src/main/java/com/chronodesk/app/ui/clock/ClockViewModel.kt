@@ -185,6 +185,16 @@ class ClockViewModel @JvmOverloads constructor(
         accountRepo.updateAccountAlias(slot, newAlias)
     }
 
+    fun updateAccountAliasById(accountId: String, newAlias: String) {
+        accountRepo.updateAccountAlias(accountId, newAlias)
+    }
+
+    fun toggleShowSeconds(): Boolean {
+        val newShow = !settings.value.showSeconds
+        updateSettings(settings.value.copy(showSeconds = newShow))
+        return newShow
+    }
+
     fun saveDeepSeekApiKey(apiKey: String) {
         accountRepo.saveDeepSeekApiKey(apiKey)
         val deepSeekAcc = accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }

@@ -306,6 +306,10 @@ class CodexAccountRepository(
             _accounts.value = current
             saveAccountListToStorage(current)
 
+            val chatGptList = current.filter { it.modelProvider == "CHATGPT" }
+            chatGptList.getOrNull(0)?.let { prefs.edit().putString("account_slot_0", gson.toJson(it)).apply() }
+            chatGptList.getOrNull(1)?.let { prefs.edit().putString("account_slot_1", gson.toJson(it)).apply() }
+
             val currentSnap = _snapshots.value[account.id]
             if (currentSnap != null) {
                 val updatedSnap = currentSnap.copy(accountAlias = account.displayTitle)
@@ -318,6 +322,12 @@ class CodexAccountRepository(
 
     fun updateAccountAlias(slot: Int, newAlias: String) {
         val current = _accounts.value.getOrNull(slot) ?: return
+        val updated = current.copy(alias = newAlias)
+        updateAccount(updated)
+    }
+
+    fun updateAccountAlias(accountId: String, newAlias: String) {
+        val current = _accounts.value.find { it.id == accountId } ?: return
         val updated = current.copy(alias = newAlias)
         updateAccount(updated)
     }

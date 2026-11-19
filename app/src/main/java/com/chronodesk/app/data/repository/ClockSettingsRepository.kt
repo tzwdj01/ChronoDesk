@@ -30,7 +30,9 @@ class ClockSettingsRepository(context: Context) {
             autoLocation = prefs.getBoolean("auto_location", true),
             cityName = prefs.getString("city_name", "深圳") ?: "深圳",
             latitude = prefs.getFloat("city_lat", 22.5431f).toDouble(),
-            longitude = prefs.getFloat("city_lng", 114.0579f).toDouble()
+            longitude = prefs.getFloat("city_lng", 114.0579f).toDouble(),
+            quotaWidthPercent = prefs.getInt("quota_width_percent", 38),
+            quotaCardDensity = prefs.getString("quota_card_density", "NORMAL") ?: "NORMAL"
         )
     }
 
@@ -50,6 +52,8 @@ class ClockSettingsRepository(context: Context) {
             .putString("city_name", newSettings.cityName)
             .putFloat("city_lat", newSettings.latitude.toFloat())
             .putFloat("city_lng", newSettings.longitude.toFloat())
+            .putInt("quota_width_percent", newSettings.quotaWidthPercent)
+            .putString("quota_card_density", newSettings.quotaCardDensity)
             .apply()
         _settingsFlow.value = newSettings
     }

@@ -41,6 +41,15 @@ data class CodexUsageWindow(
         return sdf.format(Date(resetAtUnix * 1000))
     }
 
+    /**
+     * 格式化完整到期月日与时间，如 "11-21 19:42"
+     */
+    fun formattedFullDateTime(): String {
+        if (resetAtUnix == null) return "--"
+        val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+        return sdf.format(Date(resetAtUnix * 1000))
+    }
+
     companion object {
         fun fromRaw(
             usedPercent: Double?,

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.chronodesk.app.data.model.ClockSettings
+import kotlin.math.roundToInt
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -67,6 +68,8 @@ fun SettingsDialog(
     var selectedCity by remember { mutableStateOf(currentSettings.cityName) }
     var lat by remember { mutableStateOf(currentSettings.latitude) }
     var lng by remember { mutableStateOf(currentSettings.longitude) }
+    var quotaWidthPercent by remember { mutableIntStateOf(currentSettings.quotaWidthPercent) }
+    var quotaCardDensity by remember { mutableStateOf(currentSettings.quotaCardDensity) }
 
     val cityPresets = listOf(
         Triple("深圳", 22.5431, 114.0579),
@@ -192,7 +195,84 @@ fun SettingsDialog(
                     onCheckedChange = { keepScreenOn = it }
                 )
 
-                // 3. 额度自动刷新间隔
+                // 3. 界面布局与右侧额度区域比例
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "界面布局与比例 (横屏)",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceElevated)
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "右侧额度宽度占比: $quotaWidthPercent%",
+                                color = TextSecondary,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = "时钟区域: ${100 - quotaWidthPercent}%",
+                                color = TechCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = quotaWidthPercent.toFloat(),
+                            onValueChange = { quotaWidthPercent = it.roundToInt() },
+                            valueRange = 28f..50f,
+                            steps = 21,
+                            colors = SliderDefaults.colors(
+                                thumbColor = TechCyan,
+                                activeTrackColor = TechCyan,
+                                inactiveTrackColor = DarkBorder
+                            )
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                32 to "紧凑 32%",
+                                38 to "标准 38%",
+                                44 to "宽体 44%",
+                                50 to "对等 50%"
+                            ).forEach { (pct, label) ->
+                                val isSel = quotaWidthPercent == pct
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isSel) TechCyan.copy(alpha = 0.25f) else DarkSurface)
+                                        .border(1.dp, if (isSel) TechCyan else Color.Transparent, RoundedCornerShape(4.dp))
+                                        .clickable { quotaWidthPercent = pct }
+                                        .padding(vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSel) TechCyan else TextSecondary,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. 额度自动刷新间隔
                 Column {
                     Text(
                         text = "Codex 额度自动刷新频率",
@@ -310,7 +390,9 @@ fun SettingsDialog(
                                 autoLocation = autoLocation,
                                 cityName = selectedCity,
                                 latitude = lat,
-                                longitude = lng
+                                longitude = lng,
+                                quotaWidthPercent = quotaWidthPercent,
+                                quotaCardDensity = quotaCardDensity
                             )
                             onSave(updated)
                             onDismiss()

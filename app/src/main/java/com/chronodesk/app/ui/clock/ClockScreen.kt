@@ -147,7 +147,12 @@ fun ClockScreen(
                 selectedAccountToManage = null
             },
             onUpdateAlias = { slot, alias ->
-                viewModel.updateAccountAlias(slot, alias)
+                val targetAcc = if (slot == 0) chatGptAccs.getOrNull(0) else chatGptAccs.getOrNull(1)
+                if (targetAcc != null) {
+                    viewModel.updateAccountAliasById(targetAcc.id, alias)
+                } else {
+                    viewModel.updateAccountAlias(slot, alias)
+                }
             },
             onSaveDeepSeekApiKey = { key ->
                 viewModel.saveDeepSeekApiKey(key)
@@ -263,6 +268,9 @@ fun ClockScreen(
                 if (page == 0) {
                     // 第一页：主页面 (大时钟 + 日期/星期/农历 + 气象 + AI 额度看板)
                     if (isLandscape) {
+                        val quotaFraction = (settings.quotaWidthPercent / 100f).coerceIn(0.28f, 0.52f)
+                        val clockFraction = 1f - quotaFraction
+
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -273,7 +281,7 @@ fun ClockScreen(
                             // 左侧：视觉中心 —— 大尺寸翻牌时钟 + 公历农历 + 气象胶囊
                             Column(
                                 modifier = Modifier
-                                    .weight(if (isCompactHeight) 1.45f else 1.6f)
+                                    .weight(clockFraction)
                                     .fillMaxHeight(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
@@ -285,7 +293,12 @@ fun ClockScreen(
                                     second = if (settings.showSeconds) timeState.second else null,
                                     isNightMode = isNightMode,
                                     isCompact = isCompactHeight,
-                                    onClick = { areControlsVisible = !areControlsVisible }
+                                    onClick = { areControlsVisible = !areControlsVisible },
+                                    onToggleSeconds = {
+                                        val newState = viewModel.toggleShowSeconds()
+                                        val tip = if (newState) "已开启秒钟显示" else "已隐藏秒钟（可在设置中重新开启）"
+                                        Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+                                    }
                                 )
 
                                 Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 15.dp))
@@ -348,10 +361,10 @@ fun ClockScreen(
                                 )
                             }
 
-                            // 右侧：多模型/多账号 AI 额度监控看板 (ChatGPT, DeepSeek, Gemini, Claude)
+                            // 右侧：多模型/多账号 AI 额度监控看板 (ChatGPT, DeepSeek)
                             Column(
                                 modifier = Modifier
-                                    .weight(1.0f)
+                                    .weight(quotaFraction)
                                     .fillMaxHeight(),
                                 verticalArrangement = Arrangement.Center
                             ) {
@@ -364,6 +377,7 @@ fun ClockScreen(
                                     isNightMode = isNightMode,
                                     areControlsVisible = areControlsVisible,
                                     isCompact = isCompactHeight,
+                                    cardDensity = settings.quotaCardDensity,
                                     onAddAccount = { viewModel.addAccount() },
                                     onRefreshAccount = { id -> viewModel.refreshAccount(id) },
                                     onDeleteAccount = { id -> viewModel.removeAccountById(id) },
@@ -664,14 +678,26 @@ fun LargeFlipClockDisplay(
     second: Int?,
     isNightMode: Boolean,
     isCompact: Boolean = false,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    onToggleSeconds: () -> Unit = {}
 ) {
-    // 动态黄金比例：
-    // 小米 11 Ultra (大屏高分辨率 411dp 视口高度)：时分 74dp × 142dp (字号 92sp)，秒针 28dp × 46dp (字号 22sp)
-    // 小米 6 (紧凑 360dp 视口高度)：时分 60dp × 114dp (字号 72sp)，秒针 22dp × 36dp (字号 18sp)
-    val digitWidth = if (isCompact) 60.dp else 74.dp
-    val digitHeight = if (isCompact) 114.dp else 142.dp
-    val fontSize = if (isCompact) 72.sp else 92.sp
+    val hasSeconds = second != null
+    // 动态黄金比例：当秒钟隐藏时，时分牌面适度放大，更加雄伟突出
+    val digitWidth = if (hasSeconds) {
+        if (isCompact) 60.dp else 74.dp
+    } else {
+        if (isCompact) 68.dp else 84.dp
+    }
+    val digitHeight = if (hasSeconds) {
+        if (isCompact) 114.dp else 142.dp
+    } else {
+        if (isCompact) 126.dp else 156.dp
+    }
+    val fontSize = if (hasSeconds) {
+        if (isCompact) 72.sp else 92.sp
+    } else {
+        if (isCompact) 80.sp else 102.sp
+    }
 
     val secDigitWidth = if (isCompact) 22.dp else 28.dp
     val secDigitHeight = if (isCompact) 36.dp else 46.dp
@@ -706,12 +732,16 @@ fun LargeFlipClockDisplay(
             isNightMode = isNightMode
         )
 
-        // 秒钟翻牌：水平双位并排翻牌，完美对应参考图设计
+        // 秒钟翻牌：水平双位并排翻牌，完美对应参考图设计；点击秒钟可快速隐藏/切换
         if (second != null) {
             Spacer(modifier = Modifier.width(if (isCompact) 8.dp else 12.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onToggleSeconds() }
             ) {
                 val tens = (second.coerceIn(0, 99)) / 10
                 val units = (second.coerceIn(0, 99)) % 10

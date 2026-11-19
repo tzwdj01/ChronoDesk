@@ -174,7 +174,25 @@ class RealCodexUsageProvider : CodexUsageProvider {
                         detectedEmail = com.chronodesk.app.data.security.JwtUtils.extractEmail(accessToken)
                     }
 
-                    Log.i(TAG, "fetchUsage success for $detectedEmail: limitReached=$limitReached, primary=${primary?.remainingPercent}%, secondary=${secondary?.remainingPercent}%")
+                    // 自动探针：调用 /backend-api/wham/rate-limit-reset-credits 查询重置卡可用次数与到期
+                    var resetCount: Int? = null
+                    var resetExpiresAt: String? = null
+                    try {
+                        val resetResp = NetworkClient.usageApi.getResetCredits(
+                            authHeader = authHeader,
+                            accountId = effectiveAccountId
+                        )
+                        if (resetResp.isSuccessful && resetResp.body()?.credits != null) {
+                            val creditsList = resetResp.body()!!.credits!!
+                            val available = creditsList.filter { it.status == null || it.status.equals("available", ignoreCase = true) }
+                            resetCount = available.size
+                            resetExpiresAt = available.firstOrNull()?.expiresAt
+                        }
+                    } catch (e: Exception) {
+                        Log.d(TAG, "getResetCredits non-fatal: ${e.message}")
+                    }
+
+                    Log.i(TAG, "fetchUsage success for $detectedEmail: limitReached=$limitReached, primary=${primary?.remainingPercent}%, secondary=${secondary?.remainingPercent}%, resetCredits=$resetCount")
 
                     val snapshot = CodexUsageSnapshot(
                         accountId = accountId,
@@ -185,6 +203,8 @@ class RealCodexUsageProvider : CodexUsageProvider {
                         secondaryWindow = secondary,
                         creditsBalance = credits,
                         planName = plan,
+                        resetCreditsCount = resetCount,
+                        resetCreditsExpiresAt = resetExpiresAt,
                         queriedAt = System.currentTimeMillis(),
                         isLastGood = false,
                         errorMessage = null,
