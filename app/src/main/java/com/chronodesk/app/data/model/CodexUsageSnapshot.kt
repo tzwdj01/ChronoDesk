@@ -11,7 +11,11 @@ data class CodexUsageSnapshot(
     val email: String? = null,
     val primaryWindow: CodexUsageWindow? = null,    // 通常是 5小时限额
     val secondaryWindow: CodexUsageWindow? = null,  // 通常是 7天/周限额
-    val creditsBalance: Double? = null,
+    val creditsBalance: Double? = null,             // 账户总余额 (DeepSeek 等)
+    val grantedBalance: Double? = null,             // 真实赠送金额 (若官方接口实际返回)
+    val toppedUpBalance: Double? = null,           // 真实充值金额 (若官方接口实际返回)
+    val currency: String? = null,                   // 货币符号 ("CNY", "USD")
+    val isAvailable: Boolean? = null,               // 真实账户是否可用
     val planName: String? = null,
     val queriedAt: Long? = null,
     val isLastGood: Boolean = false,
@@ -50,7 +54,8 @@ data class CodexUsageSnapshot(
             alias: String,
             status: CredentialStatus,
             message: String,
-            lastGood: CodexUsageSnapshot? = null
+            lastGood: CodexUsageSnapshot? = null,
+            modelProvider: String = "CHATGPT"
         ): CodexUsageSnapshot {
             return CodexUsageSnapshot(
                 accountId = accountId,
@@ -60,11 +65,16 @@ data class CodexUsageSnapshot(
                 primaryWindow = lastGood?.primaryWindow,
                 secondaryWindow = lastGood?.secondaryWindow,
                 creditsBalance = lastGood?.creditsBalance,
+                grantedBalance = lastGood?.grantedBalance,
+                toppedUpBalance = lastGood?.toppedUpBalance,
+                currency = lastGood?.currency,
+                isAvailable = lastGood?.isAvailable,
                 planName = lastGood?.planName,
                 queriedAt = lastGood?.queriedAt,
                 isLastGood = lastGood != null,
                 errorMessage = message,
-                limitReached = lastGood?.limitReached ?: false
+                limitReached = lastGood?.limitReached ?: false,
+                modelProvider = modelProvider
             )
         }
     }

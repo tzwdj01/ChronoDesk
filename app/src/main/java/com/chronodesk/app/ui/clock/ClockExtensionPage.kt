@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
+import com.chronodesk.app.data.model.CredentialStatus
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkProgressTrack
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -52,8 +53,10 @@ import com.chronodesk.app.ui.theme.InkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkTextPrimary
 import com.chronodesk.app.ui.theme.InkTextSecondary
 import com.chronodesk.app.ui.theme.InkTextTertiary
+import com.chronodesk.app.ui.theme.InkWarningRed
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TechEmerald
+import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
@@ -279,7 +282,13 @@ fun ClockExtensionPage(
                 }
             }
 
-            // 右列：DeepSeek 官方 API 计费与 Token 统计
+            // 右列：DeepSeek 官方 API 真实余额与计费
+            val dsSnap = snapshots[deepSeekAccount?.id]
+            val isDsConfigured = dsSnap?.creditsBalance != null && dsSnap.credentialStatus != CredentialStatus.NOT_LOGGED_IN
+            val dsBalance = dsSnap?.creditsBalance ?: 0.0
+            val dsCurrency = dsSnap?.currency ?: "CNY"
+            val dsAvailable = dsSnap?.isAvailable ?: (dsBalance > 0.0)
+
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -300,50 +309,74 @@ fun ClockExtensionPage(
                         ) {
                             ModelProviderLogo(provider = AiModelProvider.DEEPSEEK, size = 22.dp, isNightMode = isNightMode)
                             Text(
-                                text = "DeepSeek 官方 API 计费",
+                                text = "DeepSeek 官方 API",
                                 color = primaryText,
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        Text(text = "DeepSeek-V3 / R1", color = mutedText, fontSize = 9.sp)
+                        Text(
+                            text = if (isDsConfigured) "直连 /user/balance" else "未配置",
+                            color = mutedText,
+                            fontSize = 9.sp
+                        )
                     }
 
-                    val dsBalance = snapshots[deepSeekAccount?.id]?.creditsBalance ?: 88.50
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                    if (!isDsConfigured) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", dsBalance)} CNY",
-                                color = primaryText,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
+                                text = "尚未绑定 DeepSeek API Key",
+                                color = secondaryText,
+                                fontSize = 11.sp
                             )
-                            Text(text = "额度状态: 正常可用", color = if (isNightMode) TechEmerald else InkStatusGreen, fontSize = 9.sp)
+                            Text(
+                                text = "在账号设置中填入 API Key 即可直连官方查询真实余额与明细",
+                                color = mutedText,
+                                fontSize = 9.sp
+                            )
                         }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", dsBalance)} $dsCurrency",
+                                    color = primaryText,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (dsAvailable && dsBalance > 0) "状态: 正常可用" else "状态: 余额不足",
+                                    color = if (dsAvailable && dsBalance > 0) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
+                                    fontSize = 9.sp
+                                )
+                            }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "充值金: ¥80.00 ｜ 赠送金: ¥8.50", color = secondaryText, fontSize = 9.5.sp)
-                            Text(text = "永久有效", color = mutedText, fontSize = 9.sp)
-                        }
-
-                        HorizontalDivider(
-                            color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
-                            thickness = 0.8.dp,
-                            modifier = Modifier.padding(vertical = 1.dp)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "输入 Token: 452,180 (¥0.45)", color = secondaryText, fontSize = 9.sp)
-                            Text(text = "输出 Token: 186,400 (¥0.37)", color = mutedText, fontSize = 9.sp)
+                            if (dsSnap?.toppedUpBalance != null || dsSnap?.grantedBalance != null) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    val topped = dsSnap?.toppedUpBalance ?: 0.0
+                                    val granted = dsSnap?.grantedBalance ?: 0.0
+                                    Text(
+                                        text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
+                                        color = secondaryText,
+                                        fontSize = 9.5.sp
+                                    )
+                                    Text(text = "官方实时数据", color = mutedText, fontSize = 9.sp)
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(text = "更新时间: ${dsSnap?.formattedQueriedAt ?: "未同步"}", color = secondaryText, fontSize = 9.5.sp)
+                                    Text(text = "直连官方返回", color = mutedText, fontSize = 9.sp)
+                                }
+                            }
                         }
                     }
                 }

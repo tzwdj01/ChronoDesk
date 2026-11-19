@@ -169,9 +169,9 @@ fun CodexQuotaCard(
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    // 套餐标签 (例如: Plus, V3) - 仅日间水墨模式下展示，夜间保持极简
-                    if (!isNightMode) {
-                        val planTag = snapshot?.planName ?: provider.defaultPlan
+                    // 套餐标签 (例如: Plus) - 仅日间水墨模式且有真实套餐标识时展示
+                    val planTag = snapshot?.planName ?: provider.defaultPlan
+                    if (!isNightMode && !planTag.isNullOrBlank()) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))

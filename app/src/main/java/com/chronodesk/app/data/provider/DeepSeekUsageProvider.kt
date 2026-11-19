@@ -2,10 +2,8 @@ package com.chronodesk.app.data.provider
 
 import android.util.Log
 import com.chronodesk.app.data.model.CodexUsageSnapshot
-import com.chronodesk.app.data.model.CodexUsageWindow
 import com.chronodesk.app.data.model.CredentialStatus
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -14,8 +12,8 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * DeepSeek AI 平台配额与余额查询适配器
- * 支持官方 API Key 配额查询与桌面时钟模拟数据
+ * DeepSeek AI 平台余额与配额查询适配器
+ * 严格直连官方 /user/balance 接口，仅展示实际查询到的真实数据，杜绝一切虚构和臆测
  */
 class DeepSeekUsageProvider(
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -33,15 +31,33 @@ class DeepSeekUsageProvider(
         accountAlias: String,
         apiKey: String?
     ): UsageFetchResult = withContext(Dispatchers.IO) {
-        if (apiKey.isNullOrBlank() || apiKey.startsWith("mock_") || apiKey == "demo") {
-            delay(300)
-            return@withContext getMockSnapshot(accountId, accountAlias)
+        val cleanKey = apiKey?.trim() ?: ""
+        if (cleanKey.isBlank() || cleanKey == "demo") {
+            // 未填入真实有效 API Key 时返回未配置状态，绝不捏造假余额与假型号
+            return@withContext UsageFetchResult.Success(
+                CodexUsageSnapshot(
+                    accountId = accountId,
+                    accountAlias = accountAlias.ifBlank { "DeepSeek" },
+                    credentialStatus = CredentialStatus.NOT_LOGGED_IN,
+                    creditsBalance = null,
+                    grantedBalance = null,
+                    toppedUpBalance = null,
+                    currency = "CNY",
+                    isAvailable = false,
+                    planName = null,
+                    primaryWindow = null,
+                    secondaryWindow = null,
+                    queriedAt = null,
+                    errorMessage = "未配置 API Key",
+                    modelProvider = "DEEPSEEK"
+                )
+            )
         }
 
         try {
             val request = Request.Builder()
                 .url(BALANCE_URL)
-                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Authorization", "Bearer $cleanKey")
                 .addHeader("Accept", "application/json")
                 .build()
 
@@ -53,73 +69,54 @@ class DeepSeekUsageProvider(
                 val json = JSONObject(bodyStr)
                 val isAvailable = json.optBoolean("is_available", true)
                 val balanceInfos = json.optJSONArray("balance_infos")
-                var totalBalance = 0.0
+                var totalBalance: Double? = null
+                var grantedBalance: Double? = null
+                var toppedUpBalance: Double? = null
                 var currency = "CNY"
 
                 if (balanceInfos != null && balanceInfos.length() > 0) {
-                    val first = balanceInfos.getJSONObject(0)
-                    totalBalance = first.optDouble("total_balance", 0.0)
-                    currency = first.optString("currency", "CNY")
+                    val info = balanceInfos.getJSONObject(0)
+                    val totalStr = info.optString("total_balance", "")
+                    totalBalance = totalStr.toDoubleOrNull() ?: if (info.has("total_balance")) info.optDouble("total_balance") else null
+                    val grantedStr = info.optString("granted_balance", "")
+                    grantedBalance = grantedStr.toDoubleOrNull() ?: if (info.has("granted_balance")) info.optDouble("granted_balance") else null
+                    val toppedStr = info.optString("topped_up_balance", "")
+                    toppedUpBalance = toppedStr.toDoubleOrNull() ?: if (info.has("topped_up_balance")) info.optDouble("topped_up_balance") else null
+                    currency = info.optString("currency", "CNY").ifBlank { "CNY" }
                 }
 
-                // 将余额折算为额度百分比（如充值余额 > 0 则为 100% 充裕，低于 10 元递减）
-                val remainingPercent = (totalBalance / 50.0 * 100.0).coerceIn(10.0, 100.0)
-                val nowSec = System.currentTimeMillis() / 1000
-                val primaryWindow = CodexUsageWindow.fromRaw(
-                    usedPercent = 100.0 - remainingPercent,
-                    limitWindowSeconds = 18000L,
-                    resetAtUnix = nowSec + 18000L
-                )
-
+                val hasFunds = (totalBalance ?: 0.0) > 0.0
                 val snapshot = CodexUsageSnapshot(
                     accountId = accountId,
                     accountAlias = accountAlias.ifBlank { "DeepSeek" },
                     email = if (accountAlias.contains("@")) accountAlias else null,
-                    credentialStatus = if (isAvailable) CredentialStatus.VALID else CredentialStatus.EXPIRED,
-                    primaryWindow = primaryWindow,
+                    credentialStatus = if (isAvailable && hasFunds) CredentialStatus.VALID else CredentialStatus.EXPIRED,
+                    primaryWindow = null, // DeepSeek 官方没有 5 小时滚动窗口，不伪造
                     secondaryWindow = null,
                     creditsBalance = totalBalance,
-                    planName = "V3",
+                    grantedBalance = grantedBalance,
+                    toppedUpBalance = toppedUpBalance,
+                    currency = currency,
+                    isAvailable = isAvailable,
+                    planName = null, // 不妄加 "V3" 或 "Plus"，仅以真实账户为准
                     queriedAt = System.currentTimeMillis(),
                     isLastGood = false,
-                    errorMessage = null
+                    errorMessage = null,
+                    limitReached = !isAvailable || !hasFunds,
+                    modelProvider = "DEEPSEEK"
                 )
                 UsageFetchResult.Success(snapshot)
             } else if (code == 401 || code == 403) {
-                UsageFetchResult.AuthExpired("DeepSeek API Key 无效或已过期")
+                UsageFetchResult.AuthExpired("API Key 无效或已过期 (HTTP $code)")
             } else {
                 UsageFetchResult.TransientError("DeepSeek 服务响应异常 (HTTP $code)")
             }
         } catch (e: IOException) {
             Log.w(TAG, "fetchUsage network error: ${e.message}")
-            UsageFetchResult.TransientError("网络连接失败，保留上次成功数据: ${e.message}")
+            UsageFetchResult.TransientError("网络连接失败，请检查网络: ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "fetchUsage unexpected error", e)
             UsageFetchResult.TransientError("解析异常: ${e.message}")
         }
-    }
-
-    private fun getMockSnapshot(accountId: String, accountAlias: String): UsageFetchResult {
-        val nowSec = System.currentTimeMillis() / 1000
-        val snapshot = CodexUsageSnapshot(
-            accountId = accountId,
-            accountAlias = accountAlias.ifBlank { "DeepSeek" },
-            email = null,
-            credentialStatus = CredentialStatus.VALID,
-            primaryWindow = CodexUsageWindow.fromRaw(
-                usedPercent = 14.0, // 剩余 86%
-                limitWindowSeconds = 18000L,
-                resetAtUnix = nowSec + 5160L // 1小时26分后
-            ),
-            secondaryWindow = CodexUsageWindow.fromRaw(
-                usedPercent = 0.0,
-                limitWindowSeconds = 604800L,
-                resetAtUnix = nowSec + 5 * 86400L
-            ),
-            creditsBalance = 88.50,
-            planName = "Plus",
-            queriedAt = System.currentTimeMillis()
-        )
-        return UsageFetchResult.Success(snapshot)
     }
 }

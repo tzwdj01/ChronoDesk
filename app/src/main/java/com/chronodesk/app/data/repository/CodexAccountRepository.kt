@@ -212,23 +212,16 @@ class CodexAccountRepository(
                 }
             }
 
-            if (savedSnap != null) {
+            val apiKey = if (acc.modelProvider == "DEEPSEEK") credentialStorage.getAccessToken(acc.id) else null
+            val isFakeOldSnap = savedSnap != null && acc.modelProvider == "DEEPSEEK" && (savedSnap.planName == "V3" || savedSnap.planName == "Plus" || apiKey.isNullOrBlank())
+
+            if (savedSnap != null && !isFakeOldSnap) {
                 initialSnaps[acc.id] = savedSnap
             } else {
                 when (acc.modelProvider) {
                     "DEEPSEEK" -> {
-                        initialSnaps[acc.id] = CodexUsageSnapshot(
-                            accountId = acc.id,
-                            accountAlias = "DeepSeek",
-                            credentialStatus = CredentialStatus.VALID,
-                            primaryWindow = com.chronodesk.app.data.model.CodexUsageWindow.fromRaw(
-                                usedPercent = 0.0,
-                                limitWindowSeconds = 18000L,
-                                resetAtUnix = nowSec + 18000L
-                            ),
-                            creditsBalance = 88.50,
-                            planName = "V3",
-                            queriedAt = System.currentTimeMillis(),
+                        initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, "DeepSeek").copy(
+                            credentialStatus = if (apiKey.isNullOrBlank()) CredentialStatus.NOT_LOGGED_IN else CredentialStatus.VALID,
                             modelProvider = "DEEPSEEK"
                         )
                     }
@@ -380,17 +373,24 @@ class CodexAccountRepository(
     }
 
     fun saveDeepSeekApiKey(apiKey: String) {
+        val clean = apiKey.trim()
         val deepSeekAcc = _accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }
             ?: CodexAccount(
                 id = "acc_deepseek",
                 alias = "DeepSeek",
                 email = null,
-                credentialStatus = CredentialStatus.VALID,
+                credentialStatus = if (clean.isNotBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
                 providerType = "API_KEY",
                 modelProvider = "DEEPSEEK"
             )
-        credentialStorage.saveAccessToken(deepSeekAcc.id, apiKey, Long.MAX_VALUE)
-        updateAccount(deepSeekAcc.copy(providerType = "API_KEY", credentialStatus = CredentialStatus.VALID))
+        if (clean.isNotBlank()) {
+            credentialStorage.saveAccessToken(deepSeekAcc.id, clean, Long.MAX_VALUE)
+            updateAccount(deepSeekAcc.copy(providerType = "API_KEY", credentialStatus = CredentialStatus.VALID))
+        } else {
+            credentialStorage.removeAccountCredentials(deepSeekAcc.id)
+            updateAccount(deepSeekAcc.copy(providerType = "API_KEY", credentialStatus = CredentialStatus.NOT_LOGGED_IN))
+            putSnapshot(deepSeekAcc.id, CodexUsageSnapshot.empty(deepSeekAcc.id, "DeepSeek").copy(modelProvider = "DEEPSEEK"))
+        }
     }
 
     fun getDeepSeekApiKey(): String? {
@@ -425,7 +425,12 @@ class CodexAccountRepository(
                     val result = deepSeekProvider.fetchUsage(account.id, account.alias, apiKey)
                     if (result is UsageFetchResult.Success) {
                         putSnapshot(accountId, result.snapshot.copy(modelProvider = "DEEPSEEK"))
-                        updateAccount(account.copy(credentialStatus = CredentialStatus.VALID, lastSyncTime = System.currentTimeMillis()))
+                        updateAccount(account.copy(credentialStatus = result.snapshot.credentialStatus, lastSyncTime = result.snapshot.queriedAt ?: System.currentTimeMillis()))
+                    } else if (result is UsageFetchResult.AuthExpired) {
+                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.alias, CredentialStatus.EXPIRED, result.message, lastGood = _snapshots.value[accountId], modelProvider = "DEEPSEEK"))
+                        updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
+                    } else if (result is UsageFetchResult.TransientError) {
+                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.alias, account.credentialStatus, result.message, lastGood = _snapshots.value[accountId], modelProvider = "DEEPSEEK"))
                     }
                     return
                 }

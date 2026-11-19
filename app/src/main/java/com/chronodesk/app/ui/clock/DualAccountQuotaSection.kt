@@ -501,7 +501,7 @@ private fun SingleAccountQuotaItem(
 }
 
 /**
- * DeepSeek 专属大框（参照官方 /user/balance 接口规范展示余额、明细与额度）
+ * DeepSeek 专属大框（严格直连官方 /user/balance 接口展示真实余额与状态，杜绝任何假数据）
  */
 @Composable
 fun DeepSeekUnifiedSubscriptionBox(
@@ -520,11 +520,11 @@ fun DeepSeekUnifiedSubscriptionBox(
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
-    val progressColor = if (isNightMode) TechEmerald else InkProgress
-    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
 
-    val balance = snapshot?.creditsBalance ?: 88.50
-    val remainingPercent = (snapshot?.primaryWindow?.remainingPercent ?: 100.0).coerceIn(0.0, 100.0)
+    val isConfigured = snapshot?.creditsBalance != null && snapshot.credentialStatus != CredentialStatus.NOT_LOGGED_IN
+    val isAvailable = snapshot?.isAvailable ?: true
+    val balance = snapshot?.creditsBalance ?: 0.0
+    val hasFunds = isConfigured && isAvailable && balance > 0.0
 
     Box(
         modifier = modifier
@@ -535,7 +535,7 @@ fun DeepSeekUnifiedSubscriptionBox(
             .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 7.dp else 8.5.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
-            // 大框头部：DeepSeek Logo + DeepSeek AI + V3 标签 + 状态标签
+            // 大框头部：官方 DeepSeek Logo + DeepSeek 名称 + 状态标签
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -551,30 +551,42 @@ fun DeepSeekUnifiedSubscriptionBox(
                         isNightMode = isNightMode
                     )
                     Text(
-                        text = "DeepSeek AI",
+                        text = "DeepSeek",
                         color = primaryText,
                         fontSize = if (isCompact) 13.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.5.dp))
-                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = "V3",
-                            color = secondaryText,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
                 }
 
-                // 状态徽标
-                val statusColor = if (isNightMode) TechEmerald else InkStatusGreen
-                val statusBg = if (isNightMode) statusColor.copy(alpha = 0.12f) else InkStatusTagBg
+                // 状态徽标：真实反应配置与可用状态
+                val (statusText, statusColor, statusBg) = when {
+                    isLoading -> Triple(
+                        "同步中",
+                        if (isNightMode) TechCyan else InkProgress,
+                        if (isNightMode) TechCyan.copy(alpha = 0.12f) else InkStatusTagBg
+                    )
+                    !isConfigured -> Triple(
+                        "未配置",
+                        mutedText,
+                        if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
+                    )
+                    snapshot?.credentialStatus == CredentialStatus.EXPIRED || snapshot?.errorMessage != null -> Triple(
+                        "Key失效",
+                        if (isNightMode) TechRose else InkWarningRed,
+                        (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+                    )
+                    !hasFunds -> Triple(
+                        "无可用余额",
+                        if (isNightMode) TechRose else InkWarningRed,
+                        (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+                    )
+                    else -> Triple(
+                        "正常",
+                        if (isNightMode) TechEmerald else InkStatusGreen,
+                        if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(3.5.dp))
@@ -582,7 +594,7 @@ fun DeepSeekUnifiedSubscriptionBox(
                         .padding(horizontal = 5.dp, vertical = 1.5.dp)
                 ) {
                     Text(
-                        text = if (isLoading) "同步中" else "正常",
+                        text = statusText,
                         color = statusColor,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium
@@ -590,55 +602,68 @@ fun DeepSeekUnifiedSubscriptionBox(
                 }
             }
 
-            // 官方余额与明细行
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "可用总余额: ¥${String.format(java.util.Locale.US, "%.2f", balance)} CNY",
-                    color = primaryText,
-                    fontSize = if (isCompact) 11.sp else 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "充值: ¥80.00 ｜ 赠送: ¥8.50",
-                    color = mutedText,
-                    fontSize = if (isCompact) 8.5.sp else 9.sp
-                )
-            }
-
-            // 额度进度条与永久有效状态
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            if (!isConfigured) {
+                // 未配置 API Key 状态：提示用户点击配置，不捏造任何假数据
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = if (isCompact) 2.dp else 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "额度状态",
+                        text = "未绑定 API Key · 点击呼出配置",
                         color = secondaryText,
-                        fontSize = if (isCompact) 9.5.sp else 10.sp
+                        fontSize = if (isCompact) 11.sp else 12.sp
                     )
-                    LinearProgressIndicator(
-                        progress = { (remainingPercent / 100.0).toFloat().coerceIn(0f, 1f) },
-                        modifier = Modifier
-                            .width(if (isCompact) 80.dp else 105.dp)
-                            .height(4.5.dp)
-                            .clip(RoundedCornerShape(2.5.dp)),
-                        color = progressColor,
-                        trackColor = trackColor
+                    Text(
+                        text = "直连官方余额",
+                        color = mutedText,
+                        fontSize = if (isCompact) 8.5.sp else 9.sp
                     )
                 }
-                Text(
-                    text = "🕒 充裕 · 永久有效",
-                    color = mutedText,
-                    fontSize = if (isCompact) 8.5.sp else 9.sp
-                )
+            } else {
+                // 已配置并已查询到官方真实余额
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    val currency = snapshot?.currency ?: "CNY"
+                    Text(
+                        text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", balance)} $currency",
+                        color = primaryText,
+                        fontSize = if (isCompact) 11.sp else 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "更新: ${snapshot?.formattedQueriedAt ?: "刚刚"}",
+                        color = mutedText,
+                        fontSize = if (isCompact) 8.5.sp else 9.sp
+                    )
+                }
+
+                // 仅当官方接口实际返回了充值或赠送明细时，才展示明细行
+                if (snapshot?.toppedUpBalance != null || snapshot?.grantedBalance != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val topped = snapshot?.toppedUpBalance ?: 0.0
+                        val granted = snapshot?.grantedBalance ?: 0.0
+                        Text(
+                            text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
+                            color = mutedText,
+                            fontSize = if (isCompact) 8.5.sp else 9.sp
+                        )
+                        Text(
+                            text = if (isAvailable) "可用" else "不可用",
+                            color = if (isAvailable) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
+                            fontSize = if (isCompact) 8.5.sp else 9.sp
+                        )
+                    }
+                }
             }
         }
     }
