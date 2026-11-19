@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,11 +51,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // 沉浸式全屏与隐藏系统栏（轻触边缘可呼出）
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-        insetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+        applyFullScreenImmersive()
 
         // 检查并请求定位权限（用于自动匹配当前城市天气）
         checkLocationPermission()
@@ -88,6 +85,41 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyFullScreenImmersive()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyFullScreenImmersive()
+        // 重新进入前台时刷新数据
+        viewModel.refreshAll()
+        detectCurrentLocation()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyFullScreenImmersive() {
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+
+        // 针对 Android 9 (API 28, 如小米 6) 强效沉浸式全屏
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_FULLSCREEN
+        )
     }
 
     private fun checkLocationPermission() {
@@ -166,12 +198,5 @@ class MainActivity : ComponentActivity() {
             viewModel.updateSettings(updated)
             viewModel.weatherRepo.refreshWeather(cityName, lat, lng, force = true)
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // 重新进入前台时刷新数据
-        viewModel.refreshAll()
-        detectCurrentLocation()
     }
 }

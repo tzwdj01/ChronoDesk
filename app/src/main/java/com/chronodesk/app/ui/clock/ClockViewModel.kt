@@ -65,6 +65,7 @@ class ClockViewModel @JvmOverloads constructor(
 
     init {
         startTimeTicker()
+        refreshAll()
         startAutoRefreshScheduler()
         startWeatherScheduler()
         startBurnInShifter()

@@ -227,3 +227,40 @@ fun FlipDigitPair(
         )
     }
 }
+
+@Composable
+fun StackedFlipDigitPair(
+    value: Int,
+    modifier: Modifier = Modifier,
+    digitWidth: Dp = 24.dp,
+    digitHeight: Dp = 36.dp,
+    fontSize: TextUnit = 19.sp,
+    textColor: Color = TextPrimary,
+    isNightMode: Boolean = false
+) {
+    val tens = (value.coerceIn(0, 99)) / 10
+    val units = (value.coerceIn(0, 99)) % 10
+
+    androidx.compose.foundation.layout.Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(3.dp)
+    ) {
+        FlipDigit(
+            digit = tens,
+            width = digitWidth,
+            height = digitHeight,
+            fontSize = fontSize,
+            textColor = textColor,
+            isNightMode = isNightMode
+        )
+        FlipDigit(
+            digit = units,
+            width = digitWidth,
+            height = digitHeight,
+            fontSize = fontSize,
+            textColor = textColor,
+            isNightMode = isNightMode
+        )
+    }
+}

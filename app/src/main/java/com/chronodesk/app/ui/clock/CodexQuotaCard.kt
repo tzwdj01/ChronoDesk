@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -76,6 +77,7 @@ fun CodexQuotaCard(
     modifier: Modifier = Modifier,
     isNightMode: Boolean = false,
     areControlsVisible: Boolean = true,
+    isCompact: Boolean = false,
     onRefreshClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {},
     onCardClick: () -> Unit = {}
@@ -90,11 +92,14 @@ fun CodexQuotaCard(
     if (!account.isConfigured) {
         Box(
             modifier = modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
                 .background(cardBg)
-                .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
                 .clickable { onCardClick() }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(
+                    horizontal = if (isCompact) 10.dp else 14.dp,
+                    vertical = if (isCompact) 8.dp else 12.dp
+                ),
             contentAlignment = Alignment.Center
         ) {
             Row(
@@ -104,11 +109,11 @@ fun CodexQuotaCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(if (isCompact) 24.dp else 28.dp)
                             .clip(CircleShape)
                             .background(
                                 (if (isNightMode) AppleNightRedPrimary else TechCyan)
@@ -120,20 +125,20 @@ fun CodexQuotaCard(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
                             tint = if (isNightMode) AppleNightRedPrimary else TechCyan,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(if (isCompact) 14.dp else 16.dp)
                         )
                     }
                     Column {
                         Text(
                             text = "绑定 ChatGPT / Codex 账号",
                             color = primaryText,
-                            fontSize = 12.sp,
+                            fontSize = if (isCompact) 11.sp else 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "支持 OpenAI 官方授权登录或导入 Token",
+                            text = if (isCompact) "点击进行 OpenAI 授权或导入 Token" else "支持 OpenAI 官方授权登录或导入 Token",
                             color = secondaryText,
-                            fontSize = 10.sp
+                            fontSize = if (isCompact) 9.sp else 10.sp
                         )
                     }
                 }
@@ -171,13 +176,19 @@ fun CodexQuotaCard(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(if (isCompact) 11.dp else 13.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 11.dp else 13.dp))
             .clickable { onCardClick() }
-            .padding(horizontal = 14.dp, vertical = 11.dp)
+            .padding(
+                horizontal = if (isCompact) 11.dp else 14.dp,
+                vertical = if (isCompact) 8.dp else 11.dp
+            )
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
             // 卡片头部：账号名称/Email、套餐、状态标签与操作按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -194,7 +205,7 @@ fun CodexQuotaCard(
                     Text(
                         text = displayEmail,
                         color = if (isNightMode) AppleNightRedPrimary else TechCyan,
-                        fontSize = 12.5.sp,
+                        fontSize = if (isCompact) 12.sp else 13.5.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -211,7 +222,7 @@ fun CodexQuotaCard(
                             Text(
                                 text = plan,
                                 color = if (isNightMode) AppleNightRedSecondary else TextTertiary,
-                                fontSize = 9.sp,
+                                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Medium
                             )
@@ -261,7 +272,7 @@ fun CodexQuotaCard(
                         Text(
                             text = statusText,
                             color = statusColor,
-                            fontSize = 9.sp,
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -277,14 +288,14 @@ fun CodexQuotaCard(
                             IconButton(
                                 onClick = onRefreshClick,
                                 enabled = !isLoading,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "刷新",
                                     tint = if (isLoading) (if (isNightMode) AppleNightRedPrimary else TechCyan) else secondaryText,
                                     modifier = Modifier
-                                        .size(13.dp)
+                                        .size(12.dp)
                                         .rotate(if (isLoading) spinAngle else 0f)
                                 )
                             }
@@ -292,13 +303,13 @@ fun CodexQuotaCard(
                             // 删除/移除账号按钮
                             IconButton(
                                 onClick = onDeleteClick,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.DeleteOutline,
                                     contentDescription = "删除账号",
                                     tint = secondaryText.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(13.dp)
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
@@ -311,7 +322,8 @@ fun CodexQuotaCard(
             QuotaProgressRow(
                 label = "5小时额度",
                 window = primaryWindow,
-                isNightMode = isNightMode
+                isNightMode = isNightMode,
+                isCompact = isCompact
             )
 
             // 周额度窗口
@@ -319,7 +331,8 @@ fun CodexQuotaCard(
             QuotaProgressRow(
                 label = "周额度",
                 window = secondaryWindow,
-                isNightMode = isNightMode
+                isNightMode = isNightMode,
+                isCompact = isCompact
             )
 
             // 底部同步状态与最后更新时间
@@ -343,19 +356,23 @@ fun CodexQuotaCard(
                         Text(
                             text = snapshot.errorMessage ?: "",
                             color = if (isNightMode) AppleNightRedSecondary else TechAmber,
-                            fontSize = 9.sp,
+                            fontSize = 8.5.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 } else {
-                    Spacer(modifier = Modifier.width(1.dp))
+                    Text(
+                        text = "⚡ 凭证有效 · 会话保活",
+                        color = if (isNightMode) AppleNightRedMuted else TextTertiary,
+                        fontSize = 8.5.sp
+                    )
                 }
 
                 Text(
-                    text = "同步: ${snapshot?.formattedQueriedAt ?: "未同步"}",
+                    text = "● 同步: ${snapshot?.formattedQueriedAt ?: "未同步"}",
                     color = mutedText,
-                    fontSize = 9.sp
+                    fontSize = 8.5.sp
                 )
             }
         }
@@ -366,7 +383,8 @@ fun CodexQuotaCard(
 private fun QuotaProgressRow(
     label: String,
     window: CodexUsageWindow?,
-    isNightMode: Boolean
+    isNightMode: Boolean,
+    isCompact: Boolean = false
 ) {
     val remainingPercent = window?.remainingPercent ?: 0.0
     val progressFraction = (remainingPercent / 100.0).toFloat().coerceIn(0f, 1f)
@@ -379,7 +397,7 @@ private fun QuotaProgressRow(
     }
     val trackColor = if (isNightMode) AppleNightTrack else Color(0xFF1E222A)
 
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -388,7 +406,7 @@ private fun QuotaProgressRow(
             Text(
                 text = label,
                 color = if (isNightMode) AppleNightRedSecondary else TextSecondary,
-                fontSize = 10.sp
+                fontSize = if (isCompact) 10.sp else 11.sp
             )
 
             if (window != null) {
@@ -399,7 +417,7 @@ private fun QuotaProgressRow(
                     Text(
                         text = "剩余 ${remainingPercent.toInt()}%",
                         color = if (isNightMode) AppleNightRedPrimary else progressColor,
-                        fontSize = 10.5.sp,
+                        fontSize = if (isCompact) 10.5.sp else 11.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                     val countdown = window.formattedCountdown()
@@ -407,7 +425,7 @@ private fun QuotaProgressRow(
                         Text(
                             text = "重置 $countdown",
                             color = if (isNightMode) AppleNightRedMuted else TextTertiary,
-                            fontSize = 9.sp
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
                         )
                     }
                 }
@@ -415,7 +433,7 @@ private fun QuotaProgressRow(
                 Text(
                     text = "暂无数据",
                     color = if (isNightMode) AppleNightRedMuted else TextTertiary,
-                    fontSize = 9.sp
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp
                 )
             }
         }
@@ -424,8 +442,8 @@ private fun QuotaProgressRow(
             progress = { progressFraction },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.5.dp)
-                .clip(RoundedCornerShape(2.5.dp)),
+                .height(if (isCompact) 5.5.dp else 6.5.dp)
+                .clip(RoundedCornerShape(3.dp)),
             color = progressColor,
             trackColor = trackColor
         )

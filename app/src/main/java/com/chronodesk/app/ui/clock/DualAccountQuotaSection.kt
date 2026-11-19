@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -67,6 +69,7 @@ fun MultiAccountQuotaSection(
     modifier: Modifier = Modifier,
     isNightMode: Boolean = false,
     areControlsVisible: Boolean = false,
+    isCompact: Boolean = false,
     onAddAccount: () -> Unit = {},
     onRefreshAccount: (accountId: String) -> Unit = {},
     onDeleteAccount: (accountId: String) -> Unit = {},
@@ -226,31 +229,73 @@ fun MultiAccountQuotaSection(
                     }
                 }
             } else {
-                Text(
-                    text = "轻触呼出",
-                    color = if (isNightMode) AppleNightRedMuted else TextTertiary,
-                    fontSize = 9.5.sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (isNightMode) AppleNightRedPrimary else TechCyan)
+                    )
+                    Text(
+                        text = "LIVE · 轻触呼出",
+                        color = if (isNightMode) AppleNightRedMuted else TextTertiary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
 
-        // 账号列表卡片
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            accounts.forEach { account ->
-                CodexQuotaCard(
-                    account = account,
-                    snapshot = snapshots[account.id],
-                    isLoading = loadingMap[account.id] == true,
-                    isNightMode = isNightMode,
-                    areControlsVisible = areControlsVisible,
-                    onRefreshClick = { onRefreshAccount(account.id) },
-                    onDeleteClick = { onDeleteAccount(account.id) },
-                    onCardClick = { onAccountClick(account) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+        // 账号列表卡片：双账号时自动使用 weight(1f) 平铺填满高度；多账号时平滑滚动
+        if (accounts.size <= 2) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
+            ) {
+                accounts.forEach { account ->
+                    CodexQuotaCard(
+                        account = account,
+                        snapshot = snapshots[account.id],
+                        isLoading = loadingMap[account.id] == true,
+                        isNightMode = isNightMode,
+                        areControlsVisible = areControlsVisible,
+                        isCompact = isCompact,
+                        onRefreshClick = { onRefreshAccount(account.id) },
+                        onDeleteClick = { onDeleteAccount(account.id) },
+                        onCardClick = { onAccountClick(account) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
+            ) {
+                accounts.forEach { account ->
+                    CodexQuotaCard(
+                        account = account,
+                        snapshot = snapshots[account.id],
+                        isLoading = loadingMap[account.id] == true,
+                        isNightMode = isNightMode,
+                        areControlsVisible = areControlsVisible,
+                        isCompact = isCompact,
+                        onRefreshClick = { onRefreshAccount(account.id) },
+                        onDeleteClick = { onDeleteAccount(account.id) },
+                        onCardClick = { onAccountClick(account) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }

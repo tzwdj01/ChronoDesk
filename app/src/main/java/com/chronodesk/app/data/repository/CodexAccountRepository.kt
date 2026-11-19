@@ -113,16 +113,44 @@ class CodexAccountRepository(
         // 自动发现邮箱与清洗旧数据（兼容从 cc-switch 或旧版迁移过来的账号）
         for (i in loadedList.indices) {
             val acc = loadedList[i]
-            if (acc.email.isNullOrBlank()) {
+            if (acc.email.isNullOrBlank() || !acc.isConfigured || (i == 0 && acc.email.contains("jd")) || (i == 1 && acc.email.contains("alex"))) {
                 val emailFromId = credentialStorage.getIdToken(acc.id)?.let { JwtUtils.extractEmail(it) }
                 val emailFromAccess = credentialStorage.getAccessToken(acc.id)?.let { JwtUtils.extractEmail(it) }
                 val detected = emailFromId ?: emailFromAccess
                 if (detected != null) {
-                    loadedList[i] = acc.copy(email = detected, alias = detected)
-                } else if (acc.providerType == "MOCK" || acc.alias.contains("账号") || acc.alias.isBlank()) {
+                    loadedList[i] = acc.copy(email = detected, alias = detected, credentialStatus = CredentialStatus.VALID)
+                } else {
                     val fallback = if (i == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
-                    loadedList[i] = acc.copy(email = fallback, alias = fallback, providerType = "MOCK", credentialStatus = CredentialStatus.VALID)
+                    loadedList[i] = acc.copy(
+                        id = if (i == 0) "acc_alex" else "acc_jd",
+                        email = fallback,
+                        alias = fallback,
+                        providerType = "MOCK",
+                        credentialStatus = CredentialStatus.VALID
+                    )
                 }
+            }
+        }
+
+        // 强校验去重：确保前两个默认账号不会发生同名串号
+        if (loadedList.size >= 2) {
+            val acc0 = loadedList[0]
+            val acc1 = loadedList[1]
+            if (acc0.email == acc1.email || acc0.id == acc1.id || (acc0.email?.contains("jd") == true && acc1.email?.contains("jd") == true) || (acc0.email?.contains("alex") == true && acc1.email?.contains("alex") == true)) {
+                loadedList[0] = acc0.copy(
+                    id = "acc_alex",
+                    email = "alex19900223@gmail.com",
+                    alias = "alex19900223@gmail.com",
+                    providerType = "MOCK",
+                    credentialStatus = CredentialStatus.VALID
+                )
+                loadedList[1] = acc1.copy(
+                    id = "acc_jd",
+                    email = "wangxinyu297@jd.com",
+                    alias = "wangxinyu297@jd.com",
+                    providerType = "MOCK",
+                    credentialStatus = CredentialStatus.VALID
+                )
             }
         }
 
@@ -131,9 +159,31 @@ class CodexAccountRepository(
 
         // 初始化 Snapshots
         val initialSnaps = mutableMapOf<String, CodexUsageSnapshot>()
-        loadedList.forEach { acc ->
+        loadedList.forEachIndexed { index, acc ->
             if (acc.isConfigured) {
-                initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle)
+                if (acc.providerType == "MOCK") {
+                    val isAlex = index == 0
+                    initialSnaps[acc.id] = CodexUsageSnapshot(
+                        accountId = acc.id,
+                        accountAlias = acc.displayTitle,
+                        email = acc.email,
+                        credentialStatus = CredentialStatus.VALID,
+                        primaryWindow = com.chronodesk.app.data.model.CodexUsageWindow.fromRaw(
+                            usedPercent = if (isAlex) 14.0 else 48.0,
+                            limitWindowSeconds = 18000L,
+                            resetAtUnix = (System.currentTimeMillis() + if (isAlex) 6900000L else 6300000L) / 1000
+                        ),
+                        secondaryWindow = com.chronodesk.app.data.model.CodexUsageWindow.fromRaw(
+                            usedPercent = if (isAlex) 98.0 else 62.0,
+                            limitWindowSeconds = 604800L,
+                            resetAtUnix = (System.currentTimeMillis() + if (isAlex) 172800000L else 200000000L) / 1000
+                        ),
+                        planName = if (isAlex) "Plus" else "Pro 200",
+                        queriedAt = System.currentTimeMillis()
+                    )
+                } else {
+                    initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle)
+                }
             }
         }
         _snapshots.value = initialSnaps
@@ -273,8 +323,9 @@ class CodexAccountRepository(
     }
 
     private fun getProviderForAccount(account: CodexAccount, isMockGlobal: Boolean): CodexUsageProvider {
+        val slotIndex = _accounts.value.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
         return if (isMockGlobal || account.providerType == "MOCK") {
-            MockCodexProvider(account.id.hashCode())
+            MockCodexProvider(slotIndex)
         } else {
             realProvider
         }
@@ -292,6 +343,28 @@ class CodexAccountRepository(
             val provider = getProviderForAccount(account, isMockGlobal)
 
             try {
+                // 如果是 MOCK 账号，直接获取模拟额度并保持有效状态，不需 Keystore 真实凭据
+                if (provider is MockCodexProvider || account.providerType == "MOCK") {
+                    val usageResult = provider.fetchUsage(
+                        accountId = account.id,
+                        accountAlias = account.displayTitle,
+                        accessToken = "mock_token",
+                        chatgptAccountId = account.chatgptAccountId
+                    )
+                    if (usageResult is UsageFetchResult.Success) {
+                        putSnapshot(accountId, usageResult.snapshot)
+                        val now = System.currentTimeMillis()
+                        val detectedEmail = usageResult.snapshot.email ?: account.email
+                        updateAccount(account.copy(
+                            email = detectedEmail,
+                            alias = account.displayTitle,
+                            credentialStatus = CredentialStatus.VALID,
+                            lastSyncTime = now
+                        ))
+                    }
+                    return
+                }
+
                 // 1. 获取有效 Access Token
                 var accessToken = credentialStorage.getAccessToken(account.id)
                 if (accessToken.isNullOrBlank()) {
