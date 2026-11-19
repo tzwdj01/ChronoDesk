@@ -20,15 +20,17 @@ class ClockSettingsRepository(context: Context) {
             is24Hour = prefs.getBoolean("is_24_hour", true),
             showSeconds = prefs.getBoolean("show_seconds", true),
             keepScreenOn = prefs.getBoolean("keep_screen_on", true),
+            nightModeOption = prefs.getString("night_mode_option", "AUTO") ?: "AUTO",
             autoNightDim = prefs.getBoolean("auto_night_dim", true),
             nightDimStartHour = prefs.getInt("night_start_hour", 22),
             nightDimEndHour = prefs.getInt("night_end_hour", 7),
             nightBrightness = prefs.getFloat("night_brightness", 0.08f),
             autoRefreshIntervalMinutes = prefs.getInt("refresh_interval_min", 10),
             useMockData = prefs.getBoolean("use_mock_data", false),
-            cityName = prefs.getString("city_name", "北京") ?: "北京",
-            latitude = prefs.getFloat("city_lat", 39.9042f).toDouble(),
-            longitude = prefs.getFloat("city_lng", 116.4074f).toDouble()
+            autoLocation = prefs.getBoolean("auto_location", true),
+            cityName = prefs.getString("city_name", "深圳") ?: "深圳",
+            latitude = prefs.getFloat("city_lat", 22.5431f).toDouble(),
+            longitude = prefs.getFloat("city_lng", 114.0579f).toDouble()
         )
     }
 
@@ -37,12 +39,14 @@ class ClockSettingsRepository(context: Context) {
             .putBoolean("is_24_hour", newSettings.is24Hour)
             .putBoolean("show_seconds", newSettings.showSeconds)
             .putBoolean("keep_screen_on", newSettings.keepScreenOn)
+            .putString("night_mode_option", newSettings.nightModeOption)
             .putBoolean("auto_night_dim", newSettings.autoNightDim)
             .putInt("night_start_hour", newSettings.nightDimStartHour)
             .putInt("night_end_hour", newSettings.nightDimEndHour)
             .putFloat("night_brightness", newSettings.nightBrightness)
             .putInt("refresh_interval_min", newSettings.autoRefreshIntervalMinutes)
             .putBoolean("use_mock_data", newSettings.useMockData)
+            .putBoolean("auto_location", newSettings.autoLocation)
             .putString("city_name", newSettings.cityName)
             .putFloat("city_lat", newSettings.latitude.toFloat())
             .putFloat("city_lng", newSettings.longitude.toFloat())

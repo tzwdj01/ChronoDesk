@@ -1,35 +1,63 @@
 package com.chronodesk.app
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.chronodesk.app.ui.clock.ClockScreen
 import com.chronodesk.app.ui.clock.ClockViewModel
 import com.chronodesk.app.ui.theme.ChronoDeskTheme
 import com.chronodesk.app.ui.theme.PureBlack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ClockViewModel by viewModels()
 
+    private val requestLocationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        if (granted) {
+            detectCurrentLocation()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 沉浸式全屏与隐藏系统栏（轻触可呼出）
+        // 沉浸式全屏与隐藏系统栏（轻触边缘可呼出）
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         insetsController.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+
+        // 检查并请求定位权限（用于自动匹配当前城市天气）
+        checkLocationPermission()
 
         setContent {
             val settings by viewModel.settings.collectAsState()
@@ -62,9 +90,88 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun checkLocationPermission() {
+        val hasCoarse = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasCoarse && viewModel.settings.value.autoLocation) {
+            requestLocationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            )
+        } else if (hasCoarse) {
+            detectCurrentLocation()
+        }
+    }
+
+    private fun detectCurrentLocation() {
+        if (!viewModel.settings.value.autoLocation) return
+
+        try {
+            val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+            val lastLoc: Location? = try {
+                lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    ?: lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            } catch (e: SecurityException) {
+                null
+            }
+
+            if (lastLoc != null) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    var detectedCity: String? = null
+                    try {
+                        val geocoder = Geocoder(this@MainActivity, Locale.CHINESE)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            geocoder.getFromLocation(lastLoc.latitude, lastLoc.longitude, 1) { addrs ->
+                                val city = addrs.firstOrNull()?.locality
+                                    ?: addrs.firstOrNull()?.subAdminArea
+                                    ?: addrs.firstOrNull()?.adminArea
+                                if (!city.isNullOrBlank()) {
+                                    val cityName = city.removeSuffix("市").removeSuffix("省")
+                                    lifecycleScope.launch {
+                                        applyLocation(lastLoc.latitude, lastLoc.longitude, cityName)
+                                    }
+                                }
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            val addrs = geocoder.getFromLocation(lastLoc.latitude, lastLoc.longitude, 1)
+                            val city = addrs?.firstOrNull()?.locality
+                                ?: addrs?.firstOrNull()?.subAdminArea
+                                ?: addrs?.firstOrNull()?.adminArea
+                            if (!city.isNullOrBlank()) {
+                                detectedCity = city.removeSuffix("市").removeSuffix("省")
+                            }
+                        }
+                    } catch (_: Exception) {
+                    }
+
+                    if (detectedCity != null) {
+                        applyLocation(lastLoc.latitude, lastLoc.longitude, detectedCity)
+                    } else {
+                        applyLocation(lastLoc.latitude, lastLoc.longitude, viewModel.settings.value.cityName)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private suspend fun applyLocation(lat: Double, lng: Double, cityName: String) {
+        withContext(Dispatchers.Main) {
+            val current = viewModel.settings.value
+            val updated = current.copy(latitude = lat, longitude = lng, cityName = cityName)
+            viewModel.updateSettings(updated)
+            viewModel.weatherRepo.refreshWeather(cityName, lat, lng, force = true)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         // 重新进入前台时刷新数据
         viewModel.refreshAll()
+        detectCurrentLocation()
     }
 }

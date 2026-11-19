@@ -42,13 +42,19 @@ class ClockViewModel @JvmOverloads constructor(
     val settings = settingsRepo.settingsFlow
     val weather = weatherRepo.weatherFlow
 
+    // 动态多账号体系
+    val accounts = accountRepo.accounts
+    val snapshots = accountRepo.snapshots
+    val loadingMap = accountRepo.loadingMap
+    val isRefreshingAll = accountRepo.isRefreshingAll
+
+    // 兼容传统槽位接口
     val accountA = accountRepo.accountA
     val accountB = accountRepo.accountB
     val snapshotA = accountRepo.snapshotA
     val snapshotB = accountRepo.snapshotB
     val isLoadingA = accountRepo.isLoadingA
     val isLoadingB = accountRepo.isLoadingB
-    val isRefreshingAll = accountRepo.isRefreshingAll
 
     private val _isNightMode = MutableStateFlow(false)
     val isNightMode: StateFlow<Boolean> = _isNightMode.asStateFlow()
@@ -71,7 +77,7 @@ class ClockViewModel @JvmOverloads constructor(
                 val newState = getCurrentTimeState(is24)
                 _timeState.value = newState
 
-                // 检测是否处于夜间模式
+                // 检测是否处于夜间模式（根据当前模式及小时）
                 val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
                 _isNightMode.value = settings.value.isNightTime(currentHour)
 
@@ -111,6 +117,20 @@ class ClockViewModel @JvmOverloads constructor(
         }
     }
 
+    fun addAccount() {
+        accountRepo.addAccount()
+    }
+
+    fun removeAccountById(accountId: String) {
+        accountRepo.removeAccountById(accountId)
+    }
+
+    fun refreshAccount(accountId: String) {
+        viewModelScope.launch {
+            accountRepo.refreshAccount(accountId, settings.value.useMockData)
+        }
+    }
+
     fun refreshSlot(slot: Int) {
         viewModelScope.launch {
             accountRepo.refreshSlot(slot, settings.value.useMockData)
@@ -123,6 +143,17 @@ class ClockViewModel @JvmOverloads constructor(
             val s = settings.value
             weatherRepo.refreshWeather(s.cityName, s.latitude, s.longitude, force = true)
         }
+    }
+
+    fun toggleNightMode(): String {
+        val next = when (settings.value.nightModeOption) {
+            "AUTO" -> "FORCE_DAY"
+            "FORCE_DAY" -> "FORCE_NIGHT"
+            else -> "AUTO"
+        }
+        val updated = settings.value.copy(nightModeOption = next)
+        updateSettings(updated)
+        return next
     }
 
     fun updateSettings(newSettings: ClockSettings) {

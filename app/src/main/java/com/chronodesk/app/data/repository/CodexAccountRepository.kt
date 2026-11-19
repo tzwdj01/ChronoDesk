@@ -13,13 +13,18 @@ import com.chronodesk.app.data.provider.TokenResult
 import com.chronodesk.app.data.provider.UsageFetchResult
 import com.chronodesk.app.data.security.CredentialStorage
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 class CodexAccountRepository(
     private val context: Context,
@@ -29,73 +34,172 @@ class CodexAccountRepository(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("chronodesk_accounts_meta", Context.MODE_PRIVATE)
     private val gson = Gson()
+    private val accountMutexMap = ConcurrentHashMap<String, Mutex>()
 
-    private val mutexA = Mutex()
-    private val mutexB = Mutex()
+    private val _accounts = MutableStateFlow<List<CodexAccount>>(emptyList())
+    val accounts: StateFlow<List<CodexAccount>> = _accounts.asStateFlow()
 
-    private val _accountA = MutableStateFlow<CodexAccount?>(null)
-    val accountA: StateFlow<CodexAccount?> = _accountA.asStateFlow()
+    private val _snapshots = MutableStateFlow<Map<String, CodexUsageSnapshot>>(emptyMap())
+    val snapshots: StateFlow<Map<String, CodexUsageSnapshot>> = _snapshots.asStateFlow()
 
-    private val _accountB = MutableStateFlow<CodexAccount?>(null)
-    val accountB: StateFlow<CodexAccount?> = _accountB.asStateFlow()
-
-    private val _snapshotA = MutableStateFlow<CodexUsageSnapshot?>(null)
-    val snapshotA: StateFlow<CodexUsageSnapshot?> = _snapshotA.asStateFlow()
-
-    private val _snapshotB = MutableStateFlow<CodexUsageSnapshot?>(null)
-    val snapshotB: StateFlow<CodexUsageSnapshot?> = _snapshotB.asStateFlow()
-
-    private val _isLoadingA = MutableStateFlow(false)
-    val isLoadingA: StateFlow<Boolean> = _isLoadingA.asStateFlow()
-
-    private val _isLoadingB = MutableStateFlow(false)
-    val isLoadingB: StateFlow<Boolean> = _isLoadingB.asStateFlow()
+    private val _loadingMap = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val loadingMap: StateFlow<Map<String, Boolean>> = _loadingMap.asStateFlow()
 
     private val _isRefreshingAll = MutableStateFlow(false)
     val isRefreshingAll: StateFlow<Boolean> = _isRefreshingAll.asStateFlow()
+
+    // 兼容旧接口：Slot A 与 Slot B
+    val accountA: StateFlow<CodexAccount?> = _accounts.map { it.getOrNull(0) }
+        .stateIn(kotlinx.coroutines.GlobalScope, SharingStarted.Eagerly, null)
+    val accountB: StateFlow<CodexAccount?> = _accounts.map { it.getOrNull(1) }
+        .stateIn(kotlinx.coroutines.GlobalScope, SharingStarted.Eagerly, null)
+
+    val snapshotA: StateFlow<CodexUsageSnapshot?> = _snapshots.map { map ->
+        _accounts.value.getOrNull(0)?.id?.let { map[it] }
+    }.stateIn(kotlinx.coroutines.GlobalScope, SharingStarted.Eagerly, null)
+
+    val snapshotB: StateFlow<CodexUsageSnapshot?> = _snapshots.map { map ->
+        _accounts.value.getOrNull(1)?.id?.let { map[it] }
+    }.stateIn(kotlinx.coroutines.GlobalScope, SharingStarted.Eagerly, null)
+
+    val isLoadingA: StateFlow<Boolean> = _loadingMap.map { map ->
+        _accounts.value.getOrNull(0)?.id?.let { map[it] == true } ?: false
+    }.stateIn(kotlinx.coroutines.GlobalScope, SharingStarted.Eagerly, false)
+
+    val isLoadingB: StateFlow<Boolean> = _loadingMap.map { map ->
+        _accounts.value.getOrNull(1)?.id?.let { map[it] == true } ?: false
+    }.stateIn(kotlinx.coroutines.GlobalScope, SharingStarted.Eagerly, false)
 
     init {
         loadAccountsFromStorage()
     }
 
     private fun loadAccountsFromStorage() {
-        val jsonA = prefs.getString("account_slot_0", null)
-        val jsonB = prefs.getString("account_slot_1", null)
+        val listJson = prefs.getString("account_list", null)
+        val loadedList = mutableListOf<CodexAccount>()
 
-        val accA = jsonA?.let { parseAccountJson(it) }
-        val accB = jsonB?.let { parseAccountJson(it) }
-
-        _accountA.value = accA
-        _accountB.value = accB
-
-        if (accA != null) {
-            _snapshotA.value = CodexUsageSnapshot.empty(accA.id, accA.displayTitle)
+        if (!listJson.isNullOrBlank()) {
+            try {
+                val type = object : TypeToken<List<CodexAccount>>() {}.type
+                val parsed: List<CodexAccount>? = gson.fromJson(listJson, type)
+                if (parsed != null) {
+                    loadedList.addAll(parsed)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse account_list json", e)
+            }
+        } else {
+            // 从老旧的 slot_0 和 slot_1 迁移数据
+            val jsonA = prefs.getString("account_slot_0", null)
+            val jsonB = prefs.getString("account_slot_1", null)
+            val accA = jsonA?.let { parseAccountJson(it) }
+            val accB = jsonB?.let { parseAccountJson(it) }
+            if (accA != null) loadedList.add(accA)
+            if (accB != null) loadedList.add(accB)
         }
-        if (accB != null) {
-            _snapshotB.value = CodexUsageSnapshot.empty(accB.id, accB.displayTitle)
+
+        // 默认确保至少有两个账号槽位供展示与绑定
+        while (loadedList.size < 2) {
+            loadedList.add(CodexAccount.createPlaceholder())
         }
+
+        _accounts.value = loadedList
+        saveAccountListToStorage(loadedList)
+
+        // 初始化 Snapshots
+        val initialSnaps = mutableMapOf<String, CodexUsageSnapshot>()
+        loadedList.forEach { acc ->
+            if (acc.isConfigured) {
+                initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle)
+            }
+        }
+        _snapshots.value = initialSnaps
     }
 
     private fun parseAccountJson(json: String): CodexAccount? {
         return try {
             gson.fromJson(json, CodexAccount::class.java)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse account json", e)
             null
         }
     }
 
-    private fun saveAccountToStorage(slot: Int, account: CodexAccount?) {
-        val key = if (slot == 0) "account_slot_0" else "account_slot_1"
-        if (account == null) {
-            prefs.edit().remove(key).apply()
+    private fun saveAccountListToStorage(list: List<CodexAccount>) {
+        val json = gson.toJson(list)
+        prefs.edit().putString("account_list", json).apply()
+    }
+
+    private fun getMutex(accountId: String): Mutex {
+        return accountMutexMap.computeIfAbsent(accountId) { Mutex() }
+    }
+
+    fun addAccount(account: CodexAccount = CodexAccount.createPlaceholder()) {
+        val current = _accounts.value.toMutableList()
+        current.add(account)
+        _accounts.value = current
+        saveAccountListToStorage(current)
+    }
+
+    fun removeAccountById(accountId: String) {
+        credentialStorage.removeAccountCredentials(accountId)
+        val current = _accounts.value.toMutableList()
+        current.removeAll { it.id == accountId }
+
+        // 如果账号清空，保留至少一个占位槽位
+        if (current.isEmpty()) {
+            current.add(CodexAccount.createPlaceholder())
+        }
+        _accounts.value = current
+        saveAccountListToStorage(current)
+
+        val snapMap = _snapshots.value.toMutableMap()
+        snapMap.remove(accountId)
+        _snapshots.value = snapMap
+    }
+
+    fun removeAccount(slot: Int) {
+        val acc = _accounts.value.getOrNull(slot) ?: return
+        // 如果列表中有多于 2 个账号，直接移除该槽位；如果只有 2 个，重置为空占位
+        if (_accounts.value.size > 2) {
+            removeAccountById(acc.id)
         } else {
-            val json = gson.toJson(account)
-            prefs.edit().putString(key, json).apply()
+            credentialStorage.removeAccountCredentials(acc.id)
+            val current = _accounts.value.toMutableList()
+            current[slot] = CodexAccount.createPlaceholder()
+            _accounts.value = current
+            saveAccountListToStorage(current)
+
+            val snapMap = _snapshots.value.toMutableMap()
+            snapMap.remove(acc.id)
+            _snapshots.value = snapMap
         }
     }
 
-    fun saveAccount(
+    fun updateAccount(account: CodexAccount) {
+        val current = _accounts.value.toMutableList()
+        val index = current.indexOfFirst { it.id == account.id }
+        if (index != -1) {
+            current[index] = account
+            _accounts.value = current
+            saveAccountListToStorage(current)
+
+            val currentSnap = _snapshots.value[account.id]
+            if (currentSnap != null) {
+                val updatedSnap = currentSnap.copy(accountAlias = account.displayTitle)
+                val newMap = _snapshots.value.toMutableMap()
+                newMap[account.id] = updatedSnap
+                _snapshots.value = newMap
+            }
+        }
+    }
+
+    fun updateAccountAlias(slot: Int, newAlias: String) {
+        val current = _accounts.value.getOrNull(slot) ?: return
+        val updated = current.copy(alias = newAlias)
+        updateAccount(updated)
+    }
+
+    fun saveAccountAtSlot(
         slot: Int,
         account: CodexAccount,
         refreshToken: String,
@@ -107,72 +211,52 @@ class CodexAccountRepository(
             val expiresAtMs = System.currentTimeMillis() + (expiresInSeconds * 1000)
             credentialStorage.saveAccessToken(account.id, accessToken, expiresAtMs)
         }
-        saveAccountToStorage(slot, account)
 
-        if (slot == 0) {
-            _accountA.value = account
-            _snapshotA.value = CodexUsageSnapshot.empty(account.id, account.displayTitle)
+        val current = _accounts.value.toMutableList()
+        if (slot in current.indices) {
+            current[slot] = account
         } else {
-            _accountB.value = account
-            _snapshotB.value = CodexUsageSnapshot.empty(account.id, account.displayTitle)
+            current.add(account)
         }
+        _accounts.value = current
+        saveAccountListToStorage(current)
+
+        val newMap = _snapshots.value.toMutableMap()
+        newMap[account.id] = CodexUsageSnapshot.empty(account.id, account.displayTitle)
+        _snapshots.value = newMap
     }
 
-    fun removeAccount(slot: Int) {
-        val account = if (slot == 0) _accountA.value else _accountB.value
-        if (account != null) {
-            credentialStorage.removeAccountCredentials(account.id)
-        }
-        saveAccountToStorage(slot, null)
-        if (slot == 0) {
-            _accountA.value = null
-            _snapshotA.value = null
-        } else {
-            _accountB.value = null
-            _snapshotB.value = null
-        }
+    fun saveAccount(
+        slot: Int,
+        account: CodexAccount,
+        refreshToken: String,
+        accessToken: String?,
+        expiresInSeconds: Long = 3600L
+    ) {
+        saveAccountAtSlot(slot, account, refreshToken, accessToken, expiresInSeconds)
     }
 
-    fun updateAccountAlias(slot: Int, newAlias: String) {
-        val current = (if (slot == 0) _accountA.value else _accountB.value) ?: return
-        val updated = current.copy(alias = newAlias)
-        saveAccountToStorage(slot, updated)
-        if (slot == 0) {
-            _accountA.value = updated
-            _snapshotA.value = _snapshotA.value?.copy(accountAlias = updated.displayTitle)
-        } else {
-            _accountB.value = updated
-            _snapshotB.value = _snapshotB.value?.copy(accountAlias = updated.displayTitle)
-        }
-    }
-
-    fun getProviderForSlot(slot: Int, isMockGlobal: Boolean): CodexUsageProvider {
-        val account = if (slot == 0) _accountA.value else _accountB.value
-        return if (isMockGlobal || account?.providerType == "MOCK") {
-            MockCodexProvider(slot)
+    private fun getProviderForAccount(account: CodexAccount, isMockGlobal: Boolean): CodexUsageProvider {
+        return if (isMockGlobal || account.providerType == "MOCK") {
+            MockCodexProvider(account.id.hashCode())
         } else {
             realProvider
         }
     }
 
-    suspend fun refreshSlot(slot: Int, isMockGlobal: Boolean = false) {
-        val mutex = if (slot == 0) mutexA else mutexB
+    suspend fun refreshAccount(accountId: String, isMockGlobal: Boolean = false) {
+        val mutex = getMutex(accountId)
         mutex.withLock {
-            val accountFlow = if (slot == 0) _accountA else _accountB
-            val snapshotFlow = if (slot == 0) _snapshotA else _snapshotB
-            val loadingFlow = if (slot == 0) _isLoadingA else _isLoadingB
-
-            val account = accountFlow.value
-            if (account == null) {
-                loadingFlow.value = false
+            val account = _accounts.value.firstOrNull { it.id == accountId } ?: return
+            if (!account.isConfigured && !isMockGlobal && account.providerType != "MOCK") {
                 return
             }
 
-            loadingFlow.value = true
-            val provider = getProviderForSlot(slot, isMockGlobal)
+            setLoading(accountId, true)
+            val provider = getProviderForAccount(account, isMockGlobal)
 
             try {
-                // 1. 获取有效 Access Token（优先从缓存取，若过期则使用 Refresh Token 刷新）
+                // 1. 获取有效 Access Token
                 var accessToken = credentialStorage.getAccessToken(account.id)
                 if (accessToken.isNullOrBlank()) {
                     val refreshToken = credentialStorage.getRefreshToken(account.id)
@@ -181,15 +265,14 @@ class CodexAccountRepository(
                             accountId = account.id,
                             alias = account.displayTitle,
                             status = CredentialStatus.NOT_LOGGED_IN,
-                            message = "未找到登录凭据，请重新登录",
-                            lastGood = snapshotFlow.value
+                            message = "未找到有效登录凭据，请重新授权",
+                            lastGood = _snapshots.value[account.id]
                         )
-                        snapshotFlow.value = failedSnap
-                        accountFlow.value = account.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN)
+                        putSnapshot(accountId, failedSnap)
+                        updateAccount(account.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN))
                         return
                     }
 
-                    // 刷新 Token
                     when (val refreshResult = provider.refreshToken(refreshToken)) {
                         is TokenResult.Success -> {
                             accessToken = refreshResult.accessToken
@@ -201,7 +284,7 @@ class CodexAccountRepository(
                             if (!refreshResult.refreshToken.isNullOrBlank()) {
                                 credentialStorage.saveRefreshToken(account.id, refreshResult.refreshToken)
                             }
-                            accountFlow.value = account.copy(credentialStatus = CredentialStatus.VALID)
+                            updateAccount(account.copy(credentialStatus = CredentialStatus.VALID))
                         }
                         is TokenResult.ExpiredOrInvalid -> {
                             val failedSnap = CodexUsageSnapshot.error(
@@ -209,28 +292,27 @@ class CodexAccountRepository(
                                 alias = account.displayTitle,
                                 status = CredentialStatus.EXPIRED,
                                 message = refreshResult.message,
-                                lastGood = null // 凭据永久失效，丢弃旧快照
+                                lastGood = null
                             )
-                            snapshotFlow.value = failedSnap
-                            accountFlow.value = account.copy(credentialStatus = CredentialStatus.EXPIRED)
+                            putSnapshot(accountId, failedSnap)
+                            updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
                             return
                         }
                         is TokenResult.TransientError -> {
-                            // 瞬时失败，保留上一次成功数据（Keep-Last-Good）
                             val failedSnap = CodexUsageSnapshot.error(
                                 accountId = account.id,
                                 alias = account.displayTitle,
                                 status = account.credentialStatus,
                                 message = refreshResult.message,
-                                lastGood = snapshotFlow.value
+                                lastGood = _snapshots.value[account.id]
                             )
-                            snapshotFlow.value = failedSnap
+                            putSnapshot(accountId, failedSnap)
                             return
                         }
                     }
                 }
 
-                // 2. 使用有效 Access Token 请求额度
+                // 2. 使用 Access Token 查询额度
                 val usageResult = provider.fetchUsage(
                     accountId = account.id,
                     accountAlias = account.displayTitle,
@@ -240,17 +322,14 @@ class CodexAccountRepository(
 
                 when (usageResult) {
                     is UsageFetchResult.Success -> {
-                        snapshotFlow.value = usageResult.snapshot
+                        putSnapshot(accountId, usageResult.snapshot)
                         val now = System.currentTimeMillis()
-                        val updated = account.copy(
+                        updateAccount(account.copy(
                             credentialStatus = CredentialStatus.VALID,
                             lastSyncTime = now
-                        )
-                        accountFlow.value = updated
-                        saveAccountToStorage(slot, updated)
+                        ))
                     }
                     is UsageFetchResult.AuthExpired -> {
-                        // Token 在使用端点被拒，清除 Access Token
                         credentialStorage.saveAccessToken(account.id, "", 0L)
                         val failedSnap = CodexUsageSnapshot.error(
                             accountId = account.id,
@@ -259,37 +338,40 @@ class CodexAccountRepository(
                             message = usageResult.message,
                             lastGood = null
                         )
-                        snapshotFlow.value = failedSnap
-                        val updated = account.copy(credentialStatus = CredentialStatus.EXPIRED)
-                        accountFlow.value = updated
-                        saveAccountToStorage(slot, updated)
+                        putSnapshot(accountId, failedSnap)
+                        updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
                     }
                     is UsageFetchResult.TransientError -> {
-                        // 保留上次成功数据
                         val failedSnap = CodexUsageSnapshot.error(
                             accountId = account.id,
                             alias = account.displayTitle,
                             status = account.credentialStatus,
                             message = usageResult.message,
-                            lastGood = snapshotFlow.value
+                            lastGood = _snapshots.value[account.id]
                         )
-                        snapshotFlow.value = failedSnap
+                        putSnapshot(accountId, failedSnap)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Slot $slot refresh error", e)
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.e(TAG, "Account $accountId refresh error", e)
                 val failedSnap = CodexUsageSnapshot.error(
                     accountId = account.id,
                     alias = account.displayTitle,
                     status = account.credentialStatus,
-                    message = "未知刷新异常: ${e.message}",
-                    lastGood = snapshotFlow.value
+                    message = "刷新异常: ${e.message}",
+                    lastGood = _snapshots.value[account.id]
                 )
-                snapshotFlow.value = failedSnap
+                putSnapshot(accountId, failedSnap)
             } finally {
-                loadingFlow.value = false
+                setLoading(accountId, false)
             }
         }
+    }
+
+    suspend fun refreshSlot(slot: Int, isMockGlobal: Boolean = false) {
+        val acc = _accounts.value.getOrNull(slot) ?: return
+        refreshAccount(acc.id, isMockGlobal)
     }
 
     suspend fun refreshAll(isMockGlobal: Boolean = false) {
@@ -297,12 +379,27 @@ class CodexAccountRepository(
         _isRefreshingAll.value = true
         try {
             coroutineScope {
-                launch { refreshSlot(0, isMockGlobal) }
-                launch { refreshSlot(1, isMockGlobal) }
+                _accounts.value.forEach { account ->
+                    launch {
+                        refreshAccount(account.id, isMockGlobal)
+                    }
+                }
             }
         } finally {
             _isRefreshingAll.value = false
         }
+    }
+
+    private fun putSnapshot(accountId: String, snapshot: CodexUsageSnapshot) {
+        val map = _snapshots.value.toMutableMap()
+        map[accountId] = snapshot
+        _snapshots.value = map
+    }
+
+    private fun setLoading(accountId: String, loading: Boolean) {
+        val map = _loadingMap.value.toMutableMap()
+        map[accountId] = loading
+        _loadingMap.value = map
     }
 
     companion object {

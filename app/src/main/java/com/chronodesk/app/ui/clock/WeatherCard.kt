@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Thunderstorm
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
@@ -33,23 +34,25 @@ import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.WeatherInfo
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
+import com.chronodesk.app.ui.theme.DarkSurfaceElevated
+import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
 
 @Composable
-fun WeatherCard(
+fun WeatherCapsule(
     weather: WeatherInfo,
     modifier: Modifier = Modifier,
     isNightMode: Boolean = false,
     onCardClick: () -> Unit = {}
 ) {
-    val cardBg = if (isNightMode) Color(0xFF0A0A0A) else DarkSurface
-    val cardBorder = if (isNightMode) Color(0xFF141414) else DarkBorder
-    val primaryText = if (isNightMode) Color(0xFF666666) else TextPrimary
-    val secondaryText = if (isNightMode) Color(0xFF444444) else TextSecondary
-    val iconColor = if (isNightMode) Color(0xFF555555) else TechCyan
+    val cardBg = if (isNightMode) Color(0x33101010) else DarkSurface.copy(alpha = 0.85f)
+    val cardBorder = if (isNightMode) Color(0x33222222) else DarkBorder
+    val primaryText = if (isNightMode) Color(0xFF777777) else TextPrimary
+    val secondaryText = if (isNightMode) Color(0xFF555555) else TextSecondary
+    val iconColor = if (isNightMode) Color(0xFF666666) else TechAmber
 
     val (_, iconType) = WeatherInfo.decodeWmoCode(weather.weatherCode)
     val weatherIcon: ImageVector = when (iconType) {
@@ -63,89 +66,114 @@ fun WeatherCard(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
             .clickable { onCardClick() }
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // 天气图标
             Icon(
                 imageVector = weatherIcon,
                 contentDescription = weather.weatherDescription,
                 tint = iconColor,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
 
-            Column {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        text = "${weather.temperature.toInt()}°C",
-                        color = primaryText,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+            // 温度与天气状况
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "${weather.temperature.toInt()}°C",
+                    color = primaryText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = weather.weatherDescription,
+                    color = secondaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // 城市标签
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isNightMode) Color(0x22333333) else DarkSurfaceElevated)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = TechCyan.copy(alpha = if (isNightMode) 0.4f else 0.85f),
+                    modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = weather.cityName,
+                    color = if (isNightMode) Color(0xFF666666) else TechCyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // 湿度 & 风速辅助指标
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.WaterDrop,
+                        contentDescription = null,
+                        tint = if (isNightMode) Color(0xFF444444) else TechCyan.copy(alpha = 0.7f),
+                        modifier = Modifier.size(11.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Text(
-                        text = weather.weatherDescription,
-                        color = secondaryText,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = weather.cityName,
-                        color = TechCyan.copy(alpha = if (isNightMode) 0.4f else 0.85f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        text = "${weather.humidity}%",
+                        color = if (isNightMode) Color(0xFF555555) else TextTertiary,
+                        fontSize = 11.sp
                     )
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "体感 ${weather.apparentTemperature.toInt()}°C",
-                            color = TextTertiary,
-                            fontSize = 11.sp
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.WaterDrop,
-                            contentDescription = null,
-                            tint = TextTertiary,
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "${weather.humidity}%",
-                            color = TextTertiary,
-                            fontSize = 11.sp
-                        )
-                    }
-                    if (weather.windSpeed > 0) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Air,
-                                contentDescription = null,
-                                tint = TextTertiary,
-                                modifier = Modifier.size(10.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "${weather.windSpeed}m/s",
-                                color = TextTertiary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Air,
+                        contentDescription = null,
+                        tint = if (isNightMode) Color(0xFF444444) else TextTertiary,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = "${weather.windSpeed}m/s",
+                        color = if (isNightMode) Color(0xFF555555) else TextTertiary,
+                        fontSize = 11.sp
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+fun WeatherCard(
+    weather: WeatherInfo,
+    modifier: Modifier = Modifier,
+    isNightMode: Boolean = false,
+    onCardClick: () -> Unit = {}
+) {
+    WeatherCapsule(
+        weather = weather,
+        modifier = modifier,
+        isNightMode = isNightMode,
+        onCardClick = onCardClick
+    )
 }

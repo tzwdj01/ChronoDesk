@@ -17,19 +17,27 @@ class DualAccountIsolationTest {
     @Test
     fun testTwoAccountsHaveIndependentIdsAndAliases() {
         val accountA = CodexAccount(
-            alias = "账号 A (Plus)",
+            alias = "工作账号",
             email = "user.a@example.com",
             credentialStatus = CredentialStatus.VALID
         )
         val accountB = CodexAccount(
-            alias = "账号 B (Pro)",
+            alias = "个人主账号",
             email = "user.b@work.com",
             credentialStatus = CredentialStatus.VALID
         )
 
         assertNotEquals("两个账号ID必须完全独立", accountA.id, accountB.id)
-        assertEquals("账号 A (Plus)", accountA.displayTitle)
-        assertEquals("账号 B (Pro)", accountB.displayTitle)
+        assertEquals("user.a@example.com", accountA.displayTitle)
+        assertEquals("user.b@work.com", accountB.displayTitle)
+
+        // 当无邮箱时回退至别名
+        val accountWithoutEmail = CodexAccount(
+            alias = "独立备用账号",
+            email = null,
+            credentialStatus = CredentialStatus.VALID
+        )
+        assertEquals("独立备用账号", accountWithoutEmail.displayTitle)
     }
 
     @Test

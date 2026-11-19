@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.security.JwtUtils
 import com.chronodesk.app.data.provider.DeviceCodeResult
 import com.chronodesk.app.data.provider.PollResult
 import com.chronodesk.app.data.provider.RealCodexUsageProvider
@@ -105,8 +106,11 @@ fun DeviceAuthDialog(
                             when (tokenRes) {
                                 is TokenResult.Success -> {
                                     statusText = "登录成功！"
+                                    val email = JwtUtils.extractEmail(tokenRes.idToken)
+                                        ?: JwtUtils.extractEmail(tokenRes.accessToken)
                                     val acc = CodexAccount(
-                                        alias = if (slot == 0) "账号 A" else "账号 B",
+                                        alias = email ?: (if (slot == 0) "主账号" else "辅助账号"),
+                                        email = email,
                                         credentialStatus = CredentialStatus.VALID,
                                         authenticatedAt = System.currentTimeMillis(),
                                         providerType = "OAUTH_DEVICE"

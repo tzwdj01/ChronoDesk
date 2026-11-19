@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,6 +49,7 @@ import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsDialog(
     currentSettings: ClockSettings,
@@ -56,20 +59,28 @@ fun SettingsDialog(
     var is24Hour by remember { mutableStateOf(currentSettings.is24Hour) }
     var showSeconds by remember { mutableStateOf(currentSettings.showSeconds) }
     var keepScreenOn by remember { mutableStateOf(currentSettings.keepScreenOn) }
+    var nightModeOption by remember { mutableStateOf(currentSettings.nightModeOption) }
     var autoNightDim by remember { mutableStateOf(currentSettings.autoNightDim) }
     var nightBrightness by remember { mutableFloatStateOf(currentSettings.nightBrightness) }
     var refreshInterval by remember { mutableIntStateOf(currentSettings.autoRefreshIntervalMinutes) }
+    var autoLocation by remember { mutableStateOf(currentSettings.autoLocation) }
     var selectedCity by remember { mutableStateOf(currentSettings.cityName) }
     var lat by remember { mutableStateOf(currentSettings.latitude) }
     var lng by remember { mutableStateOf(currentSettings.longitude) }
 
     val cityPresets = listOf(
+        Triple("深圳", 22.5431, 114.0579),
         Triple("北京", 39.9042, 116.4074),
         Triple("上海", 31.2304, 121.4737),
         Triple("广州", 23.1291, 113.2644),
-        Triple("深圳", 22.5431, 114.0579),
-        Triple("成都", 30.5728, 104.0668),
         Triple("杭州", 30.2741, 120.1551),
+        Triple("成都", 30.5728, 104.0668),
+        Triple("武汉", 30.5928, 114.3055),
+        Triple("西安", 34.3416, 108.9398),
+        Triple("南京", 32.0603, 118.7969),
+        Triple("重庆", 29.5630, 106.5516),
+        Triple("香港", 22.3193, 114.1694),
+        Triple("台北", 25.0330, 121.5654),
         Triple("东京", 35.6762, 139.6503),
         Triple("纽约", 40.7128, -74.0060)
     )
@@ -81,52 +92,59 @@ fun SettingsDialog(
                 .clip(RoundedCornerShape(16.dp))
                 .background(DarkSurface)
                 .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
-                .padding(20.dp)
+                .padding(18.dp)
         ) {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = "时钟与系统设置",
+                    text = "系统与显示设置",
                     color = TextPrimary,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
 
-                // 24小时制
-                SettingToggleItem(
-                    title = "24小时制",
-                    subtitle = "关闭则采用12小时制",
-                    checked = is24Hour,
-                    onCheckedChange = { is24Hour = it }
-                )
+                // 1. 日夜模式选择
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "显示与日夜模式",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "AUTO" to "自动 (22:00-07:00)",
+                            "FORCE_DAY" to "强制日间",
+                            "FORCE_NIGHT" to "强制夜间"
+                        ).forEach { (opt, label) ->
+                            val isSel = nightModeOption == opt
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) TechCyan else DarkSurfaceElevated)
+                                    .clickable { nightModeOption = opt }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSel) Color.Black else TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
 
-                // 显示秒钟
-                SettingToggleItem(
-                    title = "显示秒钟",
-                    subtitle = "主时钟右侧显示秒钟计数",
-                    checked = showSeconds,
-                    onCheckedChange = { showSeconds = it }
-                )
-
-                // 屏幕常亮
-                SettingToggleItem(
-                    title = "保持屏幕常亮",
-                    subtitle = "放置桌面时不自动休眠息屏",
-                    checked = keepScreenOn,
-                    onCheckedChange = { keepScreenOn = it }
-                )
-
-                // 夜间自动调暗
-                SettingToggleItem(
-                    title = "夜间自动暗光模式",
-                    subtitle = "22:00 至次日 07:00 自动调低窗口亮度并纯黑背景",
-                    checked = autoNightDim,
-                    onCheckedChange = { autoNightDim = it }
-                )
-
-                if (autoNightDim) {
+                // 夜间窗口暗度
+                if (nightModeOption != "FORCE_DAY") {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -135,7 +153,7 @@ fun SettingsDialog(
                             .padding(10.dp)
                     ) {
                         Text(
-                            text = "夜间窗口亮度: ${(nightBrightness * 100).toInt()}%",
+                            text = "夜间窗口暗度: ${(nightBrightness * 100).toInt()}% (超暗省电且防刺眼)",
                             color = TextSecondary,
                             fontSize = 11.sp
                         )
@@ -152,13 +170,35 @@ fun SettingsDialog(
                     }
                 }
 
-                // 额度自动刷新间隔
+                // 2. 时钟设置
+                SettingToggleItem(
+                    title = "24小时制",
+                    subtitle = "关闭则采用 12 小时制",
+                    checked = is24Hour,
+                    onCheckedChange = { is24Hour = it }
+                )
+
+                SettingToggleItem(
+                    title = "显示秒钟",
+                    subtitle = "主时钟右侧显示秒钟计数",
+                    checked = showSeconds,
+                    onCheckedChange = { showSeconds = it }
+                )
+
+                SettingToggleItem(
+                    title = "保持屏幕常亮",
+                    subtitle = "桌面放置时不自动熄屏 (FLAG_KEEP_SCREEN_ON)",
+                    checked = keepScreenOn,
+                    onCheckedChange = { keepScreenOn = it }
+                )
+
+                // 3. 额度自动刷新间隔
                 Column {
                     Text(
-                        text = "额度自动刷新间隔",
+                        text = "Codex 额度自动刷新频率",
                         color = TextPrimary,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -173,11 +213,11 @@ fun SettingsDialog(
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (isSelected) TechCyan else DarkSurfaceElevated)
                                     .clickable { refreshInterval = mins }
-                                    .padding(vertical = 6.dp),
+                                    .padding(vertical = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "${mins}分",
+                                    text = "${mins}分钟",
                                     color = if (isSelected) Color.Black else TextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
@@ -187,24 +227,40 @@ fun SettingsDialog(
                     }
                 }
 
-                // 城市选择
+                // 4. 天气与城市设置
                 Column {
                     Text(
-                        text = "当前天气城市",
+                        text = "天气与城市位置 (Open-Meteo 开放接口)",
                         color = TextPrimary,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Row(
+
+                    SettingToggleItem(
+                        title = "自动定位匹配",
+                        subtitle = "依据设备 GPS 或网络自动获取所在城市",
+                        checked = autoLocation,
+                        onCheckedChange = { autoLocation = it }
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "手动选择常驻城市：",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        cityPresets.take(4).forEach { (name, cLat, cLng) ->
+                        cityPresets.forEach { (name, cLat, cLng) ->
                             val isSel = selectedCity == name
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (isSel) TechCyan.copy(alpha = 0.2f) else DarkSurfaceElevated)
                                     .border(1.dp, if (isSel) TechCyan else Color.Transparent, RoundedCornerShape(6.dp))
@@ -212,14 +268,15 @@ fun SettingsDialog(
                                         selectedCity = name
                                         lat = cLat
                                         lng = cLng
+                                        autoLocation = false
                                     }
-                                    .padding(vertical = 6.dp),
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = name,
                                     color = if (isSel) TechCyan else TextSecondary,
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
@@ -227,6 +284,7 @@ fun SettingsDialog(
                     }
                 }
 
+                // 底部操作按钮
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -245,9 +303,11 @@ fun SettingsDialog(
                                 is24Hour = is24Hour,
                                 showSeconds = showSeconds,
                                 keepScreenOn = keepScreenOn,
+                                nightModeOption = nightModeOption,
                                 autoNightDim = autoNightDim,
                                 nightBrightness = nightBrightness,
                                 autoRefreshIntervalMinutes = refreshInterval,
+                                autoLocation = autoLocation,
                                 cityName = selectedCity,
                                 latitude = lat,
                                 longitude = lng

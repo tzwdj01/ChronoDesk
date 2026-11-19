@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.security.JwtUtils
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -46,7 +47,7 @@ fun DirectTokenDialog(
     onDismiss: () -> Unit,
     onSave: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit
 ) {
-    var alias by remember { mutableStateOf(currentAccount?.alias ?: if (slot == 0) "账号 A" else "账号 B") }
+    var alias by remember { mutableStateOf(currentAccount?.email ?: currentAccount?.alias ?: "") }
     var accessToken by remember { mutableStateOf("") }
     var refreshToken by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -149,8 +150,11 @@ fun DirectTokenDialog(
                                 errorMessage = "Access Token 与 Refresh Token 不能同时为空"
                                 return@Button
                             }
-                            val acc = (currentAccount ?: CodexAccount(alias = alias)).copy(
-                                alias = alias,
+                            val detectedEmail = JwtUtils.extractEmail(accessToken) ?: JwtUtils.extractEmail(refreshToken)
+                            val finalAlias = alias.trim().ifEmpty { detectedEmail ?: "Codex 账号" }
+                            val acc = (currentAccount ?: CodexAccount(alias = finalAlias)).copy(
+                                alias = finalAlias,
+                                email = detectedEmail ?: currentAccount?.email,
                                 credentialStatus = CredentialStatus.VALID,
                                 authenticatedAt = System.currentTimeMillis(),
                                 providerType = "DIRECT_TOKEN"

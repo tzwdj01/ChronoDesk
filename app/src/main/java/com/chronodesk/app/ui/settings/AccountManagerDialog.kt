@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Devices
@@ -71,7 +73,7 @@ fun AccountManagerDialog(
 
     var showDeviceAuthDialog by remember { mutableStateOf(false) }
     var showDirectTokenDialog by remember { mutableStateOf(false) }
-    var aliasEdit by remember { mutableStateOf(currentAccount?.alias ?: if (selectedSlot == 0) "账号 A" else "账号 B") }
+    var aliasEdit by remember { mutableStateOf(currentAccount?.displayTitle ?: if (selectedSlot == 0) "账号 1" else "账号 2") }
 
     if (showDeviceAuthDialog) {
         DeviceAuthDialog(
@@ -105,11 +107,14 @@ fun AccountManagerDialog(
                 .clip(RoundedCornerShape(16.dp))
                 .background(DarkSurface)
                 .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
-                .padding(20.dp)
+                .padding(18.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    text = "账号与凭据管理",
+                    text = "ChatGPT / Codex 账号管理",
                     color = TextPrimary,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -132,12 +137,12 @@ fun AccountManagerDialog(
                         selected = selectedSlot == 0,
                         onClick = {
                             selectedSlot = 0
-                            aliasEdit = accountA?.alias ?: "账号 A"
+                            aliasEdit = accountA?.displayTitle ?: "账号 1"
                         },
                         text = {
                             Text(
-                                text = "账号 A ${if (accountA != null) "✓" else ""}",
-                                fontSize = 13.sp,
+                                text = (accountA?.displayTitle ?: "账号 1").take(12),
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -146,12 +151,12 @@ fun AccountManagerDialog(
                         selected = selectedSlot == 1,
                         onClick = {
                             selectedSlot = 1
-                            aliasEdit = accountB?.alias ?: "账号 B"
+                            aliasEdit = accountB?.displayTitle ?: "账号 2"
                         },
                         text = {
                             Text(
-                                text = "账号 B ${if (accountB != null) "✓" else ""}",
-                                fontSize = 13.sp,
+                                text = (accountB?.displayTitle ?: "账号 2").take(12),
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
