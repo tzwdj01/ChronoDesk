@@ -334,20 +334,18 @@ fun ClockScreen(
                                         fontWeight = FontWeight.Medium
                                     )
 
-                                    if (!isNightMode) {
-                                        Text(
-                                            text = "·",
-                                            color = InkTextTertiary,
-                                            fontSize = 14.sp
-                                        )
-                                    }
+                                    Text(
+                                        text = "·",
+                                        color = if (isNightMode) TextTertiary else InkTextTertiary,
+                                        fontSize = 14.sp
+                                    )
 
                                     // 星期 (如: 星期四)
                                     Text(
                                         text = timeState.dayOfWeek,
                                         color = if (isNightMode) TechCyan else InkTextPrimary,
                                         fontSize = if (isCompactHeight) 14.sp else 16.5.sp,
-                                        fontWeight = if (isNightMode) FontWeight.SemiBold else FontWeight.Medium
+                                        fontWeight = FontWeight.Medium
                                     )
 
                                     Text(
@@ -548,23 +546,6 @@ private fun ClockTopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (isNightMode) {
-                Box(
-                    modifier = Modifier
-                        .size(15.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(TechCyan.copy(alpha = 0.15f))
-                        .border(1.dp, TechCyan, RoundedCornerShape(3.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(5.dp)
-                            .background(TechCyan, CircleShape)
-                    )
-                }
-            }
-
             Text(
                 text = "CODEX 额度监控",
                 color = primaryText,
@@ -580,7 +561,7 @@ private fun ClockTopBar(
             )
 
             Text(
-                text = if (isNightMode) "AI 账号 · 配额 · 使用监控" else "AI 额度 · 时钟 · 提醒 · 同步",
+                text = "AI 账号 · 配额 · 使用监控",
                 color = secondaryText,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Normal
@@ -592,7 +573,7 @@ private fun ClockTopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 账号管理 / 添加账号按钮
+            // 账号管理按钮
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(7.dp))
@@ -610,7 +591,7 @@ private fun ClockTopBar(
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = if (isNightMode) "添加账号" else "账号管理 ($accountCount)",
+                        text = "账号管理 ($accountCount)",
                         color = buttonText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
@@ -669,7 +650,7 @@ private fun ClockTopBar(
                     .background(buttonBg)
                     .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
                     .clickable { onOpenSettings() }
-                    .padding(horizontal = if (isNightMode) 8.dp else 10.dp, vertical = 4.5.dp)
+                    .padding(horizontal = 10.dp, vertical = 4.5.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -678,15 +659,13 @@ private fun ClockTopBar(
                         tint = buttonText,
                         modifier = Modifier.size(12.dp)
                     )
-                    if (!isNightMode) {
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "设置",
-                            color = buttonText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "设置",
+                        color = buttonText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
