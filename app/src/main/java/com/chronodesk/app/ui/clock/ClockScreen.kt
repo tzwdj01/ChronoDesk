@@ -531,43 +531,14 @@ private fun ClockTopBar(
     val buttonBg = if (isNightMode) DarkSurface else InkSurface
     val buttonBorder = if (isNightMode) DarkBorder else InkBorder
     val buttonText = if (isNightMode) TextPrimary else InkTextPrimary
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextTertiary else InkTextSecondary
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧标题与副标题
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "CODEX 额度监控",
-                color = primaryText,
-                fontSize = 14.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.8.sp
-            )
-
-            Text(
-                text = "｜",
-                color = if (isNightMode) DarkBorder else InkBorder,
-                fontSize = 12.sp
-            )
-
-            Text(
-                text = "AI 账号 · 配额 · 使用监控",
-                color = secondaryText,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal
-            )
-        }
-
         // 右侧操作按钮组
         Row(
             verticalAlignment = Alignment.CenterVertically,

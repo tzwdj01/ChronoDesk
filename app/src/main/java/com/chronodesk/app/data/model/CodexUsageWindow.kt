@@ -36,7 +36,7 @@ data class CodexUsageWindow(
      * 格式化具体重置时间，如 "18:45"
      */
     fun formattedResetTime(): String {
-        if (resetAtUnix == null || usedPercent <= 0.0) return "--:--"
+        if (resetAtUnix == null) return "--:--"
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
         return sdf.format(Date(resetAtUnix * 1000))
     }
@@ -61,8 +61,7 @@ data class CodexUsageWindow(
             val used = usedPercent.coerceIn(0.0, 100.0)
             val remaining = (100.0 - used).coerceIn(0.0, 100.0)
 
-            // 参考 CC Switch: 已用额度为 0 时，上游可能返回虚假时间戳，予以屏蔽
-            val effectiveResetUnix = if (used <= 0.0) null else resetAtUnix
+            val effectiveResetUnix = resetAtUnix
 
             val (name, label) = when (secs) {
                 18000L -> "five_hour" to "5小时额度"

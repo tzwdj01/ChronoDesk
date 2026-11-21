@@ -368,14 +368,17 @@ private fun SingleAccountQuotaItem(
                     fontSize = if (isCompact) 11.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(if (isCompact) 56.dp else 68.dp)
                 )
                 val plan = snapshot?.planName?.ifBlank { "Plus" } ?: "Plus"
                 Box(
                     modifier = Modifier
+                        .width(if (isCompact) 30.dp else 34.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                        .padding(vertical = 1.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = plan,
@@ -483,15 +486,27 @@ private fun SingleAccountQuotaItem(
                     trackColor = trackColor
                 )
             }
+            val fiveHourResetText = when {
+                primaryWindow?.resetAtUnix != null -> {
+                    val resetTime = primaryWindow.formattedResetTime()
+                    "剩余 ${primaryPercent.toInt()}% · $resetTime 重置"
+                }
+                primaryWindow != null -> {
+                    if (primaryPercent >= 100.0) "剩余 100% · 额度已就绪"
+                    else "剩余 ${primaryPercent.toInt()}% · 额度充足"
+                }
+                isLoading -> "同步中..."
+                else -> "剩余 0% · 待同步"
+            }
             Text(
-                text = if (primaryWindow != null) "剩余 ${primaryPercent.toInt()}% · 重置 $primaryCountdown" else if (isLoading) "同步中..." else "剩余 0% · 待同步",
+                text = fiveHourResetText,
                 color = if (isPrimaryExhausted && isNightMode) TechRose else mutedText,
                 fontSize = if (isCompact) 8.5.sp else 9.sp,
                 maxLines = 1
             )
         }
 
-        // 周额度行 (对齐起始位置与 100% 进度条长度，展示精确到期时间)
+        // 周额度行 (对齐起始位置与 100% 进度条长度，展示精确到期/重置时间)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -517,14 +532,21 @@ private fun SingleAccountQuotaItem(
                     trackColor = trackColor
                 )
             }
-            val weekResetText = if (secondaryWindow?.resetAtUnix != null) {
-                "剩余 ${secondaryPercent.toInt()}% · ${secondaryWindow.formattedFullDateTime()} 到期"
-            } else if (secondaryWindow != null) {
-                "剩余 ${secondaryPercent.toInt()}% · 重置 $secondaryCountdown"
-            } else if (isLoading) {
-                "同步中..."
-            } else {
-                "剩余 0% · 待同步"
+            val weekResetText = when {
+                secondaryWindow?.resetAtUnix != null -> {
+                    val fullDate = secondaryWindow.formattedFullDateTime()
+                    if (secondaryPercent <= 0.0 || isLimitReached) {
+                        "剩余 0% · $fullDate 到期"
+                    } else {
+                        "剩余 ${secondaryPercent.toInt()}% · $fullDate 重置"
+                    }
+                }
+                secondaryWindow != null -> {
+                    if (secondaryPercent >= 100.0) "剩余 100% · 额度已就绪"
+                    else "剩余 ${secondaryPercent.toInt()}% · 额度充足"
+                }
+                isLoading -> "同步中..."
+                else -> "剩余 0% · 待同步"
             }
             Text(
                 text = weekResetText,
