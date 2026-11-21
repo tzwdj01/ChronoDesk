@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CredentialStatus
 import com.chronodesk.app.ui.theme.DarkBorder
@@ -66,17 +69,45 @@ import com.chronodesk.app.ui.theme.TextTertiary
 @Composable
 fun AccountManagerDialog(
     initialSlot: Int = 0,
+    initialAccountId: String? = null,
     accountA: CodexAccount?,
     accountB: CodexAccount?,
-    currentDeepSeekApiKey: String? = null,
+    deepSeekAccounts: List<CodexAccount> = emptyList(),
+    getDeepSeekApiKey: (accountId: String) -> String? = { null },
     onDismiss: () -> Unit,
     onSaveAccount: (slot: Int, account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit,
     onRemoveAccount: (slot: Int) -> Unit,
     onUpdateAlias: (slot: Int, newAlias: String) -> Unit,
+    onSaveDeepSeekAccount: (accountId: String, apiKey: String, alias: String) -> Unit = { _, _, _ -> },
+    onAddDeepSeekAccount: () -> CodexAccount? = { null },
+    onRemoveDeepSeekAccount: (accountId: String) -> Unit = {},
+    currentDeepSeekApiKey: String? = null,
     onSaveDeepSeekApiKey: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(initialSlot.coerceIn(0, 2)) }
+    var localDeepSeekAccounts by remember(deepSeekAccounts) {
+        mutableStateOf(
+            if (deepSeekAccounts.isNotEmpty()) deepSeekAccounts
+            else listOf(CodexAccount(id = "acc_deepseek", alias = "DeepSeek", modelProvider = "DEEPSEEK"))
+        )
+    }
+
+    val defaultTab = remember {
+        if (initialAccountId != null) {
+            val dsIdx = localDeepSeekAccounts.indexOfFirst { it.id == initialAccountId }
+            if (dsIdx != -1) {
+                2 + dsIdx
+            } else if (accountB?.id == initialAccountId) {
+                1
+            } else {
+                0
+            }
+        } else {
+            initialSlot.coerceAtLeast(0)
+        }
+    }
+    var selectedTab by remember { mutableIntStateOf(defaultTab) }
+
     val currentAccount = when (selectedTab) {
         0 -> accountA
         1 -> accountB
@@ -92,7 +123,6 @@ fun AccountManagerDialog(
             } else ""
         )
     }
-    var deepSeekKeyInput by remember { mutableStateOf(currentDeepSeekApiKey ?: "") }
 
     if (showDeviceAuthDialog) {
         DeviceAuthDialog(
@@ -119,18 +149,22 @@ fun AccountManagerDialog(
         return
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .widthIn(min = 540.dp, max = 660.dp)
+                .fillMaxWidth(0.58f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(DarkSurface)
                 .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
-                .padding(18.dp)
+                .padding(16.dp)
         ) {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = "AI 平台账号与接口管理",
@@ -139,14 +173,17 @@ fun AccountManagerDialog(
                     fontWeight = FontWeight.Bold
                 )
 
-                // 平台与槽位切换 Tab (ChatGPT 1, ChatGPT 2, DeepSeek)
-                TabRow(
-                    selectedTabIndex = selectedTab,
+                // 平台与槽位切换 Tab (ChatGPT 1, ChatGPT 2, DeepSeek 1, DeepSeek 2...)
+                val totalTabs = 2 + localDeepSeekAccounts.size + (if (localDeepSeekAccounts.size < 4) 1 else 0)
+                ScrollableTabRow(
+                    selectedTabIndex = selectedTab.coerceIn(0, totalTabs - 1),
                     containerColor = DarkSurfaceElevated,
                     contentColor = TechCyan,
+                    edgePadding = 0.dp,
                     indicator = { tabPositions ->
+                        val safeIdx = selectedTab.coerceIn(0, tabPositions.lastIndex)
                         TabRowDefaults.SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            Modifier.tabIndicatorOffset(tabPositions[safeIdx]),
                             color = TechCyan
                         )
                     },
@@ -156,12 +193,12 @@ fun AccountManagerDialog(
                         selected = selectedTab == 0,
                         onClick = {
                             selectedTab = 0
-                            aliasEdit = accountA?.email ?: accountA?.displayTitle ?: "alex19900223@gmail.com"
+                            aliasEdit = accountA?.alias?.takeIf { it != accountA.email } ?: ""
                         },
                         text = {
                             Text(
                                 text = "ChatGPT ①",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -170,27 +207,60 @@ fun AccountManagerDialog(
                         selected = selectedTab == 1,
                         onClick = {
                             selectedTab = 1
-                            aliasEdit = accountB?.email ?: accountB?.displayTitle ?: "wangxinyu297@jd.com"
+                            aliasEdit = accountB?.alias?.takeIf { it != accountB.email } ?: ""
                         },
                         text = {
                             Text(
                                 text = "ChatGPT ②",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
                     )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = {
-                            Text(
-                                text = "DeepSeek",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                    val circleSymbols = listOf("①", "②", "③", "④", "⑤")
+                    localDeepSeekAccounts.forEachIndexed { idx, dsAcc ->
+                        val tabIdx = 2 + idx
+                        val defaultLabel = "DeepSeek ${circleSymbols.getOrElse(idx) { "${idx + 1}" }}"
+                        val tabLabel = if (localDeepSeekAccounts.size == 1) {
+                            if (dsAcc.alias.isNotBlank() && dsAcc.alias != "DeepSeek") dsAcc.alias.take(8) else "DeepSeek"
+                        } else if (dsAcc.alias.isNotBlank() && !dsAcc.alias.startsWith("DeepSeek")) {
+                            dsAcc.alias.take(8)
+                        } else {
+                            defaultLabel
                         }
-                    )
+                        Tab(
+                            selected = selectedTab == tabIdx,
+                            onClick = { selectedTab = tabIdx },
+                            text = {
+                                Text(
+                                    text = tabLabel,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        )
+                    }
+                    if (localDeepSeekAccounts.size < 4) {
+                        Tab(
+                            selected = false,
+                            onClick = {
+                                val added = onAddDeepSeekAccount()
+                                if (added != null) {
+                                    localDeepSeekAccounts = localDeepSeekAccounts + added
+                                    selectedTab = 2 + localDeepSeekAccounts.lastIndex
+                                    Toast.makeText(context, "已新增 DeepSeek 账号卡槽", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            text = {
+                                Text(
+                                    text = "+ 新增账号",
+                                    fontSize = 11.5.sp,
+                                    color = TechCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        )
+                    }
                 }
 
                 if (selectedTab < 2) {
@@ -322,7 +392,17 @@ fun AccountManagerDialog(
                         }
                     }
                 } else {
-                    // ================= DeepSeek 官方接口配置面板 =================
+                    // ================= DeepSeek 官方接口配置面板 (支持多账号独立配置与自定义别名) =================
+                    val curDsIndex = (selectedTab - 2).coerceIn(0, localDeepSeekAccounts.lastIndex)
+                    val curDsAcc = localDeepSeekAccounts[curDsIndex]
+
+                    var curDsKeyInput by remember(curDsAcc.id) {
+                        mutableStateOf(getDeepSeekApiKey(curDsAcc.id) ?: (if (curDsIndex == 0) currentDeepSeekApiKey ?: "" else ""))
+                    }
+                    var curDsAliasInput by remember(curDsAcc.id, curDsAcc.alias) {
+                        mutableStateOf(if (curDsAcc.alias != "DeepSeek" && !curDsAcc.alias.startsWith("DeepSeek ")) curDsAcc.alias else "")
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -331,23 +411,56 @@ fun AccountManagerDialog(
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "DeepSeek 官方 API 配置",
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val isDsConfigured = curDsAcc.credentialStatus == CredentialStatus.VALID && curDsKeyInput.isNotBlank()
+                            val (stColor, stText) = when {
+                                isDsConfigured -> TechEmerald to "已配置 / 正常在线"
+                                curDsAcc.credentialStatus == CredentialStatus.EXPIRED -> TechRose to "Key失效"
+                                else -> TextTertiary to "未配置"
+                            }
+                            Text(text = stText, color = stColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
                         Text(
-                            text = "DeepSeek 官方 API 配置",
-                            color = TextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "直接填入 DeepSeek API Key (sk-...)，时钟将直连官方 /user/balance 接口查询账户真实余额与用量明细。",
+                            text = "直连官方 /user/balance 接口实时查询真实余额与明细。支持多个不同 API Key 独立展示与命名。",
                             color = TextSecondary,
                             fontSize = 11.sp,
-                            lineHeight = 16.sp
+                            lineHeight = 15.sp
                         )
 
+                        // 1. 自定义账号名称 (参考 ChatGPT 方式)
                         OutlinedTextField(
-                            value = deepSeekKeyInput,
-                            onValueChange = { deepSeekKeyInput = it },
-                            label = { Text("DeepSeek API Key", fontSize = 11.sp) },
+                            value = curDsAliasInput,
+                            onValueChange = { curDsAliasInput = it },
+                            label = { Text("自定义账号名称 / 备注 (留空显示 DeepSeek)", fontSize = 11.sp) },
+                            placeholder = { Text("例如：主力开发、测试账号、个人号", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = DarkSurface,
+                                unfocusedContainerColor = DarkSurface,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedIndicatorColor = TechCyan,
+                                unfocusedIndicatorColor = DarkBorder
+                            )
+                        )
+
+                        // 2. API Key 输入框
+                        OutlinedTextField(
+                            value = curDsKeyInput,
+                            onValueChange = { curDsKeyInput = it },
+                            label = { Text("DeepSeek API Key (sk-...)", fontSize = 11.sp) },
                             placeholder = { Text("sk-xxxxxxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -361,21 +474,46 @@ fun AccountManagerDialog(
                             )
                         )
 
-                        Button(
-                            onClick = {
-                                onSaveDeepSeekApiKey(deepSeekKeyInput.trim())
-                                onDismiss()
-                            },
+                        // 3. 操作按钮组
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = TechEmerald,
-                                contentColor = Color.Black
-                            )
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "保存并立即验证 DeepSeek 余额", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = {
+                                    val aliasToSave = curDsAliasInput.trim()
+                                    onSaveDeepSeekAccount(curDsAcc.id, curDsKeyInput.trim(), aliasToSave)
+                                    val label = aliasToSave.ifBlank { "DeepSeek" }
+                                    Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TechEmerald,
+                                    contentColor = Color.Black
+                                )
+                            ) {
+                                Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(text = "保存并立即验证余额", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            if (localDeepSeekAccounts.size > 1) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onRemoveDeepSeekAccount(curDsAcc.id)
+                                        Toast.makeText(context, "已删除该 DeepSeek 账号", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TechRose)
+                                ) {
+                                    Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(text = "删除", fontSize = 12.sp)
+                                }
+                            }
                         }
                     }
                 }

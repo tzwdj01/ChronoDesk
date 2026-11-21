@@ -131,12 +131,18 @@ fun ClockScreen(
 
     selectedAccountToManage?.let { account ->
         val chatGptAccs = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
-        val slotIdx = if (account.modelProvider == "DEEPSEEK") 2 else if (chatGptAccs.indexOfFirst { it.id == account.id } == 1) 1 else 0
+        val deepSeekAccs = accounts.filter { it.modelProvider == "DEEPSEEK" }
+        val slotIdx = if (account.modelProvider == "DEEPSEEK") {
+            2 + deepSeekAccs.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
+        } else if (chatGptAccs.indexOfFirst { it.id == account.id } == 1) 1 else 0
+
         AccountManagerDialog(
             initialSlot = slotIdx,
+            initialAccountId = account.id,
             accountA = chatGptAccs.getOrNull(0),
             accountB = chatGptAccs.getOrNull(1),
-            currentDeepSeekApiKey = viewModel.getDeepSeekApiKey(),
+            deepSeekAccounts = deepSeekAccs,
+            getDeepSeekApiKey = { id -> viewModel.getDeepSeekApiKey(id) },
             onDismiss = { selectedAccountToManage = null },
             onSaveAccount = { slot, acc, ref, accTok ->
                 viewModel.saveAccount(slot, acc, ref, accTok)
@@ -154,6 +160,18 @@ fun ClockScreen(
                     viewModel.updateAccountAlias(slot, alias)
                 }
             },
+            onSaveDeepSeekAccount = { accId, key, alias ->
+                viewModel.saveDeepSeekAccount(accId, key, alias)
+                selectedAccountToManage = null
+            },
+            onAddDeepSeekAccount = {
+                viewModel.addDeepSeekAccount()
+            },
+            onRemoveDeepSeekAccount = { accId ->
+                viewModel.removeDeepSeekAccount(accId)
+                selectedAccountToManage = null
+            },
+            currentDeepSeekApiKey = viewModel.getDeepSeekApiKey(),
             onSaveDeepSeekApiKey = { key ->
                 viewModel.saveDeepSeekApiKey(key)
                 selectedAccountToManage = null
@@ -380,9 +398,16 @@ fun ClockScreen(
                                     cardDensity = settings.quotaCardDensity,
                                     onAddAccount = { viewModel.addAccount() },
                                     onRefreshAccount = { id -> viewModel.refreshAccount(id) },
-                                    onDeleteAccount = { id -> viewModel.removeAccountById(id) },
+                                    onDeleteAccount = { id ->
+                                        val acc = accounts.find { it.id == id }
+                                        if (acc?.modelProvider == "DEEPSEEK") {
+                                            viewModel.removeDeepSeekAccount(id)
+                                        } else {
+                                            viewModel.removeAccountById(id)
+                                        }
+                                    },
                                     onAccountClick = { acc ->
-                                        if (!acc.isConfigured) {
+                                        if (!acc.isConfigured && acc.modelProvider == "CHATGPT") {
                                             showDeviceAuthDialogForAccount = acc
                                         } else {
                                             selectedAccountToManage = acc

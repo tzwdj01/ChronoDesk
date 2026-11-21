@@ -98,7 +98,7 @@ fun MultiAccountQuotaSection(
     onSettingsClick: () -> Unit = {}
 ) {
     val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
-    val deepSeekAccount = accounts.firstOrNull { it.modelProvider == "DEEPSEEK" }
+    val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" }
 
     val spacing = when (cardDensity) {
         "COMPACT" -> if (isCompact) 5.dp else 6.5.dp
@@ -124,17 +124,18 @@ fun MultiAccountQuotaSection(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // 2. 同一订阅商：DeepSeek 专属大框
-        if (deepSeekAccount != null) {
+        // 2. 同一订阅商：DeepSeek 专属大框（支持多账号独立显示金额与自定义别名）
+        if (deepSeekAccounts.isNotEmpty()) {
             DeepSeekUnifiedSubscriptionBox(
-                account = deepSeekAccount,
-                snapshot = snapshots[deepSeekAccount.id],
-                isLoading = loadingMap[deepSeekAccount.id] == true,
+                accounts = deepSeekAccounts,
+                snapshots = snapshots,
+                loadingMap = loadingMap,
                 isNightMode = isNightMode,
                 areControlsVisible = areControlsVisible,
                 isCompact = isCompact,
-                onAccountClick = { onAccountClick(deepSeekAccount) },
-                onRefreshClick = { onRefreshAccount(deepSeekAccount.id) },
+                onAccountClick = onAccountClick,
+                onRefreshAccount = onRefreshAccount,
+                onDeleteAccount = onDeleteAccount,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -536,41 +537,34 @@ private fun SingleAccountQuotaItem(
 }
 
 /**
- * DeepSeek 专属大框（严格直连官方 /user/balance 接口展示真实余额与状态，杜绝任何假数据）
+ * DeepSeek 专属大框（严格直连官方 /user/balance 接口展示真实余额与状态，支持多账号与自定义账号名称）
  */
 @Composable
 fun DeepSeekUnifiedSubscriptionBox(
-    account: CodexAccount,
-    snapshot: CodexUsageSnapshot?,
-    isLoading: Boolean,
+    accounts: List<CodexAccount>,
+    snapshots: Map<String, CodexUsageSnapshot>,
+    loadingMap: Map<String, Boolean>,
     modifier: Modifier = Modifier,
     isNightMode: Boolean = false,
     areControlsVisible: Boolean = true,
     isCompact: Boolean = false,
-    onAccountClick: () -> Unit = {},
-    onRefreshClick: () -> Unit = {}
+    onAccountClick: (CodexAccount) -> Unit = {},
+    onRefreshAccount: (String) -> Unit = {},
+    onDeleteAccount: (String) -> Unit = {}
 ) {
     val cardBg = if (isNightMode) DarkSurface else InkSurface
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
-
-    val isConfigured = snapshot?.creditsBalance != null && snapshot.credentialStatus != CredentialStatus.NOT_LOGGED_IN
-    val isAvailable = snapshot?.isAvailable ?: true
-    val balance = snapshot?.creditsBalance ?: 0.0
-    val hasFunds = isConfigured && isAvailable && balance > 0.0
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
-            .clickable { onAccountClick() }
             .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 7.dp else 8.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
-            // 大框头部：官方 DeepSeek Logo + DeepSeek 名称 + 状态标签
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.5.dp else 6.dp)) {
+            // 大框头部：官方 DeepSeek Logo + DeepSeek 名称 + 账号数状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -593,35 +587,8 @@ fun DeepSeekUnifiedSubscriptionBox(
                     )
                 }
 
-                // 状态徽标：真实反应配置与可用状态
-                val (statusText, statusColor, statusBg) = when {
-                    isLoading -> Triple(
-                        "同步中",
-                        if (isNightMode) TechCyan else InkProgress,
-                        if (isNightMode) TechCyan.copy(alpha = 0.12f) else InkStatusTagBg
-                    )
-                    !isConfigured -> Triple(
-                        "未配置",
-                        mutedText,
-                        if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
-                    )
-                    snapshot?.credentialStatus == CredentialStatus.EXPIRED || snapshot?.errorMessage != null -> Triple(
-                        "Key失效",
-                        if (isNightMode) TechRose else InkWarningRed,
-                        (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
-                    )
-                    !hasFunds -> Triple(
-                        "无可用余额",
-                        if (isNightMode) TechRose else InkWarningRed,
-                        (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
-                    )
-                    else -> Triple(
-                        "正常",
-                        if (isNightMode) TechEmerald else InkStatusGreen,
-                        if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
-                    )
-                }
-
+                val statusColor = if (isNightMode) TechEmerald else InkStatusGreen
+                val statusBg = if (isNightMode) statusColor.copy(alpha = 0.12f) else InkStatusTagBg
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(3.5.dp))
@@ -629,7 +596,7 @@ fun DeepSeekUnifiedSubscriptionBox(
                         .padding(horizontal = 5.dp, vertical = 1.5.dp)
                 ) {
                     Text(
-                        text = statusText,
+                        text = if (accounts.size > 1) "${accounts.size}个账号" else "正常",
                         color = statusColor,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium
@@ -637,67 +604,264 @@ fun DeepSeekUnifiedSubscriptionBox(
                 }
             }
 
-            if (!isConfigured) {
-                // 未配置 API Key 状态：提示用户点击配置，不捏造任何假数据
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = if (isCompact) 2.dp else 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "未绑定 API Key · 点击呼出配置",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 11.sp else 12.sp
-                    )
-                    Text(
-                        text = "直连官方余额",
-                        color = mutedText,
-                        fontSize = if (isCompact) 8.5.sp else 9.sp
+            // 框内遍历展示该订阅商下的各个 DeepSeek 账号
+            accounts.forEachIndexed { index, acc ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
+                        thickness = 0.8.dp,
+                        modifier = Modifier.padding(vertical = 1.5.dp)
                     )
                 }
-            } else {
-                // 已配置并已查询到官方真实余额
+                SingleDeepSeekAccountItem(
+                    account = acc,
+                    snapshot = snapshots[acc.id],
+                    isLoading = loadingMap[acc.id] == true,
+                    isNightMode = isNightMode,
+                    isCompact = isCompact,
+                    showDelete = accounts.size > 1,
+                    areControlsVisible = areControlsVisible,
+                    onAccountClick = { onAccountClick(acc) },
+                    onRefreshClick = { onRefreshAccount(acc.id) },
+                    onDeleteClick = { onDeleteAccount(acc.id) }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 单个 DeepSeek 账号行（支持自定义别名、余额、充值赠送明细与实时状态）
+ */
+@Composable
+private fun SingleDeepSeekAccountItem(
+    account: CodexAccount,
+    snapshot: CodexUsageSnapshot?,
+    isLoading: Boolean,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    showDelete: Boolean,
+    areControlsVisible: Boolean,
+    onAccountClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+
+    val isConfigured = snapshot?.creditsBalance != null && snapshot.credentialStatus != CredentialStatus.NOT_LOGGED_IN
+    val isAvailable = snapshot?.isAvailable ?: true
+    val balance = snapshot?.creditsBalance ?: 0.0
+    val hasFunds = isConfigured && isAvailable && balance > 0.0
+
+    // 状态徽标
+    val (statusText, statusColor, statusBg) = when {
+        isLoading -> Triple(
+            "同步中",
+            if (isNightMode) TechCyan else InkProgress,
+            if (isNightMode) TechCyan.copy(alpha = 0.12f) else InkStatusTagBg
+        )
+        !isConfigured -> Triple(
+            "未配置",
+            mutedText,
+            if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
+        )
+        snapshot?.credentialStatus == CredentialStatus.EXPIRED || snapshot?.errorMessage != null -> Triple(
+            "Key失效",
+            if (isNightMode) TechRose else InkWarningRed,
+            (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+        )
+        !hasFunds -> Triple(
+            "无可用余额",
+            if (isNightMode) TechRose else InkWarningRed,
+            (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+        )
+        else -> Triple(
+            "正常",
+            if (isNightMode) TechEmerald else InkStatusGreen,
+            if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
+        )
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "spinDs")
+    val spinAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "spinAngleDs"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onAccountClick() },
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.5.dp)
+    ) {
+        // 账号标识行：圆点 + 自定义账号名称 + 状态徽标 + 操作按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.5.dp)
+                        .background(
+                            if (isNightMode) {
+                                if (hasFunds) TechEmerald else TechRose
+                            } else {
+                                if (hasFunds) InkStatusGreen else InkWarningRed
+                            },
+                            CircleShape
+                        )
+                )
+                Text(
+                    text = account.displayTitle,
+                    color = primaryText,
+                    fontSize = if (isCompact) 11.sp else 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                        .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                ) {
+                    Text(
+                        text = "API",
+                        color = secondaryText,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(statusBg)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = statusText,
+                        color = statusColor,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = areControlsVisible,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onRefreshClick,
+                            enabled = !isLoading,
+                            modifier = Modifier.size(18.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "刷新",
+                                tint = if (isLoading) (if (isNightMode) TechCyan else InkProgress) else secondaryText,
+                                modifier = Modifier
+                                    .size(11.dp)
+                                    .rotate(if (isLoading) spinAngle else 0f)
+                            )
+                        }
+                        if (showDelete) {
+                            IconButton(
+                                onClick = onDeleteClick,
+                                modifier = Modifier.size(18.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "删除",
+                                    tint = secondaryText.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 余额与用量数据详情
+        if (!isConfigured) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = if (isCompact) 1.dp else 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "未绑定 API Key · 点击呼出配置",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 10.sp else 11.sp
+                )
+                Text(
+                    text = "直连官方余额",
+                    color = mutedText,
+                    fontSize = if (isCompact) 8.5.sp else 9.sp
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val currency = snapshot?.currency ?: "CNY"
+                Text(
+                    text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", balance)} $currency",
+                    color = primaryText,
+                    fontSize = if (isCompact) 11.sp else 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "更新: ${snapshot?.formattedQueriedAt ?: "刚刚"}",
+                    color = mutedText,
+                    fontSize = if (isCompact) 8.5.sp else 9.sp
+                )
+            }
+
+            if (snapshot?.toppedUpBalance != null || snapshot?.grantedBalance != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    val currency = snapshot?.currency ?: "CNY"
+                    val topped = snapshot?.toppedUpBalance ?: 0.0
+                    val granted = snapshot?.grantedBalance ?: 0.0
                     Text(
-                        text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", balance)} $currency",
-                        color = primaryText,
-                        fontSize = if (isCompact) 11.sp else 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "更新: ${snapshot?.formattedQueriedAt ?: "刚刚"}",
+                        text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
                         color = mutedText,
                         fontSize = if (isCompact) 8.5.sp else 9.sp
                     )
-                }
-
-                // 仅当官方接口实际返回了充值或赠送明细时，才展示明细行
-                if (snapshot?.toppedUpBalance != null || snapshot?.grantedBalance != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        val topped = snapshot?.toppedUpBalance ?: 0.0
-                        val granted = snapshot?.grantedBalance ?: 0.0
-                        Text(
-                            text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
-                            color = mutedText,
-                            fontSize = if (isCompact) 8.5.sp else 9.sp
-                        )
-                        Text(
-                            text = if (isAvailable) "可用" else "不可用",
-                            color = if (isAvailable) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
-                            fontSize = if (isCompact) 8.5.sp else 9.sp
-                        )
-                    }
+                    Text(
+                        text = if (isAvailable) "可用" else "不可用",
+                        color = if (isAvailable) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
+                        fontSize = if (isCompact) 8.5.sp else 9.sp
+                    )
                 }
             }
         }

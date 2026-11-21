@@ -203,6 +203,27 @@ class ClockViewModel @JvmOverloads constructor(
         }
     }
 
+    fun saveDeepSeekAccount(accountId: String, apiKey: String, alias: String) {
+        accountRepo.saveDeepSeekApiKey(accountId, apiKey, alias)
+        refreshAccount(accountId)
+    }
+
+    fun addDeepSeekAccount(alias: String = "", apiKey: String = ""): CodexAccount {
+        val acc = accountRepo.addDeepSeekAccount(alias, apiKey)
+        if (apiKey.isNotBlank()) {
+            refreshAccount(acc.id)
+        }
+        return acc
+    }
+
+    fun removeDeepSeekAccount(accountId: String) {
+        accountRepo.removeDeepSeekAccount(accountId)
+    }
+
+    fun getDeepSeekApiKey(accountId: String): String? {
+        return accountRepo.getDeepSeekApiKey(accountId)
+    }
+
     fun getDeepSeekApiKey(): String? {
         return accountRepo.getDeepSeekApiKey()
     }

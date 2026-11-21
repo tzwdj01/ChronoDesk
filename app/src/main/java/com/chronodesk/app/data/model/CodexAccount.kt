@@ -38,10 +38,13 @@ data class CodexAccount(
      */
     val displayTitle: String
         get() = when {
+            modelProvider == "DEEPSEEK" -> {
+                if (alias.isNotBlank()) alias else "DeepSeek"
+            }
             alias.isNotBlank() && alias != email && !alias.matches(Regex("账号\\s*[A-Za-z0-9]+.*")) -> alias
             !maskedEmail.isNullOrBlank() -> maskedEmail!!
             !chatgptAccountId.isNullOrBlank() -> "Account (${chatgptAccountId.take(8)})"
-            else -> if (modelProvider == "DEEPSEEK") "DeepSeek" else "ChatGPT 账号"
+            else -> "ChatGPT 账号"
         }
 
     val isConfigured: Boolean

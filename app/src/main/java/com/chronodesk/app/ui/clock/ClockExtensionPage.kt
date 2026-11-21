@@ -82,7 +82,7 @@ fun ClockExtensionPage(
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
 
     val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
-    val deepSeekAccount = accounts.firstOrNull { it.modelProvider == "DEEPSEEK" }
+    val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" }
 
     Column(
         modifier = modifier
@@ -282,13 +282,7 @@ fun ClockExtensionPage(
                 }
             }
 
-            // 右列：DeepSeek 官方 API 真实余额与计费
-            val dsSnap = snapshots[deepSeekAccount?.id]
-            val isDsConfigured = dsSnap?.creditsBalance != null && dsSnap.credentialStatus != CredentialStatus.NOT_LOGGED_IN
-            val dsBalance = dsSnap?.creditsBalance ?: 0.0
-            val dsCurrency = dsSnap?.currency ?: "CNY"
-            val dsAvailable = dsSnap?.isAvailable ?: (dsBalance > 0.0)
-
+            // 右列：DeepSeek 官方 API 真实余额与计费 (支持多账号)
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -316,65 +310,80 @@ fun ClockExtensionPage(
                             )
                         }
                         Text(
-                            text = if (isDsConfigured) "直连 /user/balance" else "未配置",
+                            text = if (deepSeekAccounts.size > 1) "${deepSeekAccounts.size}个账号" else "直连 /user/balance",
                             color = mutedText,
                             fontSize = 9.sp
                         )
                     }
 
-                    if (!isDsConfigured) {
+                    if (deepSeekAccounts.isEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = "尚未绑定 DeepSeek API Key",
-                                color = secondaryText,
-                                fontSize = 11.sp
-                            )
-                            Text(
-                                text = "在账号设置中填入 API Key 即可直连官方查询真实余额与明细",
-                                color = mutedText,
-                                fontSize = 9.sp
-                            )
+                            Text(text = "尚未绑定 DeepSeek API Key", color = secondaryText, fontSize = 11.sp)
+                            Text(text = "在账号设置中填入 API Key 即可直连官方查询真实余额与明细", color = mutedText, fontSize = 9.sp)
                         }
                     } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", dsBalance)} $dsCurrency",
-                                    color = primaryText,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (dsAvailable && dsBalance > 0) "状态: 正常可用" else "状态: 余额不足",
-                                    color = if (dsAvailable && dsBalance > 0) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
-                                    fontSize = 9.sp
+                        deepSeekAccounts.forEachIndexed { index, dsAcc ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
+                                    thickness = 0.8.dp,
+                                    modifier = Modifier.padding(vertical = 2.dp)
                                 )
                             }
+                            val dsSnap = snapshots[dsAcc.id]
+                            val isDsConfigured = dsSnap?.creditsBalance != null && dsSnap.credentialStatus != CredentialStatus.NOT_LOGGED_IN
+                            val dsBalance = dsSnap?.creditsBalance ?: 0.0
+                            val dsCurrency = dsSnap?.currency ?: "CNY"
+                            val dsAvailable = dsSnap?.isAvailable ?: (dsBalance > 0.0)
 
-                            if (dsSnap?.toppedUpBalance != null || dsSnap?.grantedBalance != null) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val topped = dsSnap?.toppedUpBalance ?: 0.0
-                                    val granted = dsSnap?.grantedBalance ?: 0.0
                                     Text(
-                                        text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
-                                        color = secondaryText,
-                                        fontSize = 9.5.sp
+                                        text = dsAcc.displayTitle,
+                                        color = primaryText,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
                                     )
-                                    Text(text = "官方实时数据", color = mutedText, fontSize = 9.sp)
+                                    Text(
+                                        text = if (isDsConfigured && dsAvailable && dsBalance > 0) "正常可用" else if (!isDsConfigured) "未配置" else "余额不足",
+                                        color = if (isDsConfigured && dsAvailable && dsBalance > 0) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
+                                        fontSize = 9.sp
+                                    )
                                 }
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "更新时间: ${dsSnap?.formattedQueriedAt ?: "未同步"}", color = secondaryText, fontSize = 9.5.sp)
-                                    Text(text = "直连官方返回", color = mutedText, fontSize = 9.sp)
+
+                                if (isDsConfigured) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", dsBalance)} $dsCurrency",
+                                            color = primaryText,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "更新: ${dsSnap?.formattedQueriedAt ?: "刚刚"}",
+                                            color = mutedText,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+
+                                    if (dsSnap?.toppedUpBalance != null || dsSnap?.grantedBalance != null) {
+                                        val topped = dsSnap?.toppedUpBalance ?: 0.0
+                                        val granted = dsSnap?.grantedBalance ?: 0.0
+                                        Text(
+                                            text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
+                                            color = secondaryText,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                } else {
+                                    Text(text = "未配置 API Key · 点击主页卡片进行配置", color = mutedText, fontSize = 9.5.sp)
                                 }
                             }
                         }
