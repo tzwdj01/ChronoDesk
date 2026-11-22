@@ -72,7 +72,7 @@ fun WeatherRowContent(
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 11.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 11.dp)
     ) {
         // 城市定位与名称
         Row(
@@ -83,44 +83,44 @@ fun WeatherRowContent(
                 imageVector = Icons.Default.LocationOn,
                 contentDescription = null,
                 tint = if (isNightMode) TechCyan else Color(0xFF16A34A),
-                modifier = Modifier.size(if (isCompact) 13.dp else 14.dp)
+                modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
             )
             Text(
                 text = weather.cityName,
                 color = primaryText,
-                fontSize = if (isCompact) 11.5.sp else 12.5.sp,
+                fontSize = if (isCompact) 11.sp else 12.5.sp,
                 fontWeight = FontWeight.SemiBold
             )
         }
 
-        Text(text = "｜", color = dividerColor, fontSize = 11.sp)
+        Text(text = "｜", color = dividerColor, fontSize = if (isCompact) 9.5.sp else 11.sp)
 
         // 天气图标 + 温度 + 状况
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)
         ) {
             Icon(
                 imageVector = weatherIcon,
                 contentDescription = weather.weatherDescription,
                 tint = iconColor,
-                modifier = Modifier.size(if (isCompact) 16.dp else 18.dp)
+                modifier = Modifier.size(if (isCompact) 14.dp else 18.dp)
             )
             Text(
                 text = "${weather.temperature.toInt()}°C",
                 color = primaryText,
-                fontSize = if (isCompact) 12.5.sp else 14.sp,
+                fontSize = if (isCompact) 12.sp else 14.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = weather.weatherDescription,
                 color = secondaryText,
-                fontSize = if (isCompact) 11.sp else 12.sp,
+                fontSize = if (isCompact) 10.5.sp else 12.sp,
                 fontWeight = FontWeight.Medium
             )
         }
 
-        Text(text = "｜", color = dividerColor, fontSize = 11.sp)
+        Text(text = "｜", color = dividerColor, fontSize = if (isCompact) 9.5.sp else 11.sp)
 
         // 相对湿度
         Row(
@@ -131,16 +131,16 @@ fun WeatherRowContent(
                 imageVector = Icons.Default.WaterDrop,
                 contentDescription = null,
                 tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
+                modifier = Modifier.size(if (isCompact) 10.dp else 12.dp)
             )
             Text(
                 text = "${weather.humidity}%",
                 color = secondaryText,
-                fontSize = if (isCompact) 10.5.sp else 11.5.sp
+                fontSize = if (isCompact) 10.sp else 11.5.sp
             )
         }
 
-        Text(text = "｜", color = dividerColor, fontSize = 11.sp)
+        Text(text = "｜", color = dividerColor, fontSize = if (isCompact) 9.5.sp else 11.sp)
 
         // 风速
         Row(
@@ -151,12 +151,12 @@ fun WeatherRowContent(
                 imageVector = Icons.Default.Air,
                 contentDescription = null,
                 tint = if (isNightMode) TechCyan else Color(0xFF64748B),
-                modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
+                modifier = Modifier.size(if (isCompact) 10.dp else 12.dp)
             )
             Text(
                 text = "${weather.windSpeed}m/s",
                 color = secondaryText,
-                fontSize = if (isCompact) 10.5.sp else 11.5.sp
+                fontSize = if (isCompact) 10.sp else 11.5.sp
             )
         }
     }
@@ -201,17 +201,17 @@ fun MultiCityWeatherCapsule(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 14.dp else 16.dp))
+            .clip(RoundedCornerShape(if (isCompact) 13.dp else 16.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 14.dp else 16.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 13.dp else 16.dp))
             .clickable { onCardClick() }
             .padding(
-                horizontal = if (isCompact) 12.dp else 16.dp,
-                vertical = if (isCompact) 5.dp else 7.dp
+                horizontal = if (isCompact) 10.dp else 16.dp,
+                vertical = if (isCompact) 4.dp else 7.dp
             )
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 5.dp)
+            verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 5.dp)
         ) {
             weatherList.forEachIndexed { index, item ->
                 if (index > 0) {
@@ -246,13 +246,13 @@ fun WeatherCapsule(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 18.dp else 22.dp))
+            .clip(RoundedCornerShape(if (isCompact) 16.dp else 22.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 18.dp else 22.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 16.dp else 22.dp))
             .clickable { onCardClick() }
             .padding(
-                horizontal = if (isCompact) 12.dp else 18.dp,
-                vertical = if (isCompact) 6.dp else 7.5.dp
+                horizontal = if (isCompact) 10.dp else 18.dp,
+                vertical = if (isCompact) 4.5.dp else 7.5.dp
             )
     ) {
         WeatherRowContent(

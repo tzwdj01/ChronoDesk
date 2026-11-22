@@ -293,6 +293,7 @@ fun ClockScreen(
                 isNightMode = isNightMode,
                 accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
                 nightModeOption = settings.nightModeOption,
+                isCompact = isCompactHeight,
                 onAddAccount = {
                     selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
                 },
@@ -410,51 +411,51 @@ fun ClockScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 15.dp))
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 6.dp else 15.dp))
 
                                 // 公历日期 + 星期 + 农历完整呈现
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 5.dp else 7.dp)
                                 ) {
                                     // 公历日期 (如: 11月19日)
                                     Text(
                                         text = timeState.dateString,
                                         color = if (isNightMode) TextPrimary else InkTextPrimary,
-                                        fontSize = if (isCompactHeight) 14.sp else 16.5.sp,
+                                        fontSize = if (isCompactHeight) 13.sp else 16.5.sp,
                                         fontWeight = FontWeight.Medium
                                     )
 
                                     Text(
                                         text = "·",
                                         color = if (isNightMode) TextTertiary else InkTextTertiary,
-                                        fontSize = 14.sp
+                                        fontSize = if (isCompactHeight) 12.sp else 14.sp
                                     )
 
                                     // 星期 (如: 星期四)
                                     Text(
                                         text = timeState.dayOfWeek,
                                         color = if (isNightMode) TechCyan else InkTextPrimary,
-                                        fontSize = if (isCompactHeight) 14.sp else 16.5.sp,
+                                        fontSize = if (isCompactHeight) 13.sp else 16.5.sp,
                                         fontWeight = FontWeight.Medium
                                     )
 
                                     Text(
                                         text = "·",
                                         color = if (isNightMode) TextTertiary else InkTextTertiary,
-                                        fontSize = 14.sp
+                                        fontSize = if (isCompactHeight) 12.sp else 14.sp
                                     )
 
                                     // 农历 (如: 农历十月初十)
                                     Text(
                                         text = timeState.lunarDateString,
                                         color = if (isNightMode) TextSecondary else InkTextSecondary,
-                                        fontSize = if (isCompactHeight) 13.5.sp else 15.5.sp,
+                                        fontSize = if (isCompactHeight) 12.5.sp else 15.5.sp,
                                         fontWeight = FontWeight.Normal
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 14.dp))
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 6.dp else 14.dp))
 
                                 // 天气胶囊卡片（支持单地区或多地区多行并列呈现）
                                 MultiCityWeatherCapsule(
@@ -580,7 +581,7 @@ fun ClockScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 6.dp),
+                    .padding(bottom = if (isCompactHeight) 3.dp else 6.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -619,6 +620,7 @@ private fun ClockTopBar(
     isNightMode: Boolean,
     accountCount: Int,
     nightModeOption: String,
+    isCompact: Boolean = false,
     onAddAccount: () -> Unit,
     onRefreshAll: () -> Unit,
     onToggleNightMode: () -> Unit,
@@ -632,36 +634,36 @@ private fun ClockTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
+            .padding(horizontal = if (isCompact) 14.dp else 20.dp, vertical = if (isCompact) 2.dp else 4.dp),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 右侧操作按钮组
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
         ) {
             // 账号管理按钮
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
                     .clickable { onAddAccount() }
-                    .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                    .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "添加账号",
                         tint = if (isNightMode) TechCyan else InkTextPrimary,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "账号管理 ($accountCount)",
                         color = buttonText,
-                        fontSize = 11.sp,
+                        fontSize = if (isCompact) 10.sp else 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -670,24 +672,24 @@ private fun ClockTopBar(
             // 全部刷新按钮
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
                     .clickable { onRefreshAll() }
-                    .padding(horizontal = 9.dp, vertical = 4.5.dp)
+                    .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "刷新全部",
                         tint = buttonText,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "刷新",
                         color = buttonText,
-                        fontSize = 11.sp,
+                        fontSize = if (isCompact) 10.sp else 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -697,41 +699,41 @@ private fun ClockTopBar(
             val themeIcon = if (isNightMode) Icons.Default.LightMode else Icons.Default.DarkMode
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
                     .clickable { onToggleNightMode() }
-                    .padding(horizontal = 8.dp, vertical = 4.5.dp)
+                    .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
             ) {
                 Icon(
                     imageVector = themeIcon,
                     contentDescription = "日夜主题切换",
                     tint = if (isNightMode) TechAmber else InkTextPrimary,
-                    modifier = Modifier.size(12.5.dp)
+                    modifier = Modifier.size(if (isCompact) 11.5.dp else 12.5.dp)
                 )
             }
 
             // 设置按钮
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(7.dp))
+                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
                     .clickable { onOpenSettings() }
-                    .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                    .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "设置",
+                        contentDescription = "系统设置",
                         tint = buttonText,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "设置",
                         color = buttonText,
-                        fontSize = 11.sp,
+                        fontSize = if (isCompact) 10.sp else 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -756,24 +758,24 @@ fun LargeFlipClockDisplay(
     val hasSeconds = second != null
     // 动态黄金比例：当秒钟隐藏时，时分牌面适度放大，更加雄伟突出
     val digitWidth = if (hasSeconds) {
-        if (isCompact) 60.dp else 74.dp
+        if (isCompact) 56.dp else 74.dp
     } else {
-        if (isCompact) 68.dp else 84.dp
+        if (isCompact) 64.dp else 84.dp
     }
     val digitHeight = if (hasSeconds) {
-        if (isCompact) 114.dp else 142.dp
+        if (isCompact) 106.dp else 142.dp
     } else {
-        if (isCompact) 126.dp else 156.dp
+        if (isCompact) 118.dp else 156.dp
     }
     val fontSize = if (hasSeconds) {
-        if (isCompact) 72.sp else 92.sp
+        if (isCompact) 68.sp else 92.sp
     } else {
-        if (isCompact) 80.sp else 102.sp
+        if (isCompact) 76.sp else 102.sp
     }
 
-    val secDigitWidth = if (isCompact) 22.dp else 28.dp
-    val secDigitHeight = if (isCompact) 36.dp else 46.dp
-    val secFontSize = if (isCompact) 18.sp else 22.sp
+    val secDigitWidth = if (isCompact) 20.dp else 28.dp
+    val secDigitHeight = if (isCompact) 34.dp else 46.dp
+    val secFontSize = if (isCompact) 17.sp else 22.sp
 
     Row(
         modifier = Modifier.clickable(
@@ -853,10 +855,10 @@ fun BlinkingColon(isNightMode: Boolean, isCompact: Boolean = false) {
     }
 
     val colonColor = if (isNightMode) DarkColon else InkColon
-    val dotSize = if (isCompact) 5.dp else 6.5.dp
-    val dotSpacing = if (isCompact) 12.dp else 16.dp
-    val colonHeight = if (isCompact) 65.dp else 84.dp
-    val hPadding = if (isCompact) 6.dp else 10.dp
+    val dotSize = if (isCompact) 4.5.dp else 6.5.dp
+    val dotSpacing = if (isCompact) 10.dp else 16.dp
+    val colonHeight = if (isCompact) 58.dp else 84.dp
+    val hPadding = if (isCompact) 4.dp else 10.dp
 
     Box(
         modifier = Modifier

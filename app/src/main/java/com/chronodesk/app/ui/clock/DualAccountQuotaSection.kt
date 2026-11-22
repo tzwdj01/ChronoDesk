@@ -108,9 +108,9 @@ fun MultiAccountQuotaSection(
         (if (antigravityAccounts.isNotEmpty()) 1 else 0) >= 3
 
     val spacing = when (cardDensity) {
-        "COMPACT" -> if (isCompact) 4.dp else 5.dp
-        "SPACIOUS" -> if (isCompact) 8.dp else 10.dp
-        else -> if (hasMultipleProviders) (if (isCompact) 4.5.dp else 5.5.dp) else (if (isCompact) 7.dp else 9.dp)
+        "COMPACT" -> if (isCompact) 3.dp else 5.dp
+        "SPACIOUS" -> if (isCompact) 7.dp else 10.dp
+        else -> if (hasMultipleProviders) (if (isCompact) 3.dp else 5.5.dp) else (if (isCompact) 6.dp else 9.dp)
     }
 
     Column(
@@ -223,12 +223,12 @@ fun ChatGptUnifiedSubscriptionBox(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
+            .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 5.5.dp else 6.5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
+            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.5.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
             // 大框顶栏：OpenAI Logo + 订阅商名称 + 套餐标签 + 账号汇总
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -237,17 +237,17 @@ fun ChatGptUnifiedSubscriptionBox(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.CHATGPT,
-                        size = if (isCompact) 26.dp else 28.dp,
+                        size = if (isCompact) 22.dp else 28.dp,
                         isNightMode = isNightMode
                     )
                     Text(
                         text = "ChatGPT",
                         color = primaryText,
-                        fontSize = if (isCompact) 13.sp else 14.sp,
+                        fontSize = if (isCompact) 12.5.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -423,27 +423,26 @@ private fun SingleAccountQuotaItem(
                 Text(
                     text = account.displayTitle,
                     color = primaryText,
-                    fontSize = if (isCompact) 11.sp else 12.sp,
+                    fontSize = if (isCompact) 10.5.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(if (isCompact) 60.dp else 72.dp)
+                    overflow = TextOverflow.Ellipsis
                 )
                 val plan = snapshot?.planName?.ifBlank { "Plus" } ?: "Plus"
                 Box(
                     modifier = Modifier
-                        .width(if (isCompact) 30.dp else 34.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                        .padding(vertical = 1.dp),
+                        .padding(horizontal = 3.5.dp, vertical = 0.5.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = plan,
                         color = secondaryText,
-                        fontSize = 8.sp,
+                        fontSize = if (isCompact) 7.5.sp else 8.sp,
                         fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
                     )
                 }
                 val resetCredits = snapshot?.resetCreditsCount
@@ -526,20 +525,20 @@ private fun SingleAccountQuotaItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "5小时额度",
+                    text = if (isCompact) "5小时" else "5小时额度",
                     color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.sp,
-                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
+                    fontSize = if (isCompact) 8.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
                 )
                 LinearProgressIndicator(
                     progress = { (primaryPercent / 100.0).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier
-                        .width(if (isCompact) 75.dp else 88.dp)
-                        .height(4.5.dp)
-                        .clip(RoundedCornerShape(2.5.dp)),
+                        .width(if (isCompact) 62.dp else 88.dp)
+                        .height(if (isCompact) 3.5.dp else 4.5.dp)
+                        .clip(RoundedCornerShape(2.dp)),
                     color = primaryProgressColor,
                     trackColor = trackColor
                 )
@@ -550,7 +549,7 @@ private fun SingleAccountQuotaItem(
                     "剩余 ${primaryPercent.toInt()}% · $resetTime 重置"
                 }
                 primaryWindow != null -> {
-                    if (primaryPercent >= 100.0) "剩余 100% · 额度已就绪"
+                    if (primaryPercent >= 100.0) "剩余 100% · 额度充足"
                     else "剩余 ${primaryPercent.toInt()}% · 额度充足"
                 }
                 isLoading -> "同步中..."
@@ -559,7 +558,7 @@ private fun SingleAccountQuotaItem(
             Text(
                 text = fiveHourResetText,
                 color = if (isPrimaryExhausted && isNightMode) TechRose else mutedText,
-                fontSize = if (isCompact) 8.5.sp else 9.sp,
+                fontSize = if (isCompact) 7.5.sp else 9.sp,
                 maxLines = 1
             )
         }
@@ -572,20 +571,20 @@ private fun SingleAccountQuotaItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = "周额度",
                     color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.sp,
-                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
+                    fontSize = if (isCompact) 8.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
                 )
                 LinearProgressIndicator(
                     progress = { (secondaryPercent / 100.0).toFloat().coerceIn(0f, 1f) },
                     modifier = Modifier
-                        .width(if (isCompact) 75.dp else 88.dp)
-                        .height(4.5.dp)
-                        .clip(RoundedCornerShape(2.5.dp)),
+                        .width(if (isCompact) 62.dp else 88.dp)
+                        .height(if (isCompact) 3.5.dp else 4.5.dp)
+                        .clip(RoundedCornerShape(2.dp)),
                     color = secondaryProgressColor,
                     trackColor = trackColor
                 )
@@ -600,7 +599,7 @@ private fun SingleAccountQuotaItem(
                     }
                 }
                 secondaryWindow != null -> {
-                    if (secondaryPercent >= 100.0) "剩余 100% · 额度已就绪"
+                    if (secondaryPercent >= 100.0) "剩余 100% · 额度充足"
                     else "剩余 ${secondaryPercent.toInt()}% · 额度充足"
                 }
                 isLoading -> "同步中..."
@@ -609,7 +608,7 @@ private fun SingleAccountQuotaItem(
             Text(
                 text = weekResetText,
                 color = if (isSecondaryExhausted && isNightMode) TechRose else mutedText,
-                fontSize = if (isCompact) 8.5.sp else 9.sp,
+                fontSize = if (isCompact) 7.5.sp else 9.sp,
                 maxLines = 1
             )
         }
@@ -638,12 +637,12 @@ fun DeepSeekUnifiedSubscriptionBox(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
+            .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 5.dp else 6.5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
+            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.5.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
             // 大框头部：官方 DeepSeek Logo + DeepSeek 名称 + 账号数状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -652,17 +651,17 @@ fun DeepSeekUnifiedSubscriptionBox(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.DEEPSEEK,
-                        size = if (isCompact) 26.dp else 28.dp,
+                        size = if (isCompact) 22.dp else 28.dp,
                         isNightMode = isNightMode
                     )
                     Text(
                         text = "DeepSeek",
                         color = primaryText,
-                        fontSize = if (isCompact) 13.sp else 14.sp,
+                        fontSize = if (isCompact) 12.5.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -949,12 +948,12 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
+            .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 5.dp else 6.5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
+            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.5.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
             // 大框头部：官方 Google 4 色 Logo + Google Antigravity 名称 + 账号数状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -963,17 +962,17 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.ANTIGRAVITY,
-                        size = if (isCompact) 26.dp else 28.dp,
+                        size = if (isCompact) 22.dp else 28.dp,
                         isNightMode = isNightMode
                     )
                     Text(
                         text = "Google Antigravity",
                         color = primaryText,
-                        fontSize = if (isCompact) 13.sp else 14.sp,
+                        fontSize = if (isCompact) 12.5.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -1156,27 +1155,26 @@ private fun SingleAntigravityAccountItem(
                 Text(
                     text = account.displayTitle,
                     color = primaryText,
-                    fontSize = if (isCompact) 11.sp else 12.sp,
+                    fontSize = if (isCompact) 10.5.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(if (isCompact) 60.dp else 72.dp)
+                    overflow = TextOverflow.Ellipsis
                 )
                 val plan = snapshot?.planName?.ifBlank { "Pro" } ?: "Pro"
                 Box(
                     modifier = Modifier
-                        .width(if (isCompact) 30.dp else 34.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                        .padding(vertical = 1.dp),
+                        .padding(horizontal = 3.dp, vertical = 0.5.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = plan,
                         color = secondaryText,
-                        fontSize = 8.sp,
+                        fontSize = if (isCompact) 7.5.sp else 8.sp,
                         fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
                     )
                 }
             }
@@ -1245,20 +1243,20 @@ private fun SingleAntigravityAccountItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "5小时配额",
+                    text = if (isCompact) "5小时" else "5小时配额",
                     color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.sp,
-                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
+                    fontSize = if (isCompact) 8.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
                 )
                 LinearProgressIndicator(
                     progress = { if (isConfigured) (primaryPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
                     modifier = Modifier
-                        .width(if (isCompact) 75.dp else 88.dp)
-                        .height(4.5.dp)
-                        .clip(RoundedCornerShape(2.5.dp)),
+                        .width(if (isCompact) 62.dp else 88.dp)
+                        .height(if (isCompact) 3.5.dp else 4.5.dp)
+                        .clip(RoundedCornerShape(2.dp)),
                     color = primaryProgressColor,
                     trackColor = trackColor
                 )
@@ -1275,7 +1273,7 @@ private fun SingleAntigravityAccountItem(
             Text(
                 text = fiveHourResetText,
                 color = mutedText,
-                fontSize = if (isCompact) 8.5.sp else 9.sp,
+                fontSize = if (isCompact) 7.5.sp else 9.sp,
                 maxLines = 1
             )
         }
@@ -1288,20 +1286,20 @@ private fun SingleAntigravityAccountItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = "日配额",
                     color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.sp,
-                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
+                    fontSize = if (isCompact) 8.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
                 )
                 LinearProgressIndicator(
                     progress = { if (isConfigured) (secondaryPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
                     modifier = Modifier
-                        .width(if (isCompact) 75.dp else 88.dp)
-                        .height(4.5.dp)
-                        .clip(RoundedCornerShape(2.5.dp)),
+                        .width(if (isCompact) 62.dp else 88.dp)
+                        .height(if (isCompact) 3.5.dp else 4.5.dp)
+                        .clip(RoundedCornerShape(2.dp)),
                     color = secondaryProgressColor,
                     trackColor = trackColor
                 )
@@ -1310,14 +1308,14 @@ private fun SingleAntigravityAccountItem(
                 !isConfigured -> "待配置 API Key"
                 isLoading -> "同步中..."
                 secondaryWindow?.resetAtUnix != null -> {
-                    "剩余 ${secondaryPercent.toInt()}% · 次日 08:00 重置"
+                    "剩余 ${secondaryPercent.toInt()}% · 08:00重置"
                 }
                 else -> "剩余 ${secondaryPercent.toInt()}% · 额度已就绪"
             }
             Text(
                 text = dailyResetText,
                 color = mutedText,
-                fontSize = if (isCompact) 8.5.sp else 9.sp,
+                fontSize = if (isCompact) 7.5.sp else 9.sp,
                 maxLines = 1
             )
         }
