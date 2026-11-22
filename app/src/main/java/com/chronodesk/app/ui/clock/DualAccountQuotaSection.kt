@@ -332,34 +332,21 @@ fun ChatGptUnifiedSubscriptionBox(
                     HorizontalDivider(
                         color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
                         thickness = 0.8.dp,
-                        modifier = Modifier.padding(vertical = 1.5.dp)
+                        modifier = Modifier.padding(vertical = if (isCompact) 1.5.dp else 3.dp)
                     )
                 }
-                if (isCompact && index > 0) {
-                    // 16:9 等紧凑横屏下，双账号优先展示主账号，副账号折叠为紧凑条，防止高度溢出
-                    CompactSecondaryAccountQuotaItem(
-                        account = acc,
-                        snapshot = snapshots[acc.id],
-                        isLoading = loadingMap[acc.id] == true,
-                        isNightMode = isNightMode,
-                        refreshIntervalMinutes = refreshIntervalMinutes,
-                        onAccountClick = { onAccountClick(acc) },
-                        onRefreshClick = { onRefreshAccount(acc.id) }
-                    )
-                } else {
-                    SingleAccountQuotaItem(
-                        account = acc,
-                        snapshot = snapshots[acc.id],
-                        isLoading = loadingMap[acc.id] == true,
-                        isNightMode = isNightMode,
-                        isCompact = isCompact,
-                        areControlsVisible = areControlsVisible,
-                        refreshIntervalMinutes = refreshIntervalMinutes,
-                        onAccountClick = { onAccountClick(acc) },
-                        onRefreshClick = { onRefreshAccount(acc.id) },
-                        onDeleteClick = { onDeleteAccount(acc.id) }
-                    )
-                }
+                SingleAccountQuotaItem(
+                    account = acc,
+                    snapshot = snapshots[acc.id],
+                    isLoading = loadingMap[acc.id] == true,
+                    isNightMode = isNightMode,
+                    isCompact = isCompact,
+                    areControlsVisible = areControlsVisible,
+                    refreshIntervalMinutes = refreshIntervalMinutes,
+                    onAccountClick = { onAccountClick(acc) },
+                    onRefreshClick = { onRefreshAccount(acc.id) },
+                    onDeleteClick = { onDeleteAccount(acc.id) }
+                )
             }
         }
     }
@@ -733,7 +720,7 @@ private fun SingleAccountQuotaItem(
                         IconButton(
                             onClick = onRefreshClick,
                             enabled = !isLoading && !isCoolingDown,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(18.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
@@ -742,19 +729,19 @@ private fun SingleAccountQuotaItem(
                                        else if (isCoolingDown) secondaryText.copy(alpha = 0.35f)
                                        else secondaryText,
                                 modifier = Modifier
-                                    .size(13.dp)
+                                    .size(11.dp)
                                     .rotate(if (isLoading) spinAngle else 0f)
                             )
                         }
                         IconButton(
                             onClick = onDeleteClick,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(18.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
                                 contentDescription = "删除 ${account.displayTitle}",
                                 tint = secondaryText.copy(alpha = 0.6f),
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(11.dp)
                             )
                         }
                     }
