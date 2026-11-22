@@ -1,11 +1,15 @@
 package com.chronodesk.app
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -16,8 +20,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -31,11 +38,58 @@ import com.chronodesk.app.ui.theme.PureBlack
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ClockViewModel by viewModels()
+    private var isCharging by mutableStateOf(false)
+
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_POWER_CONNECTED -> {
+                    isCharging = true
+                    updateScreenOnState()
+                }
+                Intent.ACTION_POWER_DISCONNECTED -> {
+                    isCharging = false
+                    updateScreenOnState()
+                }
+                Intent.ACTION_BATTERY_CHANGED -> {
+                    val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                    val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL
+                    if (charging != isCharging) {
+                        isCharging = charging
+                        updateScreenOnState()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkInitialChargingState() {
+        try {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val batteryStatus = registerReceiver(null, filter)
+            val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL
+        } catch (_: Exception) {}
+    }
+
+    private fun updateScreenOnState() {
+        val settings = viewModel.settings.value
+        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val shouldKeepOn = settings.shouldKeepScreenOn(isCharging, currentHour)
+        if (shouldKeepOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     private val requestLocationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -62,12 +116,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settings by viewModel.settings.collectAsState()
             val isNightMode by viewModel.isNightMode.collectAsState()
+            val timeState by viewModel.timeState.collectAsState()
 
-            // 保持屏幕常亮
-            if (settings.keepScreenOn) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            // 动态响应屏幕常亮策略、充电状态与夜间时段
+            LaunchedEffect(
+                settings.screenOnPolicy,
+                settings.autoNightDim,
+                settings.nightDimStartHour,
+                settings.nightDimEndHour,
+                isCharging,
+                timeState.hour
+            ) {
+                updateScreenOnState()
             }
 
             // 夜间窗口亮度控制（仅调节本 App 窗口亮度属性，不影响系统全局设置）
@@ -93,6 +153,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        checkInitialChargingState()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+        }
+        registerReceiver(powerReceiver, filter)
+        viewModel.onAppForeground()
+        updateScreenOnState()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        try {
+            unregisterReceiver(powerReceiver)
+        } catch (_: Exception) {}
+        viewModel.onAppBackground()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
@@ -103,8 +185,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         applyFullScreenImmersive()
-        // 重新进入前台时刷新数据
-        viewModel.refreshAll()
+        updateScreenOnState()
         if (viewModel.settings.value.autoLocation) {
             val hasCoarse = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_COARSE_LOCATION

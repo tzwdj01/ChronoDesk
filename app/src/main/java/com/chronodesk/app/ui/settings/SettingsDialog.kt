@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -210,7 +211,7 @@ fun SettingsDialog(
     }
     var is24Hour by remember { mutableStateOf(currentSettings.is24Hour) }
     var showSeconds by remember { mutableStateOf(currentSettings.showSeconds) }
-    var keepScreenOn by remember { mutableStateOf(currentSettings.keepScreenOn) }
+    var screenOnPolicy by remember { mutableStateOf(currentSettings.screenOnPolicy) }
     var nightModeOption by remember { mutableStateOf(currentSettings.nightModeOption) }
     var autoNightDim by remember { mutableStateOf(currentSettings.autoNightDim) }
     var nightBrightness by remember { mutableFloatStateOf(currentSettings.nightBrightness) }
@@ -343,12 +344,56 @@ fun SettingsDialog(
                     onCheckedChange = { showSeconds = it }
                 )
 
-                SettingToggleItem(
-                    title = "保持屏幕常亮",
-                    subtitle = "桌面放置时不自动熄屏 (FLAG_KEEP_SCREEN_ON)",
-                    checked = keepScreenOn,
-                    onCheckedChange = { keepScreenOn = it }
-                )
+                // 屏幕常亮策略
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkSurfaceElevated)
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "屏幕常亮策略",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "夜间时段自动熄屏休眠，清晨充电中恢复常亮",
+                        color = TextSecondary,
+                        fontSize = 10.5.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "CHARGING_ONLY" to "仅充电时常亮",
+                            "ALWAYS" to "前台常亮",
+                            "SYSTEM" to "跟随系统"
+                        ).forEach { (opt, label) ->
+                            val isSel = screenOnPolicy == opt
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .sizeIn(minHeight = 48.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) TechCyan else DarkSurface)
+                                    .clickable { screenOnPolicy = opt }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSel) Color.Black else TextSecondary,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // 2.1 时钟尺寸缩放与位置微调
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -851,7 +896,8 @@ fun SettingsDialog(
                             val updated = currentSettings.copy(
                                 is24Hour = is24Hour,
                                 showSeconds = showSeconds,
-                                keepScreenOn = keepScreenOn,
+                                screenOnPolicy = screenOnPolicy,
+                                keepScreenOn = screenOnPolicy != "SYSTEM",
                                 nightModeOption = nightModeOption,
                                 autoNightDim = autoNightDim,
                                 nightBrightness = nightBrightness,

@@ -9,6 +9,7 @@ import com.chronodesk.app.data.model.WeatherInfo
 import com.chronodesk.app.data.repository.ClockSettingsRepository
 import com.chronodesk.app.data.repository.CodexAccountRepository
 import com.chronodesk.app.data.repository.WeatherRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,16 +68,54 @@ class ClockViewModel @JvmOverloads constructor(
     private val _burnInShift = MutableStateFlow(Pair(0f, 0f))
     val burnInShift: StateFlow<Pair<Float, Float>> = _burnInShift.asStateFlow()
 
+    private var timeTickerJob: Job? = null
+    private var quotaSchedulerJob: Job? = null
+    private var weatherSchedulerJob: Job? = null
+    private var burnInShifterJob: Job? = null
+
+    private var isForeground = false
+    private var lastForegroundRefreshTimeMs: Long = 0L
+
     init {
-        startTimeTicker()
+        onAppForeground()
         refreshAll()
+    }
+
+    fun isPollingActive(): Boolean =
+        timeTickerJob?.isActive == true && quotaSchedulerJob?.isActive == true
+
+    fun onAppForeground() {
+        if (isForeground) return
+        isForeground = true
+        startTimeTicker()
         startAutoRefreshScheduler()
         startWeatherScheduler()
         startBurnInShifter()
+
+        // 重新回到前台时，若与上次静默刷新间隔超过刷新阈值，立即补齐一次最新数据
+        val now = System.currentTimeMillis()
+        val refreshIntervalMs = settings.value.autoRefreshIntervalMinutes.coerceAtLeast(5) * 60 * 1000L
+        if (now - lastForegroundRefreshTimeMs >= refreshIntervalMs) {
+            lastForegroundRefreshTimeMs = now
+            refreshAll()
+        }
+    }
+
+    fun onAppBackground() {
+        isForeground = false
+        timeTickerJob?.cancel()
+        timeTickerJob = null
+        quotaSchedulerJob?.cancel()
+        quotaSchedulerJob = null
+        weatherSchedulerJob?.cancel()
+        weatherSchedulerJob = null
+        burnInShifterJob?.cancel()
+        burnInShifterJob = null
     }
 
     private fun startTimeTicker() {
-        viewModelScope.launch {
+        timeTickerJob?.cancel()
+        timeTickerJob = viewModelScope.launch {
             while (isActive) {
                 val is24 = settings.value.is24Hour
                 val newState = getCurrentTimeState(is24)
@@ -92,7 +131,8 @@ class ClockViewModel @JvmOverloads constructor(
     }
 
     private fun startAutoRefreshScheduler() {
-        viewModelScope.launch {
+        quotaSchedulerJob?.cancel()
+        quotaSchedulerJob = viewModelScope.launch {
             while (isActive) {
                 val intervalMin = settings.value.autoRefreshIntervalMinutes.coerceAtLeast(5)
                 delay(intervalMin * 60 * 1000L)
@@ -102,7 +142,8 @@ class ClockViewModel @JvmOverloads constructor(
     }
 
     private fun startWeatherScheduler() {
-        viewModelScope.launch {
+        weatherSchedulerJob?.cancel()
+        weatherSchedulerJob = viewModelScope.launch {
             while (isActive) {
                 val s = settings.value
                 weatherRepo.refreshAllWeather(s.getAllCities())
@@ -112,7 +153,8 @@ class ClockViewModel @JvmOverloads constructor(
     }
 
     private fun startBurnInShifter() {
-        viewModelScope.launch {
+        burnInShifterJob?.cancel()
+        burnInShifterJob = viewModelScope.launch {
             while (isActive) {
                 delay(3 * 60 * 1000L) // 每 3 分钟轻微偏移 1~2 像素
                 val dx = (Random.nextFloat() * 4f) - 2f

@@ -13,6 +13,7 @@ data class GeneralSettingsBackup(
     val schemaVersion: Int = 1,
     val is24Hour: Boolean = true,
     val showSeconds: Boolean = true,
+    val screenOnPolicy: String = "CHARGING_ONLY", // CHARGING_ONLY, ALWAYS, SYSTEM
     val nightModeOption: String = "AUTO", // AUTO, FORCE_NIGHT, FORCE_DAY
     val autoNightDim: Boolean = true,
     val nightDimStartHour: Int = 22,
@@ -43,6 +44,7 @@ class ClockSettingsRepository(context: Context) {
             is24Hour = prefs.getBoolean("is_24_hour", true),
             showSeconds = prefs.getBoolean("show_seconds", true),
             keepScreenOn = prefs.getBoolean("keep_screen_on", true),
+            screenOnPolicy = prefs.getString("screen_on_policy", "CHARGING_ONLY") ?: "CHARGING_ONLY",
             nightModeOption = prefs.getString("night_mode_option", "AUTO") ?: "AUTO",
             autoNightDim = prefs.getBoolean("auto_night_dim", true),
             nightDimStartHour = prefs.getInt("night_start_hour", 22),
@@ -51,10 +53,10 @@ class ClockSettingsRepository(context: Context) {
             normalBrightness = prefs.getFloat("normal_brightness", -1.0f),
             autoRefreshIntervalMinutes = prefs.getInt("refresh_interval_min", 10),
             useMockData = prefs.getBoolean("use_mock_data", false),
-            autoLocation = prefs.getBoolean("auto_location", true),
-            cityName = prefs.getString("city_name", "深圳") ?: "深圳",
-            latitude = prefs.getFloat("city_lat", 22.5431f).toDouble(),
-            longitude = prefs.getFloat("city_lng", 114.0579f).toDouble(),
+            autoLocation = prefs.getBoolean("auto_location", false),
+            cityName = prefs.getString("city_name", "北京") ?: "北京",
+            latitude = prefs.getFloat("city_lat", 39.9042f).toDouble(),
+            longitude = prefs.getFloat("city_lng", 116.4074f).toDouble(),
             additionalCities = prefs.getString("additional_cities", "") ?: "",
             quotaWidthPercent = prefs.getInt("quota_width_percent", 38),
             quotaCardDensity = prefs.getString("quota_card_density", "NORMAL") ?: "NORMAL",
@@ -69,6 +71,7 @@ class ClockSettingsRepository(context: Context) {
             .putBoolean("is_24_hour", newSettings.is24Hour)
             .putBoolean("show_seconds", newSettings.showSeconds)
             .putBoolean("keep_screen_on", newSettings.keepScreenOn)
+            .putString("screen_on_policy", newSettings.screenOnPolicy)
             .putString("night_mode_option", newSettings.nightModeOption)
             .putBoolean("auto_night_dim", newSettings.autoNightDim)
             .putInt("night_start_hour", newSettings.nightDimStartHour)
@@ -100,6 +103,7 @@ class ClockSettingsRepository(context: Context) {
             schemaVersion = 1,
             is24Hour = current.is24Hour,
             showSeconds = current.showSeconds,
+            screenOnPolicy = current.screenOnPolicy,
             nightModeOption = current.nightModeOption,
             autoNightDim = current.autoNightDim,
             nightDimStartHour = current.nightDimStartHour,
@@ -136,6 +140,10 @@ class ClockSettingsRepository(context: Context) {
 
             val is24Hour = if (root.has("is24Hour")) root.get("is24Hour").asBoolean else true
             val showSeconds = if (root.has("showSeconds")) root.get("showSeconds").asBoolean else true
+            val screenOnPolicy = if (root.has("screenOnPolicy")) root.get("screenOnPolicy").asString else "CHARGING_ONLY"
+            if (screenOnPolicy !in listOf("CHARGING_ONLY", "ALWAYS", "SYSTEM")) {
+                return SettingsValidationResult.Invalid("屏幕常亮策略非法: $screenOnPolicy")
+            }
             val nightModeOption = if (root.has("nightModeOption")) root.get("nightModeOption").asString else "AUTO"
             if (nightModeOption !in listOf("AUTO", "FORCE_NIGHT", "FORCE_DAY")) {
                 return SettingsValidationResult.Invalid("夜间模式选项非法: $nightModeOption")
@@ -178,6 +186,7 @@ class ClockSettingsRepository(context: Context) {
                 schemaVersion = 1,
                 is24Hour = is24Hour,
                 showSeconds = showSeconds,
+                screenOnPolicy = screenOnPolicy,
                 nightModeOption = nightModeOption,
                 autoNightDim = autoNightDim,
                 nightDimStartHour = startHour,
@@ -193,6 +202,7 @@ class ClockSettingsRepository(context: Context) {
                 append("配置版本: v1\n")
                 append("时间制式: ${if (is24Hour) "24小时" else "12小时"}\n")
                 append("秒钟显示: ${if (showSeconds) "开启" else "关闭"}\n")
+                append("常亮策略: $screenOnPolicy\n")
                 append("主题模式: $nightModeOption\n")
                 append("夜间时段: ${startHour}:00 - ${endHour}:00 (亮度 ${(brightness * 100).toInt()}%)\n")
                 append("看板布局: 宽度 $widthPercent%, 密度 $density\n")
@@ -212,6 +222,8 @@ class ClockSettingsRepository(context: Context) {
         val updated = current.copy(
             is24Hour = backup.is24Hour,
             showSeconds = backup.showSeconds,
+            screenOnPolicy = backup.screenOnPolicy,
+            keepScreenOn = backup.screenOnPolicy != "SYSTEM",
             nightModeOption = backup.nightModeOption,
             autoNightDim = backup.autoNightDim,
             nightDimStartHour = backup.nightDimStartHour,
