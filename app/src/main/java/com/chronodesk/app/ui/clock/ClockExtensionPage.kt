@@ -38,6 +38,7 @@ import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.model.QuotaSyncStatus
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkProgressTrack
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -249,6 +250,32 @@ fun ClockExtensionPage(
                         val snap = snapshots[acc.id]
                         val pw = snap?.primaryWindow
                         val sw = snap?.secondaryWindow
+                        val syncStatus = snap?.computeStatus(
+                            isConfigured = acc.isConfigured,
+                            isRefreshing = false,
+                            refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+                        ) ?: if (acc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+
+                        val statusDesc = when (syncStatus) {
+                            QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+                            QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
+                            QuotaSyncStatus.SYNCING -> "同步中"
+                            QuotaSyncStatus.UPDATED -> "已更新 · ${snap?.formattedSuccessTime ?: snap?.formattedQueriedAt ?: "刚刚"}"
+                            QuotaSyncStatus.CACHED_STALE -> "缓存 · ${snap?.errorMessage?.take(6) ?: "异常"}"
+                            QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
+                            QuotaSyncStatus.AUTH_EXPIRED -> "授权失效"
+                            QuotaSyncStatus.SERVICE_UNAVAILABLE -> "服务暂不可用"
+                            QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
+                        }
+                        val statusColor = when (syncStatus) {
+                            QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+                            QuotaSyncStatus.AWAITING_SYNC -> if (isNightMode) TechAmber else InkWarningAmber
+                            QuotaSyncStatus.SYNCING -> if (isNightMode) TechCyan else InkProgress
+                            QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
+                            QuotaSyncStatus.CACHED_STALE -> if (isNightMode) TechAmber else InkWarningAmber
+                            QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
+                            QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> if (isNightMode) TechAmber else InkWarningAmber
+                        }
 
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Row(
@@ -263,7 +290,7 @@ fun ClockExtensionPage(
                                     Box(
                                         modifier = Modifier
                                             .size(4.dp)
-                                            .background(if (isNightMode) TechCyan else InkStatusGreen, CircleShape)
+                                            .background(if (isNightMode) (if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose else TechCyan) else (if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed else InkStatusGreen), CircleShape)
                                     )
                                     Text(
                                         text = acc.displayTitle,
@@ -272,35 +299,48 @@ fun ClockExtensionPage(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
-                                val queriedAt = snap?.formattedQueriedAt
                                 Text(
-                                    text = if (queriedAt != null) "更新于 $queriedAt" else "等待同步",
-                                    color = if (isNightMode) TechEmerald else InkStatusGreen,
+                                    text = statusDesc,
+                                    color = statusColor,
                                     fontSize = 8.5.sp
                                 )
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                val pwLabel = pw?.windowLabel ?: "额度窗口"
-                                val pwRemaining = pw?.formattedRemaining() ?: "—"
-                                val pwReset = pw?.formattedResetTime() ?: "重置时间未知"
+                            if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) {
                                 Text(
-                                    text = "$pwLabel: 剩余 $pwRemaining · $pwReset",
-                                    color = secondaryText,
+                                    text = "登录凭据已失效，请重新授权",
+                                    color = if (isNightMode) TechRose else InkWarningRed,
                                     fontSize = 9.5.sp
                                 )
-                                if (sw != null) {
-                                    val swLabel = sw.windowLabel ?: "额度窗口"
-                                    val swRemaining = sw.formattedRemaining()
-                                    val swReset = sw.formattedResetTime()
+                            } else if (syncStatus == QuotaSyncStatus.NOT_CONFIGURED) {
+                                Text(
+                                    text = "未配置账号 · 点击主页卡片进行连接",
+                                    color = mutedText,
+                                    fontSize = 9.5.sp
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    val pwLabel = pw?.windowLabel ?: "额度窗口"
+                                    val pwRemaining = pw?.formattedRemaining() ?: "—"
+                                    val pwReset = pw?.formattedResetTime() ?: "重置时间未知"
                                     Text(
-                                        text = "$swLabel: 剩余 $swRemaining · $swReset",
-                                        color = mutedText,
+                                        text = "$pwLabel: 剩余 $pwRemaining · $pwReset",
+                                        color = secondaryText,
                                         fontSize = 9.5.sp
                                     )
+                                    if (sw != null) {
+                                        val swLabel = sw.windowLabel ?: "额度窗口"
+                                        val swRemaining = sw.formattedRemaining()
+                                        val swReset = sw.formattedResetTime()
+                                        Text(
+                                            text = "$swLabel: 剩余 $swRemaining · $swReset",
+                                            color = mutedText,
+                                            fontSize = 9.5.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -357,9 +397,11 @@ fun ClockExtensionPage(
                                 )
                             }
                             val dsSnap = snapshots[dsAcc.id]
-                            val isDsConfigured = dsSnap?.creditsBalance != null && dsSnap.credentialStatus != CredentialStatus.NOT_LOGGED_IN
-                            val dsAvailable = dsSnap?.isAvailable ?: true
-                            val dsBalance = dsSnap?.creditsBalance ?: 0.0
+                            val dsSyncStatus = dsSnap?.computeStatus(
+                                isConfigured = dsAcc.isConfigured,
+                                isRefreshing = false,
+                                refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+                            ) ?: if (dsAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
 
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Row(
@@ -373,18 +415,25 @@ fun ClockExtensionPage(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
-                                    val dsStatusText = when {
-                                        !isDsConfigured -> "未配置"
-                                        dsSnap?.credentialStatus == CredentialStatus.EXPIRED -> "Key失效"
-                                        !dsAvailable -> "服务不可用"
-                                        dsBalance <= 0.0 -> "余额为零"
-                                        else -> "正常可用"
+                                    val dsStatusText = when (dsSyncStatus) {
+                                        QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+                                        QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
+                                        QuotaSyncStatus.SYNCING -> "同步中"
+                                        QuotaSyncStatus.UPDATED -> if (dsSnap?.isAvailable == false) "服务不可用" else if (dsSnap?.creditsBalance != null && dsSnap.creditsBalance <= 0.0) "余额为零" else "正常可用"
+                                        QuotaSyncStatus.CACHED_STALE -> "缓存 · ${dsSnap?.errorMessage?.take(6) ?: "异常"}"
+                                        QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
+                                        QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
+                                        QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
+                                        QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
                                     }
-                                    val dsStatusColor = when {
-                                        !isDsConfigured -> mutedText
-                                        dsSnap?.credentialStatus == CredentialStatus.EXPIRED || !dsAvailable -> if (isNightMode) TechRose else InkWarningRed
-                                        dsBalance <= 0.0 -> if (isNightMode) TechAmber else InkWarningAmber
-                                        else -> if (isNightMode) TechEmerald else InkStatusGreen
+                                    val dsStatusColor = when (dsSyncStatus) {
+                                        QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+                                        QuotaSyncStatus.AWAITING_SYNC -> if (isNightMode) TechAmber else InkWarningAmber
+                                        QuotaSyncStatus.SYNCING -> if (isNightMode) TechCyan else InkProgress
+                                        QuotaSyncStatus.UPDATED -> if (dsSnap?.isAvailable == false) (if (isNightMode) TechRose else InkWarningRed) else if (dsSnap?.creditsBalance != null && dsSnap.creditsBalance <= 0.0) (if (isNightMode) TechAmber else InkWarningAmber) else (if (isNightMode) TechEmerald else InkStatusGreen)
+                                        QuotaSyncStatus.CACHED_STALE -> if (isNightMode) TechAmber else InkWarningAmber
+                                        QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
+                                        QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> if (isNightMode) TechAmber else InkWarningAmber
                                     }
                                     Text(
                                         text = dsStatusText,
@@ -393,7 +442,11 @@ fun ClockExtensionPage(
                                     )
                                 }
 
-                                if (isDsConfigured) {
+                                if (dsSyncStatus == QuotaSyncStatus.NOT_CONFIGURED) {
+                                    Text(text = "未配置 API Key · 点击主页卡片进行配置", color = mutedText, fontSize = 9.5.sp)
+                                } else if (dsSyncStatus == QuotaSyncStatus.AUTH_EXPIRED) {
+                                    Text(text = "API Key 鉴权失败 · 点击主页卡片重新授权", color = if (isNightMode) TechRose else InkWarningRed, fontSize = 9.5.sp)
+                                } else {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
@@ -404,14 +457,14 @@ fun ClockExtensionPage(
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
                                         )
+                                        val timeStr = dsSnap?.formattedSuccessTime ?: dsSnap?.formattedQueriedAt ?: "刚刚"
+                                        val timeSuffix = if (dsSyncStatus == QuotaSyncStatus.CACHED_STALE || dsSyncStatus == QuotaSyncStatus.CACHE_EXPIRED) " (缓存)" else ""
                                         Text(
-                                            text = "更新: ${dsSnap?.formattedQueriedAt ?: "刚刚"}",
+                                            text = "更新: $timeStr$timeSuffix",
                                             color = mutedText,
                                             fontSize = 9.sp
                                         )
                                     }
-                                } else {
-                                    Text(text = "未配置 API Key · 点击主页卡片进行配置", color = mutedText, fontSize = 9.5.sp)
                                 }
                             }
                         }
@@ -469,8 +522,11 @@ fun ClockExtensionPage(
                             )
                         }
                         val agSnap = snapshots[agAcc.id]
-                        val isAgConfigured = agAcc.credentialStatus == CredentialStatus.VALID
-                        val isAgExpired = agAcc.credentialStatus == CredentialStatus.EXPIRED
+                        val agSyncStatus = agSnap?.computeStatus(
+                            isConfigured = agAcc.isConfigured,
+                            isRefreshing = false,
+                            refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+                        ) ?: if (agAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
 
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Row(
@@ -485,7 +541,14 @@ fun ClockExtensionPage(
                                     Box(
                                         modifier = Modifier
                                             .size(4.dp)
-                                            .background(if (isAgConfigured) (if (isNightMode) TechCyan else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed), CircleShape)
+                                            .background(
+                                                if (isNightMode) {
+                                                    if (agSyncStatus == QuotaSyncStatus.UPDATED) TechCyan else if (agSyncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose else TechAmber
+                                                } else {
+                                                    if (agSyncStatus == QuotaSyncStatus.UPDATED) InkStatusGreen else if (agSyncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed else InkWarningAmber
+                                                },
+                                                CircleShape
+                                            )
                                     )
                                     Text(
                                         text = agAcc.displayTitle,
@@ -494,17 +557,22 @@ fun ClockExtensionPage(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
-                                val agStatusText = when {
-                                    !isAgConfigured -> "待配置 API Key"
-                                    isAgExpired -> "Key失效"
-                                    agSnap?.errorMessage != null && !agSnap.isLastGood -> "连接异常"
-                                    else -> "连接正常"
+                                val agStatusText = when (agSyncStatus) {
+                                    QuotaSyncStatus.NOT_CONFIGURED -> "待配置 API Key"
+                                    QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
+                                    QuotaSyncStatus.SYNCING -> "同步中"
+                                    QuotaSyncStatus.UPDATED -> "连接正常"
+                                    QuotaSyncStatus.CACHED_STALE -> "缓存 · 连接异常"
+                                    QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
+                                    QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
+                                    QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
+                                    QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
                                 }
-                                val agStatusColor = when {
-                                    !isAgConfigured -> mutedText
-                                    isAgExpired -> if (isNightMode) TechRose else InkWarningRed
-                                    agSnap?.errorMessage != null && !agSnap.isLastGood -> if (isNightMode) TechAmber else InkWarningAmber
-                                    else -> if (isNightMode) TechEmerald else InkStatusGreen
+                                val agStatusColor = when (agSyncStatus) {
+                                    QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+                                    QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
+                                    QuotaSyncStatus.AUTH_EXPIRED, QuotaSyncStatus.CACHE_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
+                                    else -> if (isNightMode) TechAmber else InkWarningAmber
                                 }
                                 Text(
                                     text = agStatusText,
@@ -517,15 +585,21 @@ fun ClockExtensionPage(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                val desc = when (agSyncStatus) {
+                                    QuotaSyncStatus.NOT_CONFIGURED -> "未配置 API Key · 点击主页卡片进行配置"
+                                    QuotaSyncStatus.AUTH_EXPIRED -> "API Key 鉴权失败 · 点击主页卡片重新授权"
+                                    else -> "模型接口调用就绪"
+                                }
                                 Text(
-                                    text = if (isAgConfigured) "模型接口调用就绪" else "未配置 API Key · 点击主页卡片进行配置",
+                                    text = desc,
                                     color = secondaryText,
                                     fontSize = 9.5.sp
                                 )
-                                if (isAgConfigured) {
+                                if (agSyncStatus != QuotaSyncStatus.NOT_CONFIGURED && agSyncStatus != QuotaSyncStatus.AUTH_EXPIRED) {
                                     val verifiedTime = agSnap?.formattedVerifiedTime ?: agSnap?.formattedQueriedAt ?: "刚刚"
+                                    val timeSuffix = if (agSyncStatus == QuotaSyncStatus.CACHED_STALE || agSyncStatus == QuotaSyncStatus.CACHE_EXPIRED) " (缓存)" else ""
                                     Text(
-                                        text = "验证于 $verifiedTime",
+                                        text = "验证于 $verifiedTime$timeSuffix",
                                         color = mutedText,
                                         fontSize = 9.5.sp
                                     )

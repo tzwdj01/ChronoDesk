@@ -36,7 +36,10 @@ sealed class TokenResult {
 
 sealed class UsageFetchResult {
     data class Success(val snapshot: CodexUsageSnapshot) : UsageFetchResult()
-    data class AuthExpired(val message: String) : UsageFetchResult()
+    data class AuthExpired(val message: String, val statusCode: Int = 401) : UsageFetchResult()
+    data class RateLimited(val message: String, val retryAfterSeconds: Long? = null) : UsageFetchResult()
+    data class ServerError(val message: String, val statusCode: Int = 500) : UsageFetchResult()
+    data class DataFormatError(val message: String) : UsageFetchResult()
     data class TransientError(val message: String) : UsageFetchResult()
 }
 

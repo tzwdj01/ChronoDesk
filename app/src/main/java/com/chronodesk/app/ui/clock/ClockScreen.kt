@@ -520,6 +520,7 @@ fun ClockScreen(
                                     areControlsVisible = areControlsVisible,
                                     isCompact = isCompactHeight,
                                     isMockMode = settings.useMockData,
+                                    refreshIntervalMinutes = settings.autoRefreshIntervalMinutes,
                                     cardDensity = settings.quotaCardDensity,
                                     onAddAccount = { viewModel.addAccount() },
                                     onRefreshAccount = { id -> viewModel.refreshAccount(id) },
@@ -587,6 +588,7 @@ fun ClockScreen(
                                 isNightMode = isNightMode,
                                 areControlsVisible = areControlsVisible,
                                 isMockMode = settings.useMockData,
+                                refreshIntervalMinutes = settings.autoRefreshIntervalMinutes,
                                 onAddAccount = { viewModel.addAccount() },
                                 onRefreshAccount = { id -> viewModel.refreshAccount(id) },
                                 modifier = Modifier.fillMaxWidth()

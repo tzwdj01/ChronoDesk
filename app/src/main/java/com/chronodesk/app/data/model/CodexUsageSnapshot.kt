@@ -4,6 +4,26 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+enum class SyncErrorType {
+    AUTH_FAILED,        // 401/403 明确鉴权失效
+    RATE_LIMITED,       // 429 限流
+    SERVER_FAULT,       // 5xx 服务端故障
+    DATA_FORMAT,        // 非 JSON 或关键字段缺失
+    NETWORK_TIMEOUT     // 网络超时 / 瞬时错误
+}
+
+enum class QuotaSyncStatus {
+    NOT_CONFIGURED,       // 「未配置」＋「连接账号」
+    AWAITING_SYNC,        // 「待同步」。失败时显示原因和「重试」
+    SYNCING,              // 「同步中」。有旧数据时继续显示原更新时间
+    UPDATED,              // 「已更新」或显示「更新于 HH:mm」
+    CACHED_STALE,         // 「缓存数据 · 更新于 HH:mm」与原数值。显示失败原因和「重试」
+    CACHE_EXPIRED,        // 「缓存已过期」，仍显示原时间与数值
+    AUTH_EXPIRED,         // 「授权失效」＋「重新授权」，清除旧额度数值
+    SERVICE_UNAVAILABLE,  // 「暂不可用」及重试倒计时或「重试」
+    DATA_FORMAT_ERROR     // 「数据格式异常」＋「重试」
+}
+
 data class DeepSeekBalance(
     val currency: String,
     val totalBalance: Double?,
@@ -28,8 +48,11 @@ data class CodexUsageSnapshot(
     val resetCreditsCount: Int? = null,             // 官方额度重置卡可用次数
     val resetCreditsExpiresAt: String? = null,       // 重置卡/额度到期时间
     val queriedAt: Long? = null,
+    val lastSuccessTime: Long? = null,              // 最后一次成功查询到的时间戳 (ms)
     val isLastGood: Boolean = false,
     val errorMessage: String? = null,
+    val lastErrorType: SyncErrorType? = null,        // 失败类型
+    val retryAfterUnixMs: Long? = null,             // 429 冷却截止时间戳 (ms)
     val limitReached: Boolean = false,
     val modelProvider: String = "CHATGPT"
 ) {
@@ -49,11 +72,74 @@ data class CodexUsageSnapshot(
             }
         }
 
-    val formattedVerifiedTime: String
+    val formattedSuccessTime: String
         get() {
-            val t = queriedAt ?: return "未同步"
+            val t = lastSuccessTime ?: (if (!isLastGood) queriedAt else null) ?: queriedAt ?: return "未同步"
             return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(t))
         }
+
+    val formattedVerifiedTime: String
+        get() {
+            val t = lastSuccessTime ?: queriedAt ?: return "未同步"
+            return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(t))
+        }
+
+    /**
+     * 计算该账号的统一状态判定，首页和详情页共用此规则
+     */
+    fun computeStatus(
+        isConfigured: Boolean,
+        isRefreshing: Boolean,
+        refreshIntervalMinutes: Int = 15,
+        nowMs: Long = System.currentTimeMillis()
+    ): QuotaSyncStatus {
+        if (!isConfigured || credentialStatus == CredentialStatus.NOT_LOGGED_IN) {
+            return QuotaSyncStatus.NOT_CONFIGURED
+        }
+        if (isRefreshing) {
+            return QuotaSyncStatus.SYNCING
+        }
+        if (credentialStatus == CredentialStatus.EXPIRED || lastErrorType == SyncErrorType.AUTH_FAILED) {
+            return QuotaSyncStatus.AUTH_EXPIRED
+        }
+        if (lastErrorType == SyncErrorType.RATE_LIMITED || lastErrorType == SyncErrorType.SERVER_FAULT || isAvailable == false) {
+            return QuotaSyncStatus.SERVICE_UNAVAILABLE
+        }
+        if (lastErrorType == SyncErrorType.DATA_FORMAT) {
+            return QuotaSyncStatus.DATA_FORMAT_ERROR
+        }
+
+        val successTime = lastSuccessTime ?: if (!isLastGood && queriedAt != null) queriedAt else null
+        val hasData = (primaryWindow != null || secondaryWindow != null || creditsBalance != null || isAvailable == true)
+
+        if (successTime != null) {
+            val intervalMs = refreshIntervalMinutes * 60 * 1000L
+            val maxAgeMs = intervalMs * 2
+            if (nowMs - successTime >= maxAgeMs) {
+                return QuotaSyncStatus.CACHE_EXPIRED
+            }
+        }
+
+        if (errorMessage != null || isLastGood) {
+            return if (hasData || successTime != null) {
+                QuotaSyncStatus.CACHED_STALE
+            } else {
+                QuotaSyncStatus.AWAITING_SYNC
+            }
+        }
+
+        if (successTime != null || hasData) {
+            return QuotaSyncStatus.UPDATED
+        }
+
+        return QuotaSyncStatus.AWAITING_SYNC
+    }
+
+    fun getRemainingRetrySeconds(nowMs: Long = System.currentTimeMillis()): Long {
+        val target = retryAfterUnixMs ?: return 0L
+        val diff = (target - nowMs) / 1000
+        return if (diff > 0) diff else 0L
+    }
 
     /**
      * 针对 DeepSeek 格式化展示余额与可用性：
@@ -101,13 +187,35 @@ data class CodexUsageSnapshot(
             status: CredentialStatus,
             message: String,
             lastGood: CodexUsageSnapshot? = null,
-            modelProvider: String = "CHATGPT"
+            modelProvider: String = "CHATGPT",
+            errorType: SyncErrorType = if (status == CredentialStatus.EXPIRED) SyncErrorType.AUTH_FAILED else SyncErrorType.NETWORK_TIMEOUT,
+            retryAfterUnixMs: Long? = null
         ): CodexUsageSnapshot {
-            return if (lastGood != null) {
+            return if (status == CredentialStatus.EXPIRED || errorType == SyncErrorType.AUTH_FAILED) {
+                // 明确鉴权失效（401/403）：清除旧额度数值
+                CodexUsageSnapshot(
+                    accountId = accountId,
+                    accountAlias = alias,
+                    credentialStatus = CredentialStatus.EXPIRED,
+                    primaryWindow = null,
+                    secondaryWindow = null,
+                    creditsBalance = null,
+                    balanceList = null,
+                    queriedAt = null,
+                    lastSuccessTime = null,
+                    isLastGood = false,
+                    errorMessage = message,
+                    lastErrorType = SyncErrorType.AUTH_FAILED,
+                    modelProvider = modelProvider
+                )
+            } else if (lastGood != null) {
+                // 保留旧数据
                 lastGood.copy(
                     credentialStatus = status,
                     isLastGood = true,
                     errorMessage = message,
+                    lastErrorType = errorType,
+                    retryAfterUnixMs = retryAfterUnixMs,
                     modelProvider = modelProvider
                 )
             } else {
@@ -116,8 +224,11 @@ data class CodexUsageSnapshot(
                     accountAlias = alias,
                     credentialStatus = status,
                     queriedAt = null,
+                    lastSuccessTime = null,
                     isLastGood = false,
                     errorMessage = message,
+                    lastErrorType = errorType,
+                    retryAfterUnixMs = retryAfterUnixMs,
                     modelProvider = modelProvider
                 )
             }

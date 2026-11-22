@@ -6,6 +6,7 @@ import android.util.Log
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.model.SyncErrorType
 import com.chronodesk.app.data.provider.CodexUsageProvider
 import com.chronodesk.app.data.provider.MockCodexProvider
 import com.chronodesk.app.data.provider.RealCodexUsageProvider
@@ -15,6 +16,8 @@ import com.chronodesk.app.data.security.CredentialStorage
 import com.chronodesk.app.data.security.JwtUtils
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -608,59 +611,83 @@ class CodexAccountRepository(
         }
     }
 
+    private val inFlightRefreshes = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+    private val retryAfterMap = ConcurrentHashMap<String, Long>()
+    private val backoffAttempts = ConcurrentHashMap<String, Int>()
+
+    fun getRetryAfterSeconds(accountId: String, nowMs: Long = System.currentTimeMillis()): Long? {
+        val cooldownUntil = retryAfterMap[accountId] ?: _snapshots.value[accountId]?.retryAfterUnixMs ?: return null
+        val diff = (cooldownUntil - nowMs) / 1000L
+        return if (diff > 0) diff else null
+    }
+
     suspend fun refreshAccount(accountId: String, isMockGlobal: Boolean = false) {
+        val account = _accounts.value.firstOrNull { it.id == accountId } ?: return
+        if (!account.isConfigured && !isMockGlobal && account.providerType != "MOCK") {
+            return
+        }
+
+        // 检查 429 冷却时间
+        val cooldownUntil = retryAfterMap[accountId] ?: 0L
+        val now = System.currentTimeMillis()
+        if (now < cooldownUntil) {
+            Log.w(TAG, "Account $accountId is rate-limited, cooling down until $cooldownUntil")
+            return
+        }
+
+        // 合并并发刷新请求
+        val deferred = CompletableDeferred<Unit>()
+        val existing = inFlightRefreshes.putIfAbsent(accountId, deferred)
+        if (existing != null) {
+            existing.await()
+            return
+        }
+
+        try {
+            doRefreshAccount(accountId, isMockGlobal)
+            deferred.complete(Unit)
+        } catch (e: Throwable) {
+            deferred.completeExceptionally(e)
+            throw e
+        } finally {
+            inFlightRefreshes.remove(accountId)
+        }
+    }
+
+    private suspend fun doRefreshAccount(accountId: String, isMockGlobal: Boolean) {
         val mutex = getMutex(accountId)
         mutex.withLock {
             val account = _accounts.value.firstOrNull { it.id == accountId } ?: return
-            if (!account.isConfigured && !isMockGlobal && account.providerType != "MOCK") {
-                return
-            }
-
             setLoading(accountId, true)
             val provider = getProviderForAccount(account, isMockGlobal)
 
             try {
-                // 针对不同 AI 模型平台差异化刷新
+                // 1. DeepSeek 平台刷新
                 if (account.modelProvider == "DEEPSEEK") {
                     val apiKey = credentialStorage.getAccessToken(account.id)
                     val result = deepSeekProvider.fetchUsage(account.id, account.displayTitle, apiKey)
-                    if (result is UsageFetchResult.Success) {
-                        putSnapshot(accountId, result.snapshot.copy(modelProvider = "DEEPSEEK", accountAlias = account.displayTitle))
-                        updateAccount(account.copy(credentialStatus = result.snapshot.credentialStatus, lastSyncTime = result.snapshot.queriedAt ?: System.currentTimeMillis()))
-                    } else if (result is UsageFetchResult.AuthExpired) {
-                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, CredentialStatus.EXPIRED, result.message, lastGood = _snapshots.value[accountId], modelProvider = "DEEPSEEK"))
-                        updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
-                    } else if (result is UsageFetchResult.TransientError) {
-                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, account.credentialStatus, result.message, lastGood = _snapshots.value[accountId], modelProvider = "DEEPSEEK"))
-                    }
+                    handleFetchResult(account, result)
                     return
                 }
 
+                // 2. Gemini API 平台刷新
                 if (account.modelProvider == "ANTIGRAVITY") {
                     val apiKey = credentialStorage.getAccessToken(account.id)
                     val result = antigravityProvider.fetchUsage(account.id, account.displayTitle, apiKey)
-                    if (result is UsageFetchResult.Success) {
-                        putSnapshot(accountId, result.snapshot.copy(modelProvider = "ANTIGRAVITY", accountAlias = account.displayTitle))
-                        updateAccount(account.copy(credentialStatus = result.snapshot.credentialStatus, lastSyncTime = result.snapshot.queriedAt ?: System.currentTimeMillis()))
-                    } else if (result is UsageFetchResult.AuthExpired) {
-                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, CredentialStatus.EXPIRED, result.message, lastGood = _snapshots.value[accountId], modelProvider = "ANTIGRAVITY"))
-                        updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
-                    } else if (result is UsageFetchResult.TransientError) {
-                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, account.credentialStatus, result.message, lastGood = _snapshots.value[accountId], modelProvider = "ANTIGRAVITY"))
-                    }
+                    handleFetchResult(account, result)
                     return
                 }
 
                 if (account.modelProvider == "GEMINI" || account.modelProvider == "CLAUDE") {
                     val existing = _snapshots.value[account.id]
                     if (existing != null) {
-                        putSnapshot(accountId, existing.copy(queriedAt = System.currentTimeMillis()))
+                        putSnapshot(accountId, existing.copy(queriedAt = System.currentTimeMillis(), lastSuccessTime = System.currentTimeMillis()))
                     }
                     updateAccount(account.copy(credentialStatus = CredentialStatus.VALID, lastSyncTime = System.currentTimeMillis()))
                     return
                 }
 
-                // 如果是 MOCK 账号，直接获取模拟额度并保持有效状态，不需 Keystore 真实凭据
+                // 3. MOCK 账号刷新
                 if (provider is MockCodexProvider || account.providerType == "MOCK") {
                     val usageResult = provider.fetchUsage(
                         accountId = account.id,
@@ -668,21 +695,11 @@ class CodexAccountRepository(
                         accessToken = "mock_token",
                         chatgptAccountId = account.chatgptAccountId
                     )
-                    if (usageResult is UsageFetchResult.Success) {
-                        putSnapshot(accountId, usageResult.snapshot)
-                        val now = System.currentTimeMillis()
-                        val detectedEmail = usageResult.snapshot.email ?: account.email
-                        updateAccount(account.copy(
-                            email = detectedEmail,
-                            alias = account.displayTitle,
-                            credentialStatus = CredentialStatus.VALID,
-                            lastSyncTime = now
-                        ))
-                    }
+                    handleFetchResult(account, usageResult)
                     return
                 }
 
-                // 1. 获取有效 Access Token
+                // 4. ChatGPT (Codex) 真实账号刷新
                 var accessToken = credentialStorage.getAccessToken(account.id)
                 if (accessToken.isNullOrBlank()) {
                     val refreshToken = credentialStorage.getRefreshToken(account.id)
@@ -692,7 +709,8 @@ class CodexAccountRepository(
                             alias = account.displayTitle,
                             status = CredentialStatus.NOT_LOGGED_IN,
                             message = "未找到有效登录凭据，请重新授权",
-                            lastGood = _snapshots.value[account.id]
+                            lastGood = _snapshots.value[account.id],
+                            errorType = SyncErrorType.AUTH_FAILED
                         )
                         putSnapshot(accountId, failedSnap)
                         updateAccount(account.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN))
@@ -718,7 +736,8 @@ class CodexAccountRepository(
                                 alias = account.displayTitle,
                                 status = CredentialStatus.EXPIRED,
                                 message = refreshResult.message,
-                                lastGood = null
+                                lastGood = null,
+                                errorType = SyncErrorType.AUTH_FAILED
                             )
                             putSnapshot(accountId, failedSnap)
                             updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
@@ -730,7 +749,8 @@ class CodexAccountRepository(
                                 alias = account.displayTitle,
                                 status = account.credentialStatus,
                                 message = refreshResult.message,
-                                lastGood = _snapshots.value[account.id]
+                                lastGood = _snapshots.value[account.id],
+                                errorType = SyncErrorType.NETWORK_TIMEOUT
                             )
                             putSnapshot(accountId, failedSnap)
                             return
@@ -738,67 +758,168 @@ class CodexAccountRepository(
                     }
                 }
 
-                // 2. 使用 Access Token 查询额度
-                val usageResult = provider.fetchUsage(
+                // 使用 Access Token 查询额度
+                var usageResult = provider.fetchUsage(
                     accountId = account.id,
                     accountAlias = account.displayTitle,
                     accessToken = accessToken,
                     chatgptAccountId = account.chatgptAccountId
                 )
 
-                when (usageResult) {
-                    is UsageFetchResult.Success -> {
-                        putSnapshot(accountId, usageResult.snapshot)
-                        val now = System.currentTimeMillis()
-                        val detectedEmail = usageResult.snapshot.email ?: account.email
-                        val updatedAlias = if (account.alias.isBlank() || account.alias.contains("账号")) {
-                            (detectedEmail ?: account.alias)
-                        } else {
-                            account.alias
+                // 对 401 触发受控刷新 Token 最多一次，避免并发连环失效
+                if (usageResult is UsageFetchResult.AuthExpired) {
+                    val refreshToken = credentialStorage.getRefreshToken(account.id)
+                    if (!refreshToken.isNullOrBlank()) {
+                        Log.i(TAG, "Account ${account.id} received 401, attempting controlled token refresh once...")
+                        when (val reauth = provider.refreshToken(refreshToken)) {
+                            is TokenResult.Success -> {
+                                accessToken = reauth.accessToken
+                                credentialStorage.saveAccessToken(
+                                    account.id,
+                                    reauth.accessToken,
+                                    System.currentTimeMillis() + (reauth.expiresInSeconds * 1000)
+                                )
+                                if (!reauth.refreshToken.isNullOrBlank()) {
+                                    credentialStorage.saveRefreshToken(account.id, reauth.refreshToken)
+                                }
+                                // 重试一次 fetchUsage
+                                usageResult = provider.fetchUsage(
+                                    accountId = account.id,
+                                    accountAlias = account.displayTitle,
+                                    accessToken = accessToken,
+                                    chatgptAccountId = account.chatgptAccountId
+                                )
+                            }
+                            else -> {
+                                Log.w(TAG, "Controlled token refresh failed for ${account.id}")
+                            }
                         }
-                        updateAccount(account.copy(
-                            email = detectedEmail,
-                            alias = updatedAlias,
-                            credentialStatus = CredentialStatus.VALID,
-                            lastSyncTime = now
-                        ))
-                    }
-                    is UsageFetchResult.AuthExpired -> {
-                        credentialStorage.saveAccessToken(account.id, "", 0L)
-                        val failedSnap = CodexUsageSnapshot.error(
-                            accountId = account.id,
-                            alias = account.displayTitle,
-                            status = CredentialStatus.EXPIRED,
-                            message = usageResult.message,
-                            lastGood = null
-                        )
-                        putSnapshot(accountId, failedSnap)
-                        updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
-                    }
-                    is UsageFetchResult.TransientError -> {
-                        val failedSnap = CodexUsageSnapshot.error(
-                            accountId = account.id,
-                            alias = account.displayTitle,
-                            status = account.credentialStatus,
-                            message = usageResult.message,
-                            lastGood = _snapshots.value[account.id]
-                        )
-                        putSnapshot(accountId, failedSnap)
                     }
                 }
+
+                handleFetchResult(account, usageResult)
+
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Account $accountId refresh error", e)
                 val failedSnap = CodexUsageSnapshot.error(
                     accountId = account.id,
                     alias = account.displayTitle,
                     status = account.credentialStatus,
                     message = "刷新异常: ${e.message}",
-                    lastGood = _snapshots.value[account.id]
+                    lastGood = _snapshots.value[account.id],
+                    errorType = SyncErrorType.NETWORK_TIMEOUT
                 )
                 putSnapshot(accountId, failedSnap)
             } finally {
                 setLoading(accountId, false)
+            }
+        }
+    }
+
+    private fun handleFetchResult(account: CodexAccount, result: UsageFetchResult) {
+        val accountId = account.id
+        when (result) {
+            is UsageFetchResult.Success -> {
+                retryAfterMap.remove(accountId)
+                backoffAttempts.remove(accountId)
+                val now = System.currentTimeMillis()
+                val detectedEmail = result.snapshot.email ?: account.email
+                val updatedAlias = if (account.alias.isBlank() || account.alias.contains("账号")) {
+                    (detectedEmail ?: account.alias)
+                } else {
+                    account.alias
+                }
+                val snapToSave = result.snapshot.copy(
+                    accountAlias = updatedAlias,
+                    lastSuccessTime = result.snapshot.queriedAt ?: now,
+                    isLastGood = false,
+                    errorMessage = null,
+                    lastErrorType = null,
+                    retryAfterUnixMs = null
+                )
+                putSnapshot(accountId, snapToSave)
+                updateAccount(account.copy(
+                    email = detectedEmail,
+                    alias = updatedAlias,
+                    credentialStatus = result.snapshot.credentialStatus,
+                    lastSyncTime = now
+                ))
+            }
+            is UsageFetchResult.AuthExpired -> {
+                // 明确鉴权失效（401/403）：清除旧额度数值
+                if (account.modelProvider == "CHATGPT") {
+                    credentialStorage.saveAccessToken(accountId, "", 0L)
+                }
+                val failedSnap = CodexUsageSnapshot.error(
+                    accountId = accountId,
+                    alias = account.displayTitle,
+                    status = CredentialStatus.EXPIRED,
+                    message = result.message,
+                    lastGood = null,
+                    modelProvider = account.modelProvider,
+                    errorType = SyncErrorType.AUTH_FAILED
+                )
+                putSnapshot(accountId, failedSnap)
+                updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
+            }
+            is UsageFetchResult.RateLimited -> {
+                val now = System.currentTimeMillis()
+                val targetTime = if (result.retryAfterSeconds != null) {
+                    now + (result.retryAfterSeconds * 1000L)
+                } else {
+                    val attempt = backoffAttempts.compute(accountId) { _, p -> (p ?: 0) + 1 } ?: 1
+                    val backoffSec = (5L * (1L shl (attempt - 1).coerceAtMost(4))).coerceAtMost(60L)
+                    now + (backoffSec * 1000L)
+                }
+                retryAfterMap[accountId] = targetTime
+                val failedSnap = CodexUsageSnapshot.error(
+                    accountId = accountId,
+                    alias = account.displayTitle,
+                    status = account.credentialStatus,
+                    message = result.message,
+                    lastGood = _snapshots.value[accountId],
+                    modelProvider = account.modelProvider,
+                    errorType = SyncErrorType.RATE_LIMITED,
+                    retryAfterUnixMs = targetTime
+                )
+                putSnapshot(accountId, failedSnap)
+            }
+            is UsageFetchResult.ServerError -> {
+                val failedSnap = CodexUsageSnapshot.error(
+                    accountId = accountId,
+                    alias = account.displayTitle,
+                    status = account.credentialStatus,
+                    message = result.message,
+                    lastGood = _snapshots.value[accountId],
+                    modelProvider = account.modelProvider,
+                    errorType = SyncErrorType.SERVER_FAULT
+                )
+                putSnapshot(accountId, failedSnap)
+            }
+            is UsageFetchResult.DataFormatError -> {
+                val failedSnap = CodexUsageSnapshot.error(
+                    accountId = accountId,
+                    alias = account.displayTitle,
+                    status = account.credentialStatus,
+                    message = result.message,
+                    lastGood = _snapshots.value[accountId],
+                    modelProvider = account.modelProvider,
+                    errorType = SyncErrorType.DATA_FORMAT
+                )
+                putSnapshot(accountId, failedSnap)
+            }
+            is UsageFetchResult.TransientError -> {
+                val failedSnap = CodexUsageSnapshot.error(
+                    accountId = accountId,
+                    alias = account.displayTitle,
+                    status = account.credentialStatus,
+                    message = result.message,
+                    lastGood = _snapshots.value[accountId],
+                    modelProvider = account.modelProvider,
+                    errorType = SyncErrorType.NETWORK_TIMEOUT
+                )
+                putSnapshot(accountId, failedSnap)
             }
         }
     }

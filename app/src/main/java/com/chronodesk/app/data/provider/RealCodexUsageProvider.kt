@@ -147,11 +147,22 @@ class RealCodexUsageProvider : CodexUsageProvider {
 
             when (response.code()) {
                 401, 403 -> {
-                    UsageFetchResult.AuthExpired("Codex 访问令牌已过期或拒绝访问 (HTTP ${response.code()})")
+                    UsageFetchResult.AuthExpired("Codex 访问令牌已过期或拒绝访问 (HTTP ${response.code()})", response.code())
+                }
+                429 -> {
+                    val retryHeader = response.headers()["Retry-After"]
+                    val retrySec = retryHeader?.toLongOrNull()
+                    UsageFetchResult.RateLimited("Codex 接口已被限流 (HTTP 429)", retrySec)
+                }
+                in 500..599 -> {
+                    UsageFetchResult.ServerError("Codex 服务端故障 (HTTP ${response.code()})", response.code())
                 }
                 200 -> {
                     val body = response.body()
-                    val limitReached = body?.rateLimit?.limitReached == true || body?.rateLimit?.allowed == false
+                    if (body == null) {
+                        return UsageFetchResult.DataFormatError("数据格式异常：响应内容为空")
+                    }
+                    val limitReached = body.rateLimit?.limitReached == true || body.rateLimit?.allowed == false
                     val primary = body?.rateLimit?.primaryWindow?.let {
                         CodexUsageWindow.fromRaw(it.usedPercent, it.limitWindowSeconds, it.resetAt)
                     }

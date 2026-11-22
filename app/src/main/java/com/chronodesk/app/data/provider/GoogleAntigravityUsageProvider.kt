@@ -66,8 +66,15 @@ class GoogleAntigravityUsageProvider(
             val code = response.code
             val bodyStr = response.body?.string()
 
-            if (code == 200 && !bodyStr.isNullOrBlank()) {
-                val json = JSONObject(bodyStr)
+            if (code == 200) {
+                if (bodyStr.isNullOrBlank()) {
+                    return@withContext UsageFetchResult.DataFormatError("数据格式异常：响应内容为空")
+                }
+                val json = try {
+                    JSONObject(bodyStr)
+                } catch (e: Exception) {
+                    return@withContext UsageFetchResult.DataFormatError("数据格式异常：非标准 JSON (${e.message})")
+                }
                 val modelsArray = json.optJSONArray("models")
                 val modelCount = modelsArray?.length() ?: 0
                 Log.d(TAG, "Gemini API models verified: count = $modelCount")
@@ -85,14 +92,20 @@ class GoogleAntigravityUsageProvider(
                     isAvailable = true,
                     planName = null,
                     queriedAt = System.currentTimeMillis(),
+                    lastSuccessTime = System.currentTimeMillis(),
                     isLastGood = false,
                     errorMessage = null,
                     limitReached = false,
                     modelProvider = "ANTIGRAVITY"
                 )
                 UsageFetchResult.Success(snapshot)
+            } else if (code == 429) {
+                val retrySec = response.header("Retry-After")?.toLongOrNull()
+                UsageFetchResult.RateLimited("Gemini API 接口已被限流 (HTTP 429)", retrySec)
+            } else if (code in 500..599) {
+                UsageFetchResult.ServerError("Google 服务端故障 (HTTP $code)", code)
             } else if (code == 400 || code == 401 || code == 403) {
-                UsageFetchResult.AuthExpired("Gemini API Key 无效或未授权 (HTTP $code)")
+                UsageFetchResult.AuthExpired("Gemini API Key 无效或未授权 (HTTP $code)", code)
             } else {
                 UsageFetchResult.TransientError("Gemini 服务响应异常 (HTTP $code)")
             }

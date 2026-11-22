@@ -67,8 +67,15 @@ class DeepSeekUsageProvider(
             val code = response.code
             val bodyStr = response.body?.string()
 
-            if (code == 200 && !bodyStr.isNullOrBlank()) {
-                val json = JSONObject(bodyStr)
+            if (code == 200) {
+                if (bodyStr.isNullOrBlank()) {
+                    return@withContext UsageFetchResult.DataFormatError("数据格式异常：响应内容为空")
+                }
+                val json = try {
+                    JSONObject(bodyStr)
+                } catch (e: Exception) {
+                    return@withContext UsageFetchResult.DataFormatError("数据格式异常：非标准 JSON (${e.message})")
+                }
                 val isAvailable = json.optBoolean("is_available", true)
                 val balanceInfos = json.optJSONArray("balance_infos")
                 val balances = mutableListOf<DeepSeekBalance>()
@@ -121,14 +128,20 @@ class DeepSeekUsageProvider(
                     isAvailable = isAvailable,
                     planName = null,
                     queriedAt = System.currentTimeMillis(),
+                    lastSuccessTime = System.currentTimeMillis(),
                     isLastGood = false,
                     errorMessage = null,
                     limitReached = !isAvailable || (totalBalance != null && totalBalance <= 0.0),
                     modelProvider = "DEEPSEEK"
                 )
                 UsageFetchResult.Success(snapshot)
+            } else if (code == 429) {
+                val retrySec = response.header("Retry-After")?.toLongOrNull()
+                UsageFetchResult.RateLimited("DeepSeek 接口已被限流 (HTTP 429)", retrySec)
+            } else if (code in 500..599) {
+                UsageFetchResult.ServerError("DeepSeek 服务端故障 (HTTP $code)", code)
             } else if (code == 401 || code == 403) {
-                UsageFetchResult.AuthExpired("API Key 无效或已过期 (HTTP $code)")
+                UsageFetchResult.AuthExpired("API Key 无效或已过期 (HTTP $code)", code)
             } else {
                 UsageFetchResult.TransientError("DeepSeek 服务响应异常 (HTTP $code)")
             }
