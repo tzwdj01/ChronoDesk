@@ -44,6 +44,7 @@ class ClockViewModel @JvmOverloads constructor(
 
     val settings = settingsRepo.settingsFlow
     val weather = weatherRepo.weatherFlow
+    val weatherList = weatherRepo.weatherListFlow
 
     // 动态多账号体系
     val accounts = accountRepo.accounts
@@ -104,7 +105,7 @@ class ClockViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             while (isActive) {
                 val s = settings.value
-                weatherRepo.refreshWeather(s.cityName, s.latitude, s.longitude)
+                weatherRepo.refreshAllWeather(s.getAllCities())
                 delay(30 * 60 * 1000L) // 30 分钟轮询天气
             }
         }
@@ -145,7 +146,7 @@ class ClockViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             accountRepo.refreshAll(settings.value.useMockData)
             val s = settings.value
-            weatherRepo.refreshWeather(s.cityName, s.latitude, s.longitude, force = true)
+            weatherRepo.refreshAllWeather(s.getAllCities(), force = true)
         }
     }
 
@@ -161,9 +162,23 @@ class ClockViewModel @JvmOverloads constructor(
     }
 
     fun updateSettings(newSettings: ClockSettings) {
+        val old = settings.value
         settingsRepo.updateSettings(newSettings)
         val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         _isNightMode.value = newSettings.isNightTime(currentHour)
+        if (old.cityName != newSettings.cityName || old.additionalCities != newSettings.additionalCities) {
+            viewModelScope.launch {
+                weatherRepo.refreshAllWeather(newSettings.getAllCities(), force = true)
+            }
+        }
+    }
+
+    fun updateAccountVisibility(accountId: String, showOnMain: Boolean, showOnSecond: Boolean) {
+        accountRepo.updateAccountVisibility(accountId, showOnMain, showOnSecond)
+    }
+
+    fun updateAccountVisibility(slot: Int, showOnMain: Boolean, showOnSecond: Boolean) {
+        accountRepo.updateAccountVisibility(slot, showOnMain, showOnSecond)
     }
 
     fun saveAccount(

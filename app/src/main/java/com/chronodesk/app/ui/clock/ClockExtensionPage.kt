@@ -81,9 +81,9 @@ fun ClockExtensionPage(
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
 
-    val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
-    val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" }
-    val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" }
+    val chatGptAccounts = accounts.filter { (it.modelProvider == "CHATGPT" || it.modelProvider == null) && it.isVisibleOnSecond }
+    val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" && it.isVisibleOnSecond }
+    val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" && it.isVisibleOnSecond }
 
     Column(
         modifier = modifier
@@ -370,16 +370,6 @@ fun ClockExtensionPage(
                                         Text(
                                             text = "更新: ${dsSnap?.formattedQueriedAt ?: "刚刚"}",
                                             color = mutedText,
-                                            fontSize = 9.sp
-                                        )
-                                    }
-
-                                    if (dsSnap?.toppedUpBalance != null || dsSnap?.grantedBalance != null) {
-                                        val topped = dsSnap?.toppedUpBalance ?: 0.0
-                                        val granted = dsSnap?.grantedBalance ?: 0.0
-                                        Text(
-                                            text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
-                                            color = secondaryText,
                                             fontSize = 9.sp
                                         )
                                     }

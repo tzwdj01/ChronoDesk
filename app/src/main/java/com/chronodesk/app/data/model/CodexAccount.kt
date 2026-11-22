@@ -11,8 +11,15 @@ data class CodexAccount(
     val authenticatedAt: Long = System.currentTimeMillis(),
     val lastSyncTime: Long? = null,
     val providerType: String = "OAUTH_DEVICE", // OAUTH_DEVICE, DIRECT_TOKEN, MOCK
-    val modelProvider: String = "CHATGPT"      // CHATGPT, DEEPSEEK, GEMINI, CLAUDE
+    val modelProvider: String = "CHATGPT",     // CHATGPT, DEEPSEEK, ANTIGRAVITY, GEMINI, CLAUDE
+    val showOnMainScreen: Boolean? = true,     // 是否在主页（第一屏）展示
+    val showOnSecondScreen: Boolean? = true    // 是否在扩展页（第二屏）展示
 ) {
+    val isVisibleOnMain: Boolean
+        get() = showOnMainScreen != false
+
+    val isVisibleOnSecond: Boolean
+        get() = showOnSecondScreen != false
     /**
      * 脱敏邮箱：例如 wa***7@jd.com, al***3@gmail.com，避免个人真实信息泄露
      */

@@ -356,6 +356,18 @@ class CodexAccountRepository(
         updateAccount(updated)
     }
 
+    fun updateAccountVisibility(accountId: String, showOnMain: Boolean, showOnSecond: Boolean) {
+        val current = _accounts.value.find { it.id == accountId } ?: return
+        val updated = current.copy(showOnMainScreen = showOnMain, showOnSecondScreen = showOnSecond)
+        updateAccount(updated)
+    }
+
+    fun updateAccountVisibility(slot: Int, showOnMain: Boolean, showOnSecond: Boolean) {
+        val current = _accounts.value.getOrNull(slot) ?: return
+        val updated = current.copy(showOnMainScreen = showOnMain, showOnSecondScreen = showOnSecond)
+        updateAccount(updated)
+    }
+
     fun saveAccountAtSlot(
         slot: Int,
         account: CodexAccount,

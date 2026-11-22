@@ -11,6 +11,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,12 +54,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.ui.settings.AccountManagerDialog
 import com.chronodesk.app.ui.settings.DeviceAuthDialog
@@ -67,10 +71,12 @@ import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkColon
 import com.chronodesk.app.ui.theme.DarkSurface
+import com.chronodesk.app.ui.theme.DarkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkBackground
 import com.chronodesk.app.ui.theme.InkBorder
 import com.chronodesk.app.ui.theme.InkColon
 import com.chronodesk.app.ui.theme.InkSurface
+import com.chronodesk.app.ui.theme.InkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkTextPrimary
 import com.chronodesk.app.ui.theme.InkTextSecondary
 import com.chronodesk.app.ui.theme.InkTextTertiary
@@ -96,6 +102,7 @@ fun ClockScreen(
     val timeState by viewModel.timeState.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val weather by viewModel.weather.collectAsState()
+    val weatherList by viewModel.weatherList.collectAsState()
 
     val accounts by viewModel.accounts.collectAsState()
     val snapshots by viewModel.snapshots.collectAsState()
@@ -198,6 +205,9 @@ fun ClockScreen(
                 viewModel.saveAntigravityAccount("acc_antigravity", key, "Google Antigravity")
                 selectedAccountToManage = null
                 Toast.makeText(context, "Google Antigravity API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
+            },
+            onUpdateAccountVisibility = { accId, showMain, showSecond ->
+                viewModel.updateAccountVisibility(accId, showMain, showSecond)
             }
         )
     }
@@ -326,20 +336,79 @@ fun ClockScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                // 翻牌数字时钟
-                                LargeFlipClockDisplay(
-                                    hour = timeState.hour,
-                                    minute = timeState.minute,
-                                    second = if (settings.showSeconds) timeState.second else null,
-                                    isNightMode = isNightMode,
-                                    isCompact = isCompactHeight,
-                                    onClick = { areControlsVisible = !areControlsVisible },
-                                    onToggleSeconds = {
-                                        val newState = viewModel.toggleShowSeconds()
-                                        val tip = if (newState) "已开启秒钟显示" else "已隐藏秒钟（可在设置中重新开启）"
-                                        Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+                                // 翻牌数字时钟（支持缩放与平移手势及设置）
+                                Box(
+                                    modifier = Modifier
+                                        .offset {
+                                            IntOffset(
+                                                settings.clockOffsetX.roundToInt(),
+                                                settings.clockOffsetY.roundToInt()
+                                            )
+                                        }
+                                        .graphicsLayer {
+                                            scaleX = settings.clockScale
+                                            scaleY = settings.clockScale
+                                        }
+                                        .then(
+                                            if (areControlsVisible) {
+                                                Modifier.pointerInput(settings.clockScale, settings.clockOffsetX, settings.clockOffsetY) {
+                                                    detectTransformGestures { _, pan, zoom, _ ->
+                                                        val newScale = (settings.clockScale * zoom).coerceIn(0.6f, 1.8f)
+                                                        val newX = (settings.clockOffsetX + pan.x).coerceIn(-250f, 250f)
+                                                        val newY = (settings.clockOffsetY + pan.y).coerceIn(-180f, 180f)
+                                                        viewModel.updateSettings(
+                                                            settings.copy(
+                                                                clockScale = newScale,
+                                                                clockOffsetX = newX,
+                                                                clockOffsetY = newY
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            } else Modifier
+                                        )
+                                ) {
+                                    LargeFlipClockDisplay(
+                                        hour = timeState.hour,
+                                        minute = timeState.minute,
+                                        second = if (settings.showSeconds) timeState.second else null,
+                                        isNightMode = isNightMode,
+                                        isCompact = isCompactHeight,
+                                        onClick = { areControlsVisible = !areControlsVisible },
+                                        onToggleSeconds = {
+                                            val newState = viewModel.toggleShowSeconds()
+                                            val tip = if (newState) "已开启秒钟显示" else "已隐藏秒钟（可在设置中重新开启）"
+                                            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+
+                                if (areControlsVisible && (settings.clockScale != 1.0f || settings.clockOffsetX != 0f || settings.clockOffsetY != 0f)) {
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                                            .clickable {
+                                                viewModel.updateSettings(
+                                                    settings.copy(
+                                                        clockScale = 1.0f,
+                                                        clockOffsetX = 0f,
+                                                        clockOffsetY = 0f
+                                                    )
+                                                )
+                                                Toast.makeText(context, "已复位时钟大小与位置", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "时钟 ${(settings.clockScale * 100).roundToInt()}% · 点击复位居中",
+                                            color = TechCyan,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
-                                )
+                                }
 
                                 Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 15.dp))
 
@@ -387,9 +456,9 @@ fun ClockScreen(
 
                                 Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 14.dp))
 
-                                // 天气胶囊卡片
-                                WeatherCapsule(
-                                    weather = weather,
+                                // 天气胶囊卡片（支持单地区或多地区多行并列呈现）
+                                MultiCityWeatherCapsule(
+                                    weatherList = weatherList,
                                     isNightMode = isNightMode,
                                     isCompact = isCompactHeight,
                                     onCardClick = {
@@ -467,7 +536,11 @@ fun ClockScreen(
                                 Text(text = timeState.lunarDateString, color = if (isNightMode) TextSecondary else InkTextSecondary, fontSize = 15.sp)
                             }
 
-                            WeatherCapsule(weather = weather, isNightMode = isNightMode)
+                            MultiCityWeatherCapsule(
+                                weatherList = weatherList,
+                                isNightMode = isNightMode,
+                                onCardClick = { viewModel.refreshAll() }
+                            )
 
                             MultiAccountQuotaSection(
                                 accounts = accounts,

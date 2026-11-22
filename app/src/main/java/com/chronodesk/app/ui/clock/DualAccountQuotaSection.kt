@@ -99,9 +99,9 @@ fun MultiAccountQuotaSection(
     onToggleNightMode: () -> Unit = {},
     onSettingsClick: () -> Unit = {}
 ) {
-    val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
-    val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" }
-    val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" }
+    val chatGptAccounts = accounts.filter { (it.modelProvider == "CHATGPT" || it.modelProvider == null) && it.isVisibleOnMain }
+    val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" && it.isVisibleOnMain }
+    val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" && it.isVisibleOnMain }
 
     val hasMultipleProviders = (if (chatGptAccounts.isNotEmpty()) 1 else 0) +
         (if (deepSeekAccounts.isNotEmpty()) 1 else 0) +
@@ -118,18 +118,20 @@ fun MultiAccountQuotaSection(
         verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
         // 1. 同一订阅商：OpenAI / ChatGPT 专属大框
-        ChatGptUnifiedSubscriptionBox(
-            accounts = chatGptAccounts,
-            snapshots = snapshots,
-            loadingMap = loadingMap,
-            isNightMode = isNightMode,
-            areControlsVisible = areControlsVisible,
-            isCompact = isCompact,
-            onAccountClick = onAccountClick,
-            onRefreshAccount = onRefreshAccount,
-            onDeleteAccount = onDeleteAccount,
-            modifier = Modifier.fillMaxWidth()
-        )
+        if (chatGptAccounts.isNotEmpty()) {
+            ChatGptUnifiedSubscriptionBox(
+                accounts = chatGptAccounts,
+                snapshots = snapshots,
+                loadingMap = loadingMap,
+                isNightMode = isNightMode,
+                areControlsVisible = areControlsVisible,
+                isCompact = isCompact,
+                onAccountClick = onAccountClick,
+                onRefreshAccount = onRefreshAccount,
+                onDeleteAccount = onDeleteAccount,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         // 2. 同一订阅商：DeepSeek 专属大框（支持多账号独立显示金额与自定义别名）
         if (deepSeekAccounts.isNotEmpty()) {
@@ -161,6 +163,39 @@ fun MultiAccountQuotaSection(
                 onDeleteAccount = onDeleteAccount,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+
+        // 4. 当主屏账号全部隐藏或全部分配至第二屏时的温馨指引
+        if (chatGptAccounts.isEmpty() && deepSeekAccounts.isEmpty() && antigravityAccounts.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isNightMode) DarkSurface else InkSurface)
+                    .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(12.dp))
+                    .clickable { onSettingsClick() }
+                    .padding(vertical = 24.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "当前无主屏幕显示的 AI 账号",
+                        color = if (isNightMode) TextPrimary else InkTextPrimary,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "账号已配置在第二屏显示或已隐藏\n点击或滑动至第二屏查看，或在账号管理中开启主屏显示",
+                        color = if (isNightMode) TextSecondary else InkTextSecondary,
+                        fontSize = 11.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
         }
     }
 }
@@ -887,27 +922,6 @@ private fun SingleDeepSeekAccountItem(
                     color = mutedText,
                     fontSize = if (isCompact) 8.5.sp else 9.sp
                 )
-            }
-
-            if (snapshot?.toppedUpBalance != null || snapshot?.grantedBalance != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val topped = snapshot?.toppedUpBalance ?: 0.0
-                    val granted = snapshot?.grantedBalance ?: 0.0
-                    Text(
-                        text = "充值: ¥${String.format(java.util.Locale.US, "%.2f", topped)} ｜ 赠送: ¥${String.format(java.util.Locale.US, "%.2f", granted)}",
-                        color = mutedText,
-                        fontSize = if (isCompact) 8.5.sp else 9.sp
-                    )
-                    Text(
-                        text = if (isAvailable) "可用" else "不可用",
-                        color = if (isAvailable) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
-                        fontSize = if (isCompact) 8.5.sp else 9.sp
-                    )
-                }
             }
         }
     }

@@ -3,6 +3,7 @@ package com.chronodesk.app.ui.settings
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,9 +92,12 @@ fun AccountManagerDialog(
     onAddAntigravityAccount: () -> CodexAccount? = { null },
     onRemoveAntigravityAccount: (accountId: String) -> Unit = {},
     currentAntigravityApiKey: String? = null,
-    onSaveAntigravityApiKey: (String) -> Unit = {}
+    onSaveAntigravityApiKey: (String) -> Unit = {},
+    onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
+    var localAccountA by remember(accountA) { mutableStateOf(accountA) }
+    var localAccountB by remember(accountB) { mutableStateOf(accountB) }
     var localDeepSeekAccounts by remember(deepSeekAccounts) {
         mutableStateOf(
             if (deepSeekAccounts.isNotEmpty()) deepSeekAccounts
@@ -135,8 +139,8 @@ fun AccountManagerDialog(
     var selectedTab by remember { mutableIntStateOf(defaultTab) }
 
     val currentAccount = when (selectedTab) {
-        0 -> accountA
-        1 -> accountB
+        0 -> localAccountA
+        1 -> localAccountB
         else -> null
     }
 
@@ -430,6 +434,26 @@ fun AccountManagerDialog(
                                     Text("保存名称", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
+
+                            HorizontalDivider(
+                                color = DarkBorder.copy(alpha = 0.6f),
+                                thickness = 0.8.dp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+
+                            // 账号在主屏/第二屏的展示位置选择
+                            AccountVisibilityToggleRow(
+                                showOnMain = currentAccount.isVisibleOnMain,
+                                showOnSecond = currentAccount.isVisibleOnSecond,
+                                onVisibilityChanged = { m, s ->
+                                    onUpdateAccountVisibility(currentAccount.id, m, s)
+                                    if (selectedTab == 0) {
+                                        localAccountA = localAccountA?.copy(showOnMainScreen = m, showOnSecondScreen = s)
+                                    } else {
+                                        localAccountB = localAccountB?.copy(showOnMainScreen = m, showOnSecondScreen = s)
+                                    }
+                                }
+                            )
                         }
                     }
 
@@ -550,6 +574,18 @@ fun AccountManagerDialog(
                                 focusedIndicatorColor = TechCyan,
                                 unfocusedIndicatorColor = DarkBorder
                             )
+                        )
+
+                        // 账号在主屏/第二屏的展示位置选择
+                        AccountVisibilityToggleRow(
+                            showOnMain = curDsAcc.isVisibleOnMain,
+                            showOnSecond = curDsAcc.isVisibleOnSecond,
+                            onVisibilityChanged = { m, s ->
+                                onUpdateAccountVisibility(curDsAcc.id, m, s)
+                                localDeepSeekAccounts = localDeepSeekAccounts.mapIndexed { idx, acc ->
+                                    if (idx == curDsIndex) acc.copy(showOnMainScreen = m, showOnSecondScreen = s) else acc
+                                }
+                            }
                         )
 
                         // 3. 操作按钮组
@@ -683,6 +719,18 @@ fun AccountManagerDialog(
                             )
                         )
 
+                        // 账号在主屏/第二屏的展示位置选择
+                        AccountVisibilityToggleRow(
+                            showOnMain = curAgAcc.isVisibleOnMain,
+                            showOnSecond = curAgAcc.isVisibleOnSecond,
+                            onVisibilityChanged = { m, s ->
+                                onUpdateAccountVisibility(curAgAcc.id, m, s)
+                                localAntigravityAccounts = localAntigravityAccounts.mapIndexed { idx, acc ->
+                                    if (idx == curAgIndex) acc.copy(showOnMainScreen = m, showOnSecondScreen = s) else acc
+                                }
+                            }
+                        )
+
                         // 3. 操作按钮组
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -734,6 +782,94 @@ fun AccountManagerDialog(
                 ) {
                     Text(text = "关闭", color = TextSecondary)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 账号在屏幕上的显示位置选择组件（主屏幕显示 / 第二屏显示）
+ */
+@Composable
+private fun AccountVisibilityToggleRow(
+    showOnMain: Boolean,
+    showOnSecond: Boolean,
+    onVisibilityChanged: (showOnMain: Boolean, showOnSecond: Boolean) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(DarkSurface)
+            .border(1.dp, DarkBorder.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "看板显示屏幕选择：",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+            val statusHint = when {
+                showOnMain && showOnSecond -> "两屏均展示"
+                showOnMain -> "仅主屏幕展示"
+                showOnSecond -> "仅第二屏展示"
+                else -> "已完全隐藏"
+            }
+            Text(
+                text = statusHint,
+                color = if (showOnMain || showOnSecond) TechCyan else TechRose,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 主屏幕显示 Toggle Chip
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (showOnMain) TechCyan.copy(alpha = 0.18f) else DarkSurfaceElevated)
+                    .border(1.dp, if (showOnMain) TechCyan else DarkBorder, RoundedCornerShape(6.dp))
+                    .clickable { onVisibilityChanged(!showOnMain, showOnSecond) }
+                    .padding(vertical = 6.dp, horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (showOnMain) "✓ 主屏幕 (第1屏)" else "+ 主屏幕 (第1屏)",
+                    color = if (showOnMain) TechCyan else TextTertiary,
+                    fontSize = 11.sp,
+                    fontWeight = if (showOnMain) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+
+            // 第二屏显示 Toggle Chip
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (showOnSecond) TechEmerald.copy(alpha = 0.18f) else DarkSurfaceElevated)
+                    .border(1.dp, if (showOnSecond) TechEmerald else DarkBorder, RoundedCornerShape(6.dp))
+                    .clickable { onVisibilityChanged(showOnMain, !showOnSecond) }
+                    .padding(vertical = 6.dp, horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (showOnSecond) "✓ 扩展屏 (第2屏)" else "+ 扩展屏 (第2屏)",
+                    color = if (showOnSecond) TechEmerald else TextTertiary,
+                    fontSize = 11.sp,
+                    fontWeight = if (showOnSecond) FontWeight.Bold else FontWeight.Normal
+                )
             }
         }
     }

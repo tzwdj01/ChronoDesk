@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -46,6 +48,7 @@ import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
 import com.chronodesk.app.ui.theme.TechCyan
+import com.chronodesk.app.ui.theme.TechEmerald
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
@@ -68,6 +71,10 @@ fun SettingsDialog(
     var selectedCity by remember { mutableStateOf(currentSettings.cityName) }
     var lat by remember { mutableStateOf(currentSettings.latitude) }
     var lng by remember { mutableStateOf(currentSettings.longitude) }
+    var additionalCities by remember { mutableStateOf(currentSettings.additionalCities) }
+    var clockScale by remember { mutableFloatStateOf(currentSettings.clockScale) }
+    var clockOffsetX by remember { mutableFloatStateOf(currentSettings.clockOffsetX) }
+    var clockOffsetY by remember { mutableFloatStateOf(currentSettings.clockOffsetY) }
     var quotaWidthPercent by remember { mutableIntStateOf(currentSettings.quotaWidthPercent) }
     var quotaCardDensity by remember { mutableStateOf(currentSettings.quotaCardDensity) }
 
@@ -195,6 +202,142 @@ fun SettingsDialog(
                     onCheckedChange = { keepScreenOn = it }
                 )
 
+                // 2.1 时钟尺寸缩放与位置微调
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "时钟尺寸与位置调节",
+                            color = TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        TextButton(
+                            onClick = {
+                                clockScale = 1.0f
+                                clockOffsetX = 0f
+                                clockOffsetY = 0f
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(text = "一键复位居中 (100%)", color = TechCyan, fontSize = 11.sp)
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceElevated)
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 缩放比例
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "时钟大小比例", color = TextSecondary, fontSize = 11.sp)
+                            Text(
+                                text = "${(clockScale * 100).roundToInt()}%",
+                                color = TechCyan,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = clockScale,
+                            onValueChange = { clockScale = (it * 20).roundToInt() / 20f },
+                            valueRange = 0.6f..1.8f,
+                            steps = 23,
+                            colors = SliderDefaults.colors(
+                                thumbColor = TechCyan,
+                                activeTrackColor = TechCyan,
+                                inactiveTrackColor = DarkBorder
+                            )
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(0.8f to "缩小 80%", 1.0f to "标准 100%", 1.25f to "放大 125%", 1.5f to "特大 150%").forEach { (sc, label) ->
+                                val isSel = kotlin.math.abs(clockScale - sc) < 0.05f
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSel) TechCyan.copy(alpha = 0.2f) else DarkSurface)
+                                        .border(1.dp, if (isSel) TechCyan else DarkBorder, RoundedCornerShape(6.dp))
+                                        .clickable { clockScale = sc }
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSel) TechCyan else TextSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+
+                        // 水平位置偏移 (X)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "水平位置偏移 (左右移动)", color = TextSecondary, fontSize = 11.sp)
+                            Text(
+                                text = if (clockOffsetX.toInt() == 0) "水平居中" else "${if (clockOffsetX > 0) "+" else ""}${clockOffsetX.toInt()} px",
+                                color = if (clockOffsetX.toInt() == 0) TextSecondary else TechCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = clockOffsetX,
+                            onValueChange = { clockOffsetX = it.roundToInt().toFloat() },
+                            valueRange = -250f..250f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = TechCyan,
+                                activeTrackColor = TechCyan,
+                                inactiveTrackColor = DarkBorder
+                            )
+                        )
+
+                        // 垂直位置偏移 (Y)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "垂直位置偏移 (上下移动)", color = TextSecondary, fontSize = 11.sp)
+                            Text(
+                                text = if (clockOffsetY.toInt() == 0) "垂直居中" else "${if (clockOffsetY > 0) "+" else ""}${clockOffsetY.toInt()} px",
+                                color = if (clockOffsetY.toInt() == 0) TextSecondary else TechCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = clockOffsetY,
+                            onValueChange = { clockOffsetY = it.roundToInt().toFloat() },
+                            valueRange = -180f..180f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = TechCyan,
+                                activeTrackColor = TechCyan,
+                                inactiveTrackColor = DarkBorder
+                            )
+                        )
+                    }
+                }
+
                 // 3. 界面布局与右侧额度区域比例
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
@@ -307,30 +450,33 @@ fun SettingsDialog(
                     }
                 }
 
-                // 4. 天气与城市设置
-                Column {
+                // 4. 天气与城市设置 (多城市与多行天气支持)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "天气与城市位置 (Open-Meteo 开放接口)",
+                        text = "天气与城市位置 (支持多地区多行并列显示)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
 
                     SettingToggleItem(
                         title = "自动定位匹配",
-                        subtitle = "依据设备 GPS 或网络自动获取所在城市",
+                        subtitle = "依据设备 GPS 或网络自动获取首选城市",
                         checked = autoLocation,
                         onCheckedChange = { autoLocation = it }
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    val extraList = remember(additionalCities) {
+                        if (additionalCities.isBlank()) emptyList<String>()
+                        else additionalCities.split(";").mapNotNull { it.split(":").firstOrNull()?.trim() }.filter { it.isNotBlank() }
+                    }
+
+                    // 1. 首选主城市 (第1行天气)
                     Text(
-                        text = "手动选择常驻城市：",
+                        text = "1. 首选主城市（天气第 1 行）：",
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
 
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -342,25 +488,90 @@ fun SettingsDialog(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isSel) TechCyan.copy(alpha = 0.2f) else DarkSurfaceElevated)
+                                    .background(if (isSel) TechCyan.copy(alpha = 0.22f) else DarkSurfaceElevated)
                                     .border(1.dp, if (isSel) TechCyan else Color.Transparent, RoundedCornerShape(6.dp))
                                     .clickable {
                                         selectedCity = name
                                         lat = cLat
                                         lng = cLng
                                         autoLocation = false
+                                        if (extraList.contains(name)) {
+                                            additionalCities = additionalCities.split(";")
+                                                .filter { !it.startsWith("$name:") && it.isNotBlank() }
+                                                .joinToString(";")
+                                        }
                                     }
                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = name,
+                                    text = if (isSel) "★ $name" else name,
                                     color = if (isSel) TechCyan else TextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
                         }
+                    }
+
+                    // 2. 添加额外地区 (开启多行并列显示)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "2. 额外地区（点击开启第 2、3 行多地天气并列展示）：",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        cityPresets.filter { it.first != selectedCity }.forEach { (name, cLat, cLng) ->
+                            val isExtra = extraList.contains(name)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isExtra) TechEmerald.copy(alpha = 0.22f) else DarkSurfaceElevated)
+                                    .border(1.dp, if (isExtra) TechEmerald else Color.Transparent, RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        if (isExtra) {
+                                            additionalCities = additionalCities.split(";")
+                                                .filter { !it.startsWith("$name:") && it.isNotBlank() }
+                                                .joinToString(";")
+                                        } else {
+                                            val entry = "$name:$cLat:$cLng"
+                                            additionalCities = if (additionalCities.isBlank()) entry else "$additionalCities;$entry"
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isExtra) "✓ $name" else "+ $name",
+                                    color = if (isExtra) TechEmerald else TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isExtra) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+
+                    // 天气行概览标签
+                    val totalWeatherCount = 1 + extraList.size
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(DarkSurfaceElevated)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "天气栏预览：共 $totalWeatherCount 行 ($selectedCity${if (extraList.isNotEmpty()) " ｜ " + extraList.joinToString(" ｜ ") else ""})",
+                            color = TechCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
 
@@ -391,8 +602,12 @@ fun SettingsDialog(
                                 cityName = selectedCity,
                                 latitude = lat,
                                 longitude = lng,
+                                additionalCities = additionalCities,
                                 quotaWidthPercent = quotaWidthPercent,
-                                quotaCardDensity = quotaCardDensity
+                                quotaCardDensity = quotaCardDensity,
+                                clockScale = clockScale,
+                                clockOffsetX = clockOffsetX,
+                                clockOffsetY = clockOffsetY
                             )
                             onSave(updated)
                             onDismiss()

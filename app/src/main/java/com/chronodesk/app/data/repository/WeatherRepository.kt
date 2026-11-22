@@ -1,6 +1,7 @@
 package com.chronodesk.app.data.repository
 
 import android.util.Log
+import com.chronodesk.app.data.model.WeatherCity
 import com.chronodesk.app.data.model.WeatherInfo
 import com.chronodesk.app.data.network.NetworkClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,37 +13,57 @@ class WeatherRepository {
     private val _weatherFlow = MutableStateFlow(WeatherInfo.default())
     val weatherFlow: StateFlow<WeatherInfo> = _weatherFlow.asStateFlow()
 
+    private val _weatherListFlow = MutableStateFlow<List<WeatherInfo>>(listOf(WeatherInfo.default()))
+    val weatherListFlow: StateFlow<List<WeatherInfo>> = _weatherListFlow.asStateFlow()
+
     private var lastFetchTime: Long = 0
     private val CACHE_DURATION_MS = 30 * 60 * 1000L // 30 minutes
 
     suspend fun refreshWeather(cityName: String, lat: Double, lng: Double, force: Boolean = false) {
+        refreshAllWeather(listOf(WeatherCity(cityName, lat, lng)), force)
+    }
+
+    suspend fun refreshAllWeather(cities: List<WeatherCity>, force: Boolean = false) {
         val now = System.currentTimeMillis()
-        if (!force && (now - lastFetchTime < CACHE_DURATION_MS)) {
+        if (!force && (now - lastFetchTime < CACHE_DURATION_MS) && _weatherListFlow.value.size == cities.size) {
             return
         }
 
-        try {
-            val response = NetworkClient.weatherApi.getCurrentWeather(latitude = lat, longitude = lng)
-            if (response.isSuccessful && response.body()?.current != null) {
-                val current = response.body()!!.current!!
-                val (desc, _) = WeatherInfo.decodeWmoCode(current.weatherCode ?: 0)
-                val info = WeatherInfo(
-                    cityName = cityName,
-                    temperature = current.temperature ?: 20.0,
-                    apparentTemperature = current.apparentTemperature ?: current.temperature ?: 20.0,
-                    weatherCode = current.weatherCode ?: 0,
-                    weatherDescription = desc,
-                    humidity = current.humidity ?: 50,
-                    windSpeed = current.windSpeed ?: 0.0,
-                    updatedAt = now
-                )
-                _weatherFlow.value = info
-                lastFetchTime = now
+        val resultList = mutableListOf<WeatherInfo>()
+        for (city in cities) {
+            try {
+                val response = NetworkClient.weatherApi.getCurrentWeather(latitude = city.latitude, longitude = city.longitude)
+                if (response.isSuccessful && response.body()?.current != null) {
+                    val current = response.body()!!.current!!
+                    val (desc, _) = WeatherInfo.decodeWmoCode(current.weatherCode ?: 0)
+                    val info = WeatherInfo(
+                        cityName = city.name,
+                        temperature = current.temperature ?: 20.0,
+                        apparentTemperature = current.apparentTemperature ?: current.temperature ?: 20.0,
+                        weatherCode = current.weatherCode ?: 0,
+                        weatherDescription = desc,
+                        humidity = current.humidity ?: 50,
+                        windSpeed = current.windSpeed ?: 0.0,
+                        updatedAt = now
+                    )
+                    resultList.add(info)
+                } else {
+                    val fallback = _weatherListFlow.value.firstOrNull { it.cityName == city.name }
+                        ?: WeatherInfo.default().copy(cityName = city.name)
+                    resultList.add(fallback)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to refresh weather for ${city.name}: ${e.message}")
+                val fallback = _weatherListFlow.value.firstOrNull { it.cityName == city.name }
+                    ?: WeatherInfo.default().copy(cityName = city.name)
+                resultList.add(fallback)
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to refresh weather: ${e.message}")
-            // 网络异常时保留上一次成功数据，仅更新城市名
-            _weatherFlow.value = _weatherFlow.value.copy(cityName = cityName)
+        }
+
+        if (resultList.isNotEmpty()) {
+            _weatherListFlow.value = resultList
+            _weatherFlow.value = resultList.first()
+            lastFetchTime = now
         }
     }
 
