@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class WeatherRepository {
 
-    private val _weatherFlow = MutableStateFlow(WeatherInfo.default())
+    private val _weatherFlow = MutableStateFlow(WeatherInfo.initial("北京"))
     val weatherFlow: StateFlow<WeatherInfo> = _weatherFlow.asStateFlow()
 
-    private val _weatherListFlow = MutableStateFlow<List<WeatherInfo>>(listOf(WeatherInfo.default()))
+    private val _weatherListFlow = MutableStateFlow<List<WeatherInfo>>(listOf(WeatherInfo.initial("北京")))
     val weatherListFlow: StateFlow<List<WeatherInfo>> = _weatherListFlow.asStateFlow()
 
     private var lastFetchTime: Long = 0
@@ -35,27 +35,28 @@ class WeatherRepository {
                 val response = NetworkClient.weatherApi.getCurrentWeather(latitude = city.latitude, longitude = city.longitude)
                 if (response.isSuccessful && response.body()?.current != null) {
                     val current = response.body()!!.current!!
-                    val (desc, _) = WeatherInfo.decodeWmoCode(current.weatherCode ?: 0)
+                    val (desc, _) = WeatherInfo.decodeWmoCode(current.weatherCode)
                     val info = WeatherInfo(
                         cityName = city.name,
-                        temperature = current.temperature ?: 20.0,
-                        apparentTemperature = current.apparentTemperature ?: current.temperature ?: 20.0,
-                        weatherCode = current.weatherCode ?: 0,
-                        weatherDescription = desc,
-                        humidity = current.humidity ?: 50,
-                        windSpeed = current.windSpeed ?: 0.0,
+                        temperature = current.temperature,
+                        apparentTemperature = current.apparentTemperature ?: current.temperature,
+                        weatherCode = current.weatherCode,
+                        weatherDescription = if (current.weatherCode != null) desc else null,
+                        humidity = current.humidity,
+                        windSpeed = current.windSpeed,
+                        isLoaded = true,
                         updatedAt = now
                     )
                     resultList.add(info)
                 } else {
-                    val fallback = _weatherListFlow.value.firstOrNull { it.cityName == city.name }
-                        ?: WeatherInfo.default().copy(cityName = city.name)
+                    val fallback = _weatherListFlow.value.firstOrNull { it.cityName == city.name && it.isLoaded }
+                        ?: WeatherInfo.initial(city.name)
                     resultList.add(fallback)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to refresh weather for ${city.name}: ${e.message}")
-                val fallback = _weatherListFlow.value.firstOrNull { it.cityName == city.name }
-                    ?: WeatherInfo.default().copy(cityName = city.name)
+                val fallback = _weatherListFlow.value.firstOrNull { it.cityName == city.name && it.isLoaded }
+                    ?: WeatherInfo.initial(city.name)
                 resultList.add(fallback)
             }
         }

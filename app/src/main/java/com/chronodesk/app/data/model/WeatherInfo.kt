@@ -2,30 +2,34 @@ package com.chronodesk.app.data.model
 
 data class WeatherInfo(
     val cityName: String,
-    val temperature: Double,
-    val apparentTemperature: Double,
-    val weatherCode: Int,
-    val weatherDescription: String,
-    val humidity: Int,
-    val windSpeed: Double,
+    val temperature: Double? = null,
+    val apparentTemperature: Double? = null,
+    val weatherCode: Int? = null,
+    val weatherDescription: String? = null,
+    val humidity: Int? = null,
+    val windSpeed: Double? = null,
+    val isLoaded: Boolean = true,
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     companion object {
-        fun default(): WeatherInfo {
+        fun initial(cityName: String = "北京"): WeatherInfo {
             return WeatherInfo(
-                cityName = "北京",
-                temperature = 18.0,
-                apparentTemperature = 17.5,
-                weatherCode = 0,
-                weatherDescription = "晴",
-                humidity = 45,
-                windSpeed = 2.4,
-                updatedAt = System.currentTimeMillis()
+                cityName = cityName,
+                temperature = null,
+                apparentTemperature = null,
+                weatherCode = null,
+                weatherDescription = null,
+                humidity = null,
+                windSpeed = null,
+                isLoaded = false,
+                updatedAt = 0L
             )
         }
 
-        fun decodeWmoCode(code: Int): Pair<String, String> {
-            // 返回 (天气简述, 对应图标分类)
+        fun default(): WeatherInfo = initial("北京")
+
+        fun decodeWmoCode(code: Int?): Pair<String, String> {
+            if (code == null) return "—" to "cloudy"
             return when (code) {
                 0 -> "晴朗" to "sunny"
                 1 -> "大致晴朗" to "mostly_sunny"

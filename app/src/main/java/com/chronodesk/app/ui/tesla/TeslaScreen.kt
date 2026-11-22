@@ -112,6 +112,7 @@ fun TeslaScreen(
             isCharging = snapshot.state.isCharging,
             isAsleep = snapshot.state.isAsleep,
             isLoading = snapshot.connectionState.isLoading,
+            sampledTime = snapshot.snapshot.formattedSampledTime,
             lastSyncTime = snapshot.connectionState.formattedLastSuccessTime,
             currentTimeString = currentTimeString,
             isNightMode = isNightMode,
@@ -315,6 +316,7 @@ private fun TeslaTopBar(
     isCharging: Boolean,
     isAsleep: Boolean,
     isLoading: Boolean,
+    sampledTime: String?,
     lastSyncTime: String,
     currentTimeString: String,
     isNightMode: Boolean,
@@ -381,17 +383,25 @@ private fun TeslaTopBar(
             fontFamily = FontFamily.Monospace
         )
 
-        // 右侧：最后同步时间与操作按钮
+        // 右侧：明确区分「车辆上报于」与「同步于」及操作按钮
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
         ) {
-            Text(
-                text = "数据: $lastSyncTime",
-                color = secondaryText,
-                fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                fontFamily = FontFamily.Monospace
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "车辆上报于 ${sampledTime ?: "—"}",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "同步于 $lastSyncTime",
+                    color = secondaryText.copy(alpha = 0.85f),
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
 
             // 刷新按钮
             val infiniteTransition = rememberInfiniteTransition(label = "spin")
@@ -719,14 +729,15 @@ private fun Recent7DaysEnergyCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "近7天行驶能耗",
+                text = "近 7 天行驶里程",
                 color = primaryText,
                 fontSize = if (isCompact) 10.5.sp else 12.sp,
                 fontWeight = FontWeight.Bold
             )
             val total7Dist = items.sumOf { it.distanceKm }
+            val totalText = if (items.isEmpty()) "—" else if (total7Dist == 0.0) "0 km" else String.format("%.1f km", total7Dist)
             Text(
-                text = String.format("共 %.1f km", total7Dist),
+                text = "累计 $totalText",
                 color = secondaryText,
                 fontSize = if (isCompact) 9.5.sp else 10.5.sp
             )
@@ -740,7 +751,7 @@ private fun Recent7DaysEnergyCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "近 7 天无行驶记录",
+                    text = "近 7 天行驶里程: —",
                     color = secondaryText,
                     fontSize = 11.sp
                 )

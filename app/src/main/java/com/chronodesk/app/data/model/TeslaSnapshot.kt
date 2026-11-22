@@ -61,7 +61,44 @@ data class VehicleSnapshot(
     val tpmsPressureRr: Double? = null,       // 右后胎压 (bar)
     val tpmsSampledAt: Map<String, String> = emptyMap(), // 各字段实际采样时间（历史回补时用）
     val speed: Double? = null                 // 速度 (km/h)
-)
+) {
+    val formattedSampledTime: String?
+        get() {
+            if (sampledAt.isNullOrBlank()) return null
+            return try {
+                if (sampledAt.toLongOrNull() != null) {
+                    val ms = sampledAt.toLong()
+                    val actualMs = if (ms < 100000000000L) ms * 1000L else ms
+                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(actualMs))
+                } else {
+                    val isoFormats = listOf(
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                    )
+                    var parsedDate: Date? = null
+                    for (format in isoFormats) {
+                        try {
+                            parsedDate = format.parse(sampledAt)
+                            if (parsedDate != null) break
+                        } catch (_: Exception) {}
+                    }
+                    if (parsedDate != null) {
+                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(parsedDate)
+                    } else if (sampledAt.contains("T")) {
+                        sampledAt.substringAfter("T").take(5)
+                    } else if (sampledAt.contains(" ")) {
+                        sampledAt.substringAfter(" ").take(5)
+                    } else {
+                        sampledAt
+                    }
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+}
 
 /**
  * 充电状态与电量快照
