@@ -15,7 +15,7 @@
 
 一款专为开发者与极客打造的 **Android 原生智能桌面时钟与设备监控仪表盘**。专为将闲置手机（如小米 6、小米 11 等）改造为桌面常亮伴侣而生。
 
-集成了精致的拟物机械翻牌时钟、公历农历天气气象胶囊、**水墨日间 / 深色 AMOLED 双主题**、**ChatGPT / DeepSeek / Google Antigravity 多模型订阅额度聚合看板**，以及深度集成的 **TeslaMate 车辆能耗与状态大屏**。
+集成了精致的拟物机械翻牌时钟、公历农历天气气象胶囊、**水墨日间 / 深色 AMOLED 双主题**、**ChatGPT / DeepSeek / Gemini API 多模型订阅额度聚合看板**，以及深度集成的 **TeslaMate 车辆能耗与状态大屏**。
 
 ---
 
@@ -69,8 +69,8 @@
   - 实时显示重置倒计时（如 `14:24 重置`）与剩余额度重置次数（如 `重置:3次`）。
 - **DeepSeek 官方 API**：
   - 直连 DeepSeek 官方开放接口，实时呈现账户可用余额（如 `¥92.59 CNY`），去除充值充赠冗余信息，清爽明了。
-- **Google Antigravity / Gemini 遥测**：
-  - 预留并支持 Google 官方 Generative Language API 额度与状态联动。
+- **Gemini API 连接状态**：
+  - 直连 Google Generative Language 官方模型列表接口，真实反映 Key 有效性与模型就绪连接状态，杜绝虚构配额。
 - **多账号选择与状态胶囊**：
   - 支持在设置中自由勾选展示/隐藏特定账号，支持根据重要程度排序；
   - 额度耗尽（Exhausted）、即将耗尽（Warning）与正常（Normal）动态变色预警。

@@ -91,6 +91,7 @@ fun MultiAccountQuotaSection(
     areControlsVisible: Boolean = false,
     isCompact: Boolean = false,
     cardDensity: String = "NORMAL",
+    isMockMode: Boolean = false,
     onAddAccount: () -> Unit = {},
     onRefreshAccount: (accountId: String) -> Unit = {},
     onDeleteAccount: (accountId: String) -> Unit = {},
@@ -126,6 +127,7 @@ fun MultiAccountQuotaSection(
                 isNightMode = isNightMode,
                 areControlsVisible = areControlsVisible,
                 isCompact = isCompact,
+                isMockMode = isMockMode,
                 onAccountClick = onAccountClick,
                 onRefreshAccount = onRefreshAccount,
                 onDeleteAccount = onDeleteAccount,
@@ -142,6 +144,7 @@ fun MultiAccountQuotaSection(
                 isNightMode = isNightMode,
                 areControlsVisible = areControlsVisible,
                 isCompact = isCompact,
+                isMockMode = isMockMode,
                 onAccountClick = onAccountClick,
                 onRefreshAccount = onRefreshAccount,
                 onDeleteAccount = onDeleteAccount,
@@ -149,7 +152,7 @@ fun MultiAccountQuotaSection(
             )
         }
 
-        // 3. 同一订阅商：Google Antigravity 专属大框（支持配额监控与多账号接入）
+        // 3. 同一订阅商：Gemini API 专属大框（连接状态与模型验证）
         if (antigravityAccounts.isNotEmpty()) {
             GoogleAntigravityUnifiedSubscriptionBox(
                 accounts = antigravityAccounts,
@@ -158,6 +161,7 @@ fun MultiAccountQuotaSection(
                 isNightMode = isNightMode,
                 areControlsVisible = areControlsVisible,
                 isCompact = isCompact,
+                isMockMode = isMockMode,
                 onAccountClick = onAccountClick,
                 onRefreshAccount = onRefreshAccount,
                 onDeleteAccount = onDeleteAccount,
@@ -211,6 +215,7 @@ fun ChatGptUnifiedSubscriptionBox(
     isNightMode: Boolean,
     areControlsVisible: Boolean,
     isCompact: Boolean,
+    isMockMode: Boolean = false,
     onAccountClick: (CodexAccount) -> Unit,
     onRefreshAccount: (String) -> Unit,
     onDeleteAccount: (String) -> Unit,
@@ -229,7 +234,7 @@ fun ChatGptUnifiedSubscriptionBox(
             .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
-            // 大框顶栏：OpenAI Logo + 订阅商名称 + 套餐标签 + 账号汇总
+            // 大框顶栏：OpenAI Logo + 订阅商名称 + 演示标签 + 账号汇总
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -250,6 +255,9 @@ fun ChatGptUnifiedSubscriptionBox(
                         fontSize = if (isCompact) 12.5.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    if (isMockMode) {
+                        MockBadge(isNightMode = isNightMode)
+                    }
                 }
 
                 // 状态标签
@@ -315,47 +323,47 @@ private fun SingleAccountQuotaItem(
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
     val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
 
+    val nowUnix = System.currentTimeMillis() / 1000
     val primaryWindow = snapshot?.primaryWindow
     val secondaryWindow = snapshot?.secondaryWindow
 
-    val primaryPercent = primaryWindow?.remainingPercent ?: 0.0
-    val secondaryPercent = secondaryWindow?.remainingPercent ?: 0.0
+    val primaryRemainingStr = primaryWindow?.formattedRemaining() ?: "—"
+    val secondaryRemainingStr = secondaryWindow?.formattedRemaining() ?: "—"
 
-    val primaryCountdown = primaryWindow?.formattedCountdown() ?: "已就绪"
-    val secondaryCountdown = secondaryWindow?.formattedCountdown() ?: "--"
-
-    // 额度耗尽与预警状态判断：周额度耗尽或命中官方限额 (limitReached)
-    val isLimitReached = snapshot?.limitReached == true
-    val isPrimaryExhausted = primaryWindow != null && primaryPercent <= 0.0
-    val isSecondaryExhausted = secondaryWindow != null && secondaryPercent <= 0.0
-    val isFullyExhausted = isLimitReached || isSecondaryExhausted
-    val isWarning = !isFullyExhausted && ((primaryWindow != null && primaryPercent in 0.1..15.0) || (secondaryWindow != null && secondaryPercent in 0.1..15.0))
+    val isPrimaryExhausted = primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent <= 0.0
+    val isSecondaryExhausted = secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 0.0
+    val isLimitReached = snapshot?.limitReached == true || isSecondaryExhausted
+    val isFullyExhausted = isLimitReached || isPrimaryExhausted || isSecondaryExhausted
+    val isWarning = !isLimitReached && (
+        (primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent in 0.01..15.0) ||
+        (secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent in 0.01..15.0)
+    )
 
     // 动态额度条颜色
     val primaryProgressColor = if (isNightMode) {
         when {
             isPrimaryExhausted -> TechRose
-            primaryPercent <= 15.0 -> TechAmber
+            primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent <= 15.0 -> TechAmber
             else -> TechEmerald
         }
     } else {
         when {
             isPrimaryExhausted -> InkWarningRed
-            primaryPercent <= 15.0 -> InkWarningAmber
+            primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent <= 15.0 -> InkWarningAmber
             else -> InkProgress
         }
     }
 
     val secondaryProgressColor = if (isNightMode) {
         when {
-            isSecondaryExhausted || isFullyExhausted -> TechRose
-            secondaryPercent <= 15.0 -> TechAmber
+            isSecondaryExhausted || isLimitReached -> TechRose
+            secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 15.0 -> TechAmber
             else -> TechEmerald
         }
     } else {
         when {
-            isSecondaryExhausted || isFullyExhausted -> InkWarningRed
-            secondaryPercent <= 15.0 -> InkWarningAmber
+            isSecondaryExhausted || isLimitReached -> InkWarningRed
+            secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 15.0 -> InkWarningAmber
             else -> InkProgress
         }
     }
@@ -364,7 +372,7 @@ private fun SingleAccountQuotaItem(
     val statusText = when {
         isLoading -> "同步中"
         account.credentialStatus == CredentialStatus.EXPIRED -> "已过期"
-        isFullyExhausted -> "额度耗尽"
+        isLimitReached || isPrimaryExhausted -> "额度耗尽"
         isWarning -> "即将耗尽"
         primaryWindow != null || secondaryWindow != null -> "正常"
         else -> "已连接"
@@ -517,7 +525,7 @@ private fun SingleAccountQuotaItem(
             }
         }
 
-        // 5 小时额度行 (对齐起始位置与 100% 进度条长度)
+        // 5 小时 / 主额度行 (对齐起始位置与 100% 进度条长度)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -527,14 +535,20 @@ private fun SingleAccountQuotaItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                val primaryLabel = if (isCompact) {
+                    if (primaryWindow?.limitWindowSeconds == 18000L) "5小时" else (primaryWindow?.label ?: "额度")
+                } else {
+                    primaryWindow?.label ?: "额度窗口"
+                }
                 Text(
-                    text = if (isCompact) "5小时" else "5小时额度",
+                    text = primaryLabel,
                     color = secondaryText,
                     fontSize = if (isCompact) 8.5.sp else 10.sp,
                     modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
                 )
+                val pPercent = primaryWindow?.remainingPercent
                 LinearProgressIndicator(
-                    progress = { (primaryPercent / 100.0).toFloat().coerceIn(0f, 1f) },
+                    progress = { if (pPercent != null && pPercent.isFinite()) (pPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
                     modifier = Modifier
                         .width(if (isCompact) 62.dp else 88.dp)
                         .height(if (isCompact) 3.5.dp else 4.5.dp)
@@ -543,27 +557,21 @@ private fun SingleAccountQuotaItem(
                     trackColor = trackColor
                 )
             }
-            val fiveHourResetText = when {
-                primaryWindow?.resetAtUnix != null -> {
-                    val resetTime = primaryWindow.formattedResetTime()
-                    "剩余 ${primaryPercent.toInt()}% · $resetTime 重置"
-                }
-                primaryWindow != null -> {
-                    if (primaryPercent >= 100.0) "剩余 100% · 额度充足"
-                    else "剩余 ${primaryPercent.toInt()}% · 额度充足"
-                }
-                isLoading -> "同步中..."
-                else -> "剩余 0% · 待同步"
+            val primaryResetDesc = when {
+                primaryWindow == null -> if (isLoading) "同步中..." else "待同步"
+                primaryWindow.resetAtUnix == null -> "重置时间未知"
+                nowUnix >= primaryWindow.resetAtUnix -> "等待更新"
+                else -> "${primaryWindow.formattedResetTime(nowUnix)} 重置"
             }
             Text(
-                text = fiveHourResetText,
-                color = if (isPrimaryExhausted && isNightMode) TechRose else mutedText,
+                text = "剩余 $primaryRemainingStr · $primaryResetDesc",
+                color = if (isPrimaryExhausted) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
                 fontSize = if (isCompact) 7.5.sp else 9.sp,
                 maxLines = 1
             )
         }
 
-        // 周额度行 (对齐起始位置与 100% 进度条长度，展示精确到期/重置时间)
+        // 周额度 / 次额度行 (对齐起始位置与 100% 进度条长度)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -573,14 +581,20 @@ private fun SingleAccountQuotaItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                val secondaryLabel = if (isCompact) {
+                    if (secondaryWindow?.limitWindowSeconds == 604800L) "周额度" else (secondaryWindow?.label ?: "额度")
+                } else {
+                    secondaryWindow?.label ?: "周额度"
+                }
                 Text(
-                    text = "周额度",
+                    text = secondaryLabel,
                     color = secondaryText,
                     fontSize = if (isCompact) 8.5.sp else 10.sp,
                     modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
                 )
+                val sPercent = secondaryWindow?.remainingPercent
                 LinearProgressIndicator(
-                    progress = { (secondaryPercent / 100.0).toFloat().coerceIn(0f, 1f) },
+                    progress = { if (sPercent != null && sPercent.isFinite()) (sPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
                     modifier = Modifier
                         .width(if (isCompact) 62.dp else 88.dp)
                         .height(if (isCompact) 3.5.dp else 4.5.dp)
@@ -589,25 +603,15 @@ private fun SingleAccountQuotaItem(
                     trackColor = trackColor
                 )
             }
-            val weekResetText = when {
-                secondaryWindow?.resetAtUnix != null -> {
-                    val fullDate = secondaryWindow.formattedFullDateTime()
-                    if (secondaryPercent <= 0.0 || isLimitReached) {
-                        "剩余 0% · $fullDate 到期"
-                    } else {
-                        "剩余 ${secondaryPercent.toInt()}% · $fullDate 重置"
-                    }
-                }
-                secondaryWindow != null -> {
-                    if (secondaryPercent >= 100.0) "剩余 100% · 额度充足"
-                    else "剩余 ${secondaryPercent.toInt()}% · 额度充足"
-                }
-                isLoading -> "同步中..."
-                else -> "剩余 0% · 待同步"
+            val secondaryResetDesc = when {
+                secondaryWindow == null -> if (isLoading) "同步中..." else "待同步"
+                secondaryWindow.resetAtUnix == null -> "重置时间未知"
+                nowUnix >= secondaryWindow.resetAtUnix -> "等待更新"
+                else -> secondaryWindow.formattedCountdown(nowUnix)
             }
             Text(
-                text = weekResetText,
-                color = if (isSecondaryExhausted && isNightMode) TechRose else mutedText,
+                text = "剩余 $secondaryRemainingStr · $secondaryResetDesc",
+                color = if (isSecondaryExhausted || isLimitReached) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
                 fontSize = if (isCompact) 7.5.sp else 9.sp,
                 maxLines = 1
             )
@@ -627,6 +631,7 @@ fun DeepSeekUnifiedSubscriptionBox(
     isNightMode: Boolean = false,
     areControlsVisible: Boolean = true,
     isCompact: Boolean = false,
+    isMockMode: Boolean = false,
     onAccountClick: (CodexAccount) -> Unit = {},
     onRefreshAccount: (String) -> Unit = {},
     onDeleteAccount: (String) -> Unit = {}
@@ -664,6 +669,9 @@ fun DeepSeekUnifiedSubscriptionBox(
                         fontSize = if (isCompact) 12.5.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    if (isMockMode) {
+                        MockBadge(isNightMode = isNightMode)
+                    }
                 }
 
                 val statusColor = if (isNightMode) TechEmerald else InkStatusGreen
@@ -732,7 +740,7 @@ private fun SingleDeepSeekAccountItem(
     val isConfigured = snapshot?.creditsBalance != null && snapshot.credentialStatus != CredentialStatus.NOT_LOGGED_IN
     val isAvailable = snapshot?.isAvailable ?: true
     val balance = snapshot?.creditsBalance ?: 0.0
-    val hasFunds = isConfigured && isAvailable && balance > 0.0
+    val hasValidKey = snapshot?.credentialStatus == CredentialStatus.VALID
 
     // 状态徽标
     val (statusText, statusColor, statusBg) = when {
@@ -756,10 +764,15 @@ private fun SingleDeepSeekAccountItem(
             if (isNightMode) TechAmber else InkWarningAmber,
             (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
         )
-        !hasFunds -> Triple(
-            "无可用余额",
+        !isAvailable -> Triple(
+            "服务不可用",
             if (isNightMode) TechRose else InkWarningRed,
             (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+        )
+        balance <= 0.0 -> Triple(
+            "余额为零",
+            if (isNightMode) TechAmber else InkWarningAmber,
+            (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
         )
         else -> Triple(
             "正常",
@@ -801,9 +814,9 @@ private fun SingleDeepSeekAccountItem(
                         .size(4.5.dp)
                         .background(
                             if (isNightMode) {
-                                if (hasFunds) TechEmerald else TechRose
+                                if (hasValidKey && isAvailable) TechEmerald else TechRose
                             } else {
-                                if (hasFunds) InkStatusGreen else InkWarningRed
+                                if (hasValidKey && isAvailable) InkStatusGreen else InkWarningRed
                             },
                             CircleShape
                         )
@@ -914,12 +927,15 @@ private fun SingleDeepSeekAccountItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                val currency = snapshot?.currency ?: "CNY"
+                val balanceDisplay = snapshot?.formattedBalanceText ?: "暂无余额数据"
                 Text(
-                    text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", balance)} $currency",
+                    text = balanceDisplay,
                     color = primaryText,
                     fontSize = if (isCompact) 11.sp else 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 Text(
                     text = "更新: ${snapshot?.formattedQueriedAt ?: "刚刚"}",
@@ -932,7 +948,7 @@ private fun SingleDeepSeekAccountItem(
 }
 
 /**
- * Google Antigravity 专属大框（直连 Google 官方接口展示实时配额状态与重置倒计时，支持多账号与自定义别名）
+ * Gemini API 专属大框（直连 Google 官方接口展示实时连接状态与模型验证，支持多账号与自定义别名）
  */
 @Composable
 fun GoogleAntigravityUnifiedSubscriptionBox(
@@ -943,6 +959,7 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
     isNightMode: Boolean = false,
     areControlsVisible: Boolean = true,
     isCompact: Boolean = false,
+    isMockMode: Boolean = false,
     onAccountClick: (CodexAccount) -> Unit = {},
     onRefreshAccount: (String) -> Unit = {},
     onDeleteAccount: (String) -> Unit = {}
@@ -959,7 +976,7 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
             .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
-            // 大框头部：官方 Google 4 色 Logo + Google Antigravity 名称 + 账号数状态
+            // 大框头部：官方 Google 4 色 Logo + Gemini API 名称 + 账号数状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -975,11 +992,14 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
                         isNightMode = isNightMode
                     )
                     Text(
-                        text = "Google Antigravity",
+                        text = "Gemini API",
                         color = primaryText,
                         fontSize = if (isCompact) 12.5.sp else 14.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    if (isMockMode) {
+                        MockBadge(isNightMode = isNightMode)
+                    }
                 }
 
                 val hasConfigured = accounts.any { it.credentialStatus == CredentialStatus.VALID }
@@ -1009,7 +1029,7 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
                 }
             }
 
-            // 框内遍历展示各个 Antigravity 账号
+            // 框内遍历展示各个 Gemini API 账号
             accounts.forEachIndexed { index, acc ->
                 if (index > 0) {
                     HorizontalDivider(
@@ -1036,7 +1056,7 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
 }
 
 /**
- * 单个 Google Antigravity 账号行（支持自定义别名、Pro 套餐标识、5小时配额与日配额双进度条及重置时间）
+ * 单个 Gemini API 账号行（展示连接状态与模型接口验证时间）
  */
 @Composable
 private fun SingleAntigravityAccountItem(
@@ -1058,42 +1078,6 @@ private fun SingleAntigravityAccountItem(
     val isConfigured = account.credentialStatus == CredentialStatus.VALID
     val isExpired = account.credentialStatus == CredentialStatus.EXPIRED
 
-    val primaryWindow = snapshot?.primaryWindow
-    val secondaryWindow = snapshot?.secondaryWindow
-
-    val primaryPercent = primaryWindow?.remainingPercent ?: 100.0
-    val secondaryPercent = secondaryWindow?.remainingPercent ?: 100.0
-
-    val primaryProgressColor = if (isNightMode) {
-        when {
-            primaryPercent <= 0.0 -> TechRose
-            primaryPercent <= 15.0 -> TechAmber
-            else -> TechCyan
-        }
-    } else {
-        when {
-            primaryPercent <= 0.0 -> InkWarningRed
-            primaryPercent <= 15.0 -> InkWarningAmber
-            else -> InkProgress
-        }
-    }
-
-    val secondaryProgressColor = if (isNightMode) {
-        when {
-            secondaryPercent <= 0.0 -> TechRose
-            secondaryPercent <= 15.0 -> TechAmber
-            else -> TechEmerald
-        }
-    } else {
-        when {
-            secondaryPercent <= 0.0 -> InkWarningRed
-            secondaryPercent <= 15.0 -> InkWarningAmber
-            else -> InkStatusGreen
-        }
-    }
-
-    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
-
     val (statusText, statusColor, statusBg) = when {
         isLoading -> Triple(
             "同步中",
@@ -1110,8 +1094,13 @@ private fun SingleAntigravityAccountItem(
             if (isNightMode) TechRose else InkWarningRed,
             (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
         )
+        snapshot?.errorMessage != null && !snapshot.isLastGood -> Triple(
+            "连接失败",
+            if (isNightMode) TechAmber else InkWarningAmber,
+            (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
+        )
         else -> Triple(
-            "正常",
+            "连接正常",
             if (isNightMode) TechEmerald else InkStatusGreen,
             if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
         )
@@ -1134,7 +1123,7 @@ private fun SingleAntigravityAccountItem(
             .clickable { onAccountClick() },
         verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.dp)
     ) {
-        // 账号标识行：圆点 + 自定义账号名称 + Pro 套餐徽标 + 状态徽标 + 操作按钮
+        // 账号标识行：圆点 + 自定义账号名称 + API 徽标 + 状态徽标 + 操作按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1165,7 +1154,6 @@ private fun SingleAntigravityAccountItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                val plan = snapshot?.planName?.ifBlank { "Pro" } ?: "Pro"
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(3.dp))
@@ -1174,7 +1162,7 @@ private fun SingleAntigravityAccountItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = plan,
+                        text = "API",
                         color = secondaryText,
                         fontSize = if (isCompact) 7.5.sp else 8.sp,
                         fontWeight = FontWeight.Medium,
@@ -1240,89 +1228,76 @@ private fun SingleAntigravityAccountItem(
             }
         }
 
-        // 5 小时配额行
+        // Gemini API 连接状态描述行（真实反映上游模型列表接口调用结果）
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = if (isCompact) "5小时" else "5小时配额",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 8.5.sp else 10.sp,
-                    modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
-                )
-                LinearProgressIndicator(
-                    progress = { if (isConfigured) (primaryPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
-                    modifier = Modifier
-                        .width(if (isCompact) 62.dp else 88.dp)
-                        .height(if (isCompact) 3.5.dp else 4.5.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = primaryProgressColor,
-                    trackColor = trackColor
-                )
-            }
-            val fiveHourResetText = when {
-                !isConfigured -> "待配置 API Key"
-                isLoading -> "同步中..."
-                primaryWindow?.resetAtUnix != null -> {
-                    val resetTime = primaryWindow.formattedResetTime()
-                    "剩余 ${primaryPercent.toInt()}% · $resetTime 重置"
+            when {
+                !isConfigured -> {
+                    Text(
+                        text = "未配置 API Key · 点击呼出配置",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = "Gemini 连接",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
                 }
-                else -> "剩余 ${primaryPercent.toInt()}% · 额度已就绪"
+                isExpired -> {
+                    Text(
+                        text = "API Key 无效或未授权",
+                        color = if (isNightMode) TechRose else InkWarningRed,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                }
+                snapshot?.errorMessage != null && !snapshot.isLastGood -> {
+                    Text(
+                        text = snapshot.errorMessage ?: "连接异常",
+                        color = if (isNightMode) TechAmber else InkWarningAmber,
+                        fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                else -> {
+                    Text(
+                        text = "连接正常 · 模型调用就绪",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    val verifiedTime = snapshot?.formattedVerifiedTime ?: snapshot?.formattedQueriedAt
+                    Text(
+                        text = if (verifiedTime != null) "验证于 $verifiedTime" else "刚刚验证",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
             }
-            Text(
-                text = fiveHourResetText,
-                color = mutedText,
-                fontSize = if (isCompact) 7.5.sp else 9.sp,
-                maxLines = 1
-            )
         }
+    }
+}
 
-        // 日配额行
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "日配额",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 8.5.sp else 10.sp,
-                    modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
-                )
-                LinearProgressIndicator(
-                    progress = { if (isConfigured) (secondaryPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
-                    modifier = Modifier
-                        .width(if (isCompact) 62.dp else 88.dp)
-                        .height(if (isCompact) 3.5.dp else 4.5.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = secondaryProgressColor,
-                    trackColor = trackColor
-                )
-            }
-            val dailyResetText = when {
-                !isConfigured -> "待配置 API Key"
-                isLoading -> "同步中..."
-                secondaryWindow?.resetAtUnix != null -> {
-                    "剩余 ${secondaryPercent.toInt()}% · 08:00重置"
-                }
-                else -> "剩余 ${secondaryPercent.toInt()}% · 额度已就绪"
-            }
-            Text(
-                text = dailyResetText,
-                color = mutedText,
-                fontSize = if (isCompact) 7.5.sp else 9.sp,
-                maxLines = 1
-            )
-        }
+@Composable
+fun MockBadge(
+    modifier: Modifier = Modifier,
+    isNightMode: Boolean = false
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (isNightMode) TechAmber.copy(alpha = 0.2f) else InkWarningAmber.copy(alpha = 0.15f))
+            .border(0.8.dp, if (isNightMode) TechAmber else InkWarningAmber, RoundedCornerShape(3.dp))
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+    ) {
+        Text(
+            text = "演示数据",
+            color = if (isNightMode) TechAmber else InkWarningAmber,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

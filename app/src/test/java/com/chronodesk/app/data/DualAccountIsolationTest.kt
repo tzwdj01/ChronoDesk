@@ -72,9 +72,9 @@ class DualAccountIsolationTest {
         assertTrue("应被标记为 LastGood 缓存数据", degradedSnapshot.isLastGood)
         assertEquals("网络超时，保留上次成功数据", degradedSnapshot.errorMessage)
         assertNotNull("5小时限额数据应完整保留", degradedSnapshot.primaryWindow)
-        assertEquals(80.0, degradedSnapshot.primaryWindow!!.remainingPercent, 0.01)
+        assertEquals(80.0, degradedSnapshot.primaryWindow!!.remainingPercent!!, 0.01)
         assertNotNull("周限额数据应完整保留", degradedSnapshot.secondaryWindow)
-        assertEquals(50.0, degradedSnapshot.secondaryWindow!!.remainingPercent, 0.01)
+        assertEquals(50.0, degradedSnapshot.secondaryWindow!!.remainingPercent!!, 0.01)
     }
 
     @Test
@@ -101,6 +101,6 @@ class DualAccountIsolationTest {
 
         assertEquals(CredentialStatus.VALID, snapshotB.credentialStatus)
         assertNotNull("账号 B 额度应正常保持", snapshotB.primaryWindow)
-        assertEquals(85.0, snapshotB.primaryWindow!!.remainingPercent, 0.01)
+        assertEquals(85.0, snapshotB.primaryWindow!!.remainingPercent!!, 0.01)
     }
 }

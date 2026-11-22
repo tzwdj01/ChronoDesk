@@ -53,7 +53,9 @@ import com.chronodesk.app.ui.theme.InkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkTextPrimary
 import com.chronodesk.app.ui.theme.InkTextSecondary
 import com.chronodesk.app.ui.theme.InkTextTertiary
+import com.chronodesk.app.ui.theme.InkWarningAmber
 import com.chronodesk.app.ui.theme.InkWarningRed
+import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TechEmerald
 import com.chronodesk.app.ui.theme.TechRose
@@ -103,7 +105,7 @@ fun ClockExtensionPage(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "AI 模型 Token 用量与接口遥测",
+                    text = "AI 额度监控与接口状态",
                     color = primaryText,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold
@@ -119,6 +121,22 @@ fun ClockExtensionPage(
                         color = secondaryText,
                         fontSize = 10.sp
                     )
+                }
+                if (settings.useMockData) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (isNightMode) TechAmber.copy(alpha = 0.2f) else InkWarningAmber.copy(alpha = 0.15f))
+                            .border(0.8.dp, if (isNightMode) TechAmber else InkWarningAmber, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "演示数据",
+                            color = if (isNightMode) TechAmber else InkWarningAmber,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
@@ -212,7 +230,7 @@ fun ClockExtensionPage(
                         ) {
                             ModelProviderLogo(provider = AiModelProvider.CHATGPT, size = 22.dp, isNightMode = isNightMode)
                             Text(
-                                text = "OpenAI / ChatGPT Token 用量遥测",
+                                text = "OpenAI / ChatGPT 额度与窗口详情",
                                 color = primaryText,
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
@@ -229,10 +247,8 @@ fun ClockExtensionPage(
                             )
                         }
                         val snap = snapshots[acc.id]
-                        val primaryPct = snap?.primaryWindow?.remainingPercent?.toInt() ?: 0
-                        val secPct = snap?.secondaryWindow?.remainingPercent?.toInt() ?: 0
-                        val estTokens5h = (100 - primaryPct) * 1200
-                        val estTokensWeek = (100 - secPct) * 14000
+                        val pw = snap?.primaryWindow
+                        val sw = snap?.secondaryWindow
 
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Row(
@@ -250,14 +266,15 @@ fun ClockExtensionPage(
                                             .background(if (isNightMode) TechCyan else InkStatusGreen, CircleShape)
                                     )
                                     Text(
-                                        text = acc.email ?: acc.displayTitle,
+                                        text = acc.displayTitle,
                                         color = primaryText,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
+                                val queriedAt = snap?.formattedQueriedAt
                                 Text(
-                                    text = "会话活跃 · 延迟 120ms",
+                                    text = if (queriedAt != null) "更新于 $queriedAt" else "等待同步",
                                     color = if (isNightMode) TechEmerald else InkStatusGreen,
                                     fontSize = 8.5.sp
                                 )
@@ -267,16 +284,24 @@ fun ClockExtensionPage(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                val pwLabel = pw?.windowLabel ?: "额度窗口"
+                                val pwRemaining = pw?.formattedRemaining() ?: "—"
+                                val pwReset = pw?.formattedResetTime() ?: "重置时间未知"
                                 Text(
-                                    text = "5小时窗口已用: $estTokens5h Tokens (剩余 $primaryPct%)",
+                                    text = "$pwLabel: 剩余 $pwRemaining · $pwReset",
                                     color = secondaryText,
                                     fontSize = 9.5.sp
                                 )
-                                Text(
-                                    text = "周窗口消耗: $estTokensWeek Tokens (剩余 $secPct%)",
-                                    color = mutedText,
-                                    fontSize = 9.5.sp
-                                )
+                                if (sw != null) {
+                                    val swLabel = sw.windowLabel ?: "额度窗口"
+                                    val swRemaining = sw.formattedRemaining()
+                                    val swReset = sw.formattedResetTime()
+                                    Text(
+                                        text = "$swLabel: 剩余 $swRemaining · $swReset",
+                                        color = mutedText,
+                                        fontSize = 9.5.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -333,9 +358,8 @@ fun ClockExtensionPage(
                             }
                             val dsSnap = snapshots[dsAcc.id]
                             val isDsConfigured = dsSnap?.creditsBalance != null && dsSnap.credentialStatus != CredentialStatus.NOT_LOGGED_IN
+                            val dsAvailable = dsSnap?.isAvailable ?: true
                             val dsBalance = dsSnap?.creditsBalance ?: 0.0
-                            val dsCurrency = dsSnap?.currency ?: "CNY"
-                            val dsAvailable = dsSnap?.isAvailable ?: (dsBalance > 0.0)
 
                             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Row(
@@ -349,9 +373,22 @@ fun ClockExtensionPage(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
+                                    val dsStatusText = when {
+                                        !isDsConfigured -> "未配置"
+                                        dsSnap?.credentialStatus == CredentialStatus.EXPIRED -> "Key失效"
+                                        !dsAvailable -> "服务不可用"
+                                        dsBalance <= 0.0 -> "余额为零"
+                                        else -> "正常可用"
+                                    }
+                                    val dsStatusColor = when {
+                                        !isDsConfigured -> mutedText
+                                        dsSnap?.credentialStatus == CredentialStatus.EXPIRED || !dsAvailable -> if (isNightMode) TechRose else InkWarningRed
+                                        dsBalance <= 0.0 -> if (isNightMode) TechAmber else InkWarningAmber
+                                        else -> if (isNightMode) TechEmerald else InkStatusGreen
+                                    }
                                     Text(
-                                        text = if (isDsConfigured && dsAvailable && dsBalance > 0) "正常可用" else if (!isDsConfigured) "未配置" else "余额不足",
-                                        color = if (isDsConfigured && dsAvailable && dsBalance > 0) (if (isNightMode) TechEmerald else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed),
+                                        text = dsStatusText,
+                                        color = dsStatusColor,
                                         fontSize = 9.sp
                                     )
                                 }
@@ -362,7 +399,7 @@ fun ClockExtensionPage(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "账户余额: ¥${String.format(java.util.Locale.US, "%.2f", dsBalance)} $dsCurrency",
+                                            text = dsSnap?.formattedBalanceText ?: "暂无余额数据",
                                             color = primaryText,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
@@ -383,7 +420,7 @@ fun ClockExtensionPage(
             }
         }
 
-        // 第三部分：Google Antigravity 官方 API 遥测卡片
+        // 第三部分：Gemini API 官方接口状态卡片
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -404,7 +441,7 @@ fun ClockExtensionPage(
                     ) {
                         ModelProviderLogo(provider = AiModelProvider.ANTIGRAVITY, size = 22.dp, isNightMode = isNightMode)
                         Text(
-                            text = "Google Antigravity / Gemini 官方 API 配额遥测",
+                            text = "Gemini API 连接状态",
                             color = primaryText,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold
@@ -419,8 +456,8 @@ fun ClockExtensionPage(
 
                 if (antigravityAccounts.isEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(text = "尚未绑定 Google API Key", color = secondaryText, fontSize = 11.sp)
-                        Text(text = "在账号管理中填入 API Key 即可直连官方验证配额与可用状态", color = mutedText, fontSize = 9.sp)
+                        Text(text = "尚未绑定 Gemini API Key", color = secondaryText, fontSize = 11.sp)
+                        Text(text = "在账号管理中填入 API Key 即可直连官方验证接口连接状态", color = mutedText, fontSize = 9.sp)
                     }
                 } else {
                     antigravityAccounts.forEachIndexed { index, agAcc ->
@@ -433,8 +470,7 @@ fun ClockExtensionPage(
                         }
                         val agSnap = snapshots[agAcc.id]
                         val isAgConfigured = agAcc.credentialStatus == CredentialStatus.VALID
-                        val primaryPct = agSnap?.primaryWindow?.remainingPercent?.toInt() ?: 100
-                        val dailyPct = agSnap?.secondaryWindow?.remainingPercent?.toInt() ?: 100
+                        val isAgExpired = agAcc.credentialStatus == CredentialStatus.EXPIRED
 
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Row(
@@ -458,9 +494,21 @@ fun ClockExtensionPage(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
+                                val agStatusText = when {
+                                    !isAgConfigured -> "待配置 API Key"
+                                    isAgExpired -> "Key失效"
+                                    agSnap?.errorMessage != null && !agSnap.isLastGood -> "连接异常"
+                                    else -> "连接正常"
+                                }
+                                val agStatusColor = when {
+                                    !isAgConfigured -> mutedText
+                                    isAgExpired -> if (isNightMode) TechRose else InkWarningRed
+                                    agSnap?.errorMessage != null && !agSnap.isLastGood -> if (isNightMode) TechAmber else InkWarningAmber
+                                    else -> if (isNightMode) TechEmerald else InkStatusGreen
+                                }
                                 Text(
-                                    text = if (isAgConfigured) "服务在线 · 正常可用" else "待配置 API Key",
-                                    color = if (isAgConfigured) (if (isNightMode) TechEmerald else InkStatusGreen) else mutedText,
+                                    text = agStatusText,
+                                    color = agStatusColor,
                                     fontSize = 8.5.sp
                                 )
                             }
@@ -470,13 +518,14 @@ fun ClockExtensionPage(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = if (isAgConfigured) "5小时配额: 剩余 $primaryPct% · 滚动窗口重置" else "未配置 API Key · 点击主页卡片进行配置",
+                                    text = if (isAgConfigured) "模型接口调用就绪" else "未配置 API Key · 点击主页卡片进行配置",
                                     color = secondaryText,
                                     fontSize = 9.5.sp
                                 )
                                 if (isAgConfigured) {
+                                    val verifiedTime = agSnap?.formattedVerifiedTime ?: agSnap?.formattedQueriedAt ?: "刚刚"
                                     Text(
-                                        text = "日配额: 剩余 $dailyPct% · 次日 08:00 (UTC 00:00) 重置",
+                                        text = "验证于 $verifiedTime",
                                         color = mutedText,
                                         fontSize = 9.5.sp
                                     )

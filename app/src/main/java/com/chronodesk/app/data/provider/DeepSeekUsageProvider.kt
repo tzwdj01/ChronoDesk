@@ -3,6 +3,7 @@ package com.chronodesk.app.data.provider
 import android.util.Log
 import com.chronodesk.app.data.model.CodexUsageSnapshot
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.model.DeepSeekBalance
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -19,11 +20,11 @@ class DeepSeekUsageProvider(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+        .build(),
+    private val baseUrl: String = "https://api.deepseek.com/user/balance"
 ) {
     companion object {
         private const val TAG = "DeepSeekProvider"
-        private const val BALANCE_URL = "https://api.deepseek.com/user/balance"
     }
 
     suspend fun fetchUsage(
@@ -33,7 +34,7 @@ class DeepSeekUsageProvider(
     ): UsageFetchResult = withContext(Dispatchers.IO) {
         val cleanKey = apiKey?.trim() ?: ""
         if (cleanKey.isBlank() || cleanKey == "demo") {
-            // 未填入真实有效 API Key 时返回未配置状态，绝不捏造假余额与假型号
+            // 未填入有效 API Key 时返回未配置状态
             return@withContext UsageFetchResult.Success(
                 CodexUsageSnapshot(
                     accountId = accountId,
@@ -42,6 +43,7 @@ class DeepSeekUsageProvider(
                     creditsBalance = null,
                     grantedBalance = null,
                     toppedUpBalance = null,
+                    balanceList = null,
                     currency = "CNY",
                     isAvailable = false,
                     planName = null,
@@ -56,7 +58,7 @@ class DeepSeekUsageProvider(
 
         try {
             val request = Request.Builder()
-                .url(BALANCE_URL)
+                .url(baseUrl)
                 .addHeader("Authorization", "Bearer $cleanKey")
                 .addHeader("Accept", "application/json")
                 .build()
@@ -69,40 +71,59 @@ class DeepSeekUsageProvider(
                 val json = JSONObject(bodyStr)
                 val isAvailable = json.optBoolean("is_available", true)
                 val balanceInfos = json.optJSONArray("balance_infos")
-                var totalBalance: Double? = null
-                var grantedBalance: Double? = null
-                var toppedUpBalance: Double? = null
-                var currency = "CNY"
+                val balances = mutableListOf<DeepSeekBalance>()
 
-                if (balanceInfos != null && balanceInfos.length() > 0) {
-                    val info = balanceInfos.getJSONObject(0)
-                    val totalStr = info.optString("total_balance", "")
-                    totalBalance = totalStr.toDoubleOrNull() ?: if (info.has("total_balance")) info.optDouble("total_balance") else null
-                    val grantedStr = info.optString("granted_balance", "")
-                    grantedBalance = grantedStr.toDoubleOrNull() ?: if (info.has("granted_balance")) info.optDouble("granted_balance") else null
-                    val toppedStr = info.optString("topped_up_balance", "")
-                    toppedUpBalance = toppedStr.toDoubleOrNull() ?: if (info.has("topped_up_balance")) info.optDouble("topped_up_balance") else null
-                    currency = info.optString("currency", "CNY").ifBlank { "CNY" }
+                if (balanceInfos != null) {
+                    for (i in 0 until balanceInfos.length()) {
+                        val info = balanceInfos.optJSONObject(i) ?: continue
+                        val curr = info.optString("currency", "CNY").ifBlank { "CNY" }
+                        val totStr = info.optString("total_balance", "")
+                        val tot = totStr.toDoubleOrNull() ?: if (info.has("total_balance")) {
+                            val d = info.optDouble("total_balance")
+                            if (d.isFinite()) d else null
+                        } else null
+
+                        val grStr = info.optString("granted_balance", "")
+                        val gr = grStr.toDoubleOrNull() ?: if (info.has("granted_balance")) {
+                            val d = info.optDouble("granted_balance")
+                            if (d.isFinite()) d else null
+                        } else null
+
+                        val topStr = info.optString("topped_up_balance", "")
+                        val top = topStr.toDoubleOrNull() ?: if (info.has("topped_up_balance")) {
+                            val d = info.optDouble("topped_up_balance")
+                            if (d.isFinite()) d else null
+                        } else null
+
+                        balances.add(DeepSeekBalance(curr, tot, gr, top))
+                    }
                 }
 
-                val hasFunds = (totalBalance ?: 0.0) > 0.0
+                val primaryBalance = balances.firstOrNull()
+                val totalBalance = primaryBalance?.totalBalance
+                val grantedBalance = primaryBalance?.grantedBalance
+                val toppedUpBalance = primaryBalance?.toppedUpBalance
+                val currency = primaryBalance?.currency ?: "CNY"
+
+                // 只要 HTTP 200 鉴权成功，即使余额为 0 也是有效 Key，不可误判为凭据失效
                 val snapshot = CodexUsageSnapshot(
                     accountId = accountId,
                     accountAlias = accountAlias.ifBlank { "DeepSeek" },
                     email = if (accountAlias.contains("@")) accountAlias else null,
-                    credentialStatus = if (isAvailable && hasFunds) CredentialStatus.VALID else CredentialStatus.EXPIRED,
-                    primaryWindow = null, // DeepSeek 官方没有 5 小时滚动窗口，不伪造
+                    credentialStatus = CredentialStatus.VALID,
+                    primaryWindow = null,
                     secondaryWindow = null,
                     creditsBalance = totalBalance,
                     grantedBalance = grantedBalance,
                     toppedUpBalance = toppedUpBalance,
+                    balanceList = if (balances.isNotEmpty()) balances else null,
                     currency = currency,
                     isAvailable = isAvailable,
-                    planName = null, // 不妄加 "V3" 或 "Plus"，仅以真实账户为准
+                    planName = null,
                     queriedAt = System.currentTimeMillis(),
                     isLastGood = false,
                     errorMessage = null,
-                    limitReached = !isAvailable || !hasFunds,
+                    limitReached = !isAvailable || (totalBalance != null && totalBalance <= 0.0),
                     modelProvider = "DEEPSEEK"
                 )
                 UsageFetchResult.Success(snapshot)

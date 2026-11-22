@@ -4,22 +4,50 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.roundToInt
 
 data class CodexUsageWindow(
     val name: String,
     val label: String,
-    val limitWindowSeconds: Long,
-    val usedPercent: Double,
-    val remainingPercent: Double,
+    val limitWindowSeconds: Long?,
+    val usedPercent: Double?,
+    val remainingPercent: Double?,
     val resetAtUnix: Long?,
     val resetAtIso: String? = null
 ) {
+    val windowLabel: String get() = label
     /**
-     * 计算倒计时文本，如 "2小时14分" 或 "45分"
+     * 格式化剩余百分比展示：
+     * 1. 缺失、非有限或越界值显示 "—"
+     * 2. 真实剩余 <= 0% 显示 "耗尽"
+     * 3. 真实剩余在 0% 到 1% 之间显示 "<1%"
+     * 4. 其余正常四舍五入为 "XX%"
      */
-    fun formattedCountdown(nowUnix: Long = System.currentTimeMillis() / 1000): String {
-        if (resetAtUnix == null || resetAtUnix <= nowUnix || usedPercent <= 0.0) {
-            return "已就绪"
+    fun formattedRemaining(): String {
+        val rem = remainingPercent ?: return "—"
+        if (!rem.isFinite() || rem < 0.0 || rem > 100.0) return "—"
+        return when {
+            rem <= 0.0 -> "耗尽"
+            rem < 1.0 -> "<1%"
+            else -> "${rem.roundToInt()}%"
+        }
+    }
+
+    /**
+     * 格式化重置倒计时 / 状态：
+     * 1. 没有重置时间时显示「重置时间未知」
+     * 2. 设备时间已超过上游提供的重置时间且尚未同步刷新时显示「等待更新」
+     * 3. 仍在有效期内时计算倒计时
+     */
+    fun formattedCountdown(
+        nowUnix: Long = System.currentTimeMillis() / 1000,
+        hasSyncedSinceReset: Boolean = false
+    ): String {
+        if (resetAtUnix == null) {
+            return "重置时间未知"
+        }
+        if (nowUnix >= resetAtUnix) {
+            return if (!hasSyncedSinceReset) "等待更新" else "已就绪"
         }
         val diffSec = resetAtUnix - nowUnix
         val hours = diffSec / 3600
@@ -33,19 +61,21 @@ data class CodexUsageWindow(
     }
 
     /**
-     * 格式化具体重置时间，如 "18:45"
+     * 格式化具体重置时间点，如 "18:45"
      */
-    fun formattedResetTime(): String {
-        if (resetAtUnix == null) return "--:--"
+    fun formattedResetTime(nowUnix: Long = System.currentTimeMillis() / 1000): String {
+        if (resetAtUnix == null) return "重置时间未知"
+        if (nowUnix >= resetAtUnix) return "等待更新"
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
         return sdf.format(Date(resetAtUnix * 1000))
     }
 
     /**
-     * 格式化完整到期月日与时间，如 "11-21 19:42"
+     * 格式化完整重置日期与时间，如 "11-21 19:42"
      */
-    fun formattedFullDateTime(): String {
-        if (resetAtUnix == null) return "--"
+    fun formattedFullDateTime(nowUnix: Long = System.currentTimeMillis() / 1000): String {
+        if (resetAtUnix == null) return "重置时间未知"
+        if (nowUnix >= resetAtUnix) return "等待更新"
         val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         return sdf.format(Date(resetAtUnix * 1000))
     }
@@ -56,32 +86,26 @@ data class CodexUsageWindow(
             limitWindowSeconds: Long?,
             resetAtUnix: Long?
         ): CodexUsageWindow? {
-            if (usedPercent == null) return null
-            val secs = limitWindowSeconds ?: 18000
-            val used = usedPercent.coerceIn(0.0, 100.0)
-            val remaining = (100.0 - used).coerceIn(0.0, 100.0)
-
-            val effectiveResetUnix = resetAtUnix
-
-            val (name, label) = when (secs) {
+            // limit_window_seconds 缺失时显示「额度窗口」，只有上游确实返回 18000 或 604800 才标记「5小时额度」或「周额度」
+            val (name, label) = when (limitWindowSeconds) {
                 18000L -> "five_hour" to "5小时额度"
                 604800L -> "seven_day" to "周额度"
-                2592000L -> "thirty_day" to "月度额度"
-                else -> {
-                    val hours = secs / 3600
-                    if (hours >= 24) "${hours / 24}_day" to "${hours / 24}天额度"
-                    else "${hours}_hour" to "${hours}小时额度"
-                }
+                else -> "quota_window" to "额度窗口"
             }
+
+            // used_percent 在 0–100 内才计算 100 - used_percent。缺失、非有限或越界值显示 —
+            val isValidUsed = usedPercent != null && usedPercent.isFinite() && usedPercent in 0.0..100.0
+            val validUsed = if (isValidUsed) usedPercent else null
+            val remaining = if (isValidUsed) (100.0 - validUsed!!) else null
 
             return CodexUsageWindow(
                 name = name,
                 label = label,
-                limitWindowSeconds = secs,
-                usedPercent = used,
+                limitWindowSeconds = limitWindowSeconds,
+                usedPercent = validUsed,
                 remainingPercent = remaining,
-                resetAtUnix = effectiveResetUnix,
-                resetAtIso = effectiveResetUnix?.let { formatUnixToIso(it) }
+                resetAtUnix = resetAtUnix,
+                resetAtIso = resetAtUnix?.let { formatUnixToIso(it) }
             )
         }
 
