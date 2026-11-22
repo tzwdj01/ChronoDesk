@@ -33,6 +33,7 @@ class CodexAccountRepository(
     private val realProvider: CodexUsageProvider = RealCodexUsageProvider()
 ) {
     private val deepSeekProvider = com.chronodesk.app.data.provider.DeepSeekUsageProvider()
+    private val antigravityProvider = com.chronodesk.app.data.provider.GoogleAntigravityUsageProvider()
     private val prefs: SharedPreferences =
         context.getSharedPreferences("chronodesk_accounts_meta", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -176,6 +177,19 @@ class CodexAccountRepository(
             ))
         }
 
+        // 5.1 确保包含 Google Antigravity 账号
+        if (loadedList.none { it.modelProvider == "ANTIGRAVITY" }) {
+            val agKey = credentialStorage.getAccessToken("acc_antigravity")
+            loadedList.add(CodexAccount(
+                id = "acc_antigravity",
+                alias = "Google Antigravity",
+                email = null,
+                credentialStatus = if (!agKey.isNullOrBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
+                providerType = "API_KEY",
+                modelProvider = "ANTIGRAVITY"
+            ))
+        }
+
         // 6. 全局去重与清洗：移除重复的邮箱和无用占位，确保仅保留 2 个 ChatGPT 真实账号与 1 个 DeepSeek 账号
         val cleanedList = mutableListOf<CodexAccount>()
         val seenEmails = mutableSetOf<String>()
@@ -212,8 +226,11 @@ class CodexAccountRepository(
                 }
             }
 
-            val apiKey = if (acc.modelProvider == "DEEPSEEK") credentialStorage.getAccessToken(acc.id) else null
-            val isFakeOldSnap = savedSnap != null && acc.modelProvider == "DEEPSEEK" && (savedSnap.planName == "V3" || savedSnap.planName == "Plus" || apiKey.isNullOrBlank())
+            val apiKey = if (acc.modelProvider == "DEEPSEEK" || acc.modelProvider == "ANTIGRAVITY") credentialStorage.getAccessToken(acc.id) else null
+            val isFakeOldSnap = savedSnap != null && (
+                (acc.modelProvider == "DEEPSEEK" && (savedSnap.planName == "V3" || savedSnap.planName == "Plus" || apiKey.isNullOrBlank())) ||
+                (acc.modelProvider == "ANTIGRAVITY" && apiKey.isNullOrBlank())
+            )
 
             if (savedSnap != null && !isFakeOldSnap) {
                 initialSnaps[acc.id] = savedSnap
@@ -223,6 +240,13 @@ class CodexAccountRepository(
                         initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, "DeepSeek").copy(
                             credentialStatus = if (apiKey.isNullOrBlank()) CredentialStatus.NOT_LOGGED_IN else CredentialStatus.VALID,
                             modelProvider = "DEEPSEEK"
+                        )
+                    }
+                    "ANTIGRAVITY" -> {
+                        initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle).copy(
+                            credentialStatus = if (apiKey.isNullOrBlank()) CredentialStatus.NOT_LOGGED_IN else CredentialStatus.VALID,
+                            planName = "Pro",
+                            modelProvider = "ANTIGRAVITY"
                         )
                     }
                     else -> {
@@ -457,6 +481,81 @@ class CodexAccountRepository(
         return credentialStorage.getAccessToken(deepSeekAcc.id)
     }
 
+    fun saveAntigravityApiKey(accountId: String, apiKey: String, alias: String? = null) {
+        val clean = apiKey.trim()
+        val current = _accounts.value.firstOrNull { it.id == accountId }
+        val finalAlias = if (!alias.isNullOrBlank()) alias.trim() else current?.alias?.ifBlank { "Google Antigravity" } ?: "Google Antigravity"
+        val target = current ?: CodexAccount(
+            id = accountId,
+            alias = finalAlias,
+            email = null,
+            credentialStatus = if (clean.isNotBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
+            providerType = "API_KEY",
+            modelProvider = "ANTIGRAVITY"
+        )
+        if (clean.isNotBlank()) {
+            credentialStorage.saveAccessToken(target.id, clean, Long.MAX_VALUE)
+            val updated = target.copy(
+                alias = finalAlias,
+                providerType = "API_KEY",
+                credentialStatus = CredentialStatus.VALID
+            )
+            if (current != null) updateAccount(updated) else addAccount(updated)
+        } else {
+            credentialStorage.removeAccountCredentials(target.id)
+            val updated = target.copy(
+                alias = finalAlias,
+                providerType = "API_KEY",
+                credentialStatus = CredentialStatus.NOT_LOGGED_IN
+            )
+            if (current != null) updateAccount(updated) else addAccount(updated)
+            putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "ANTIGRAVITY", planName = "Pro"))
+        }
+    }
+
+    fun saveAntigravityApiKey(apiKey: String) {
+        val firstAg = _accounts.value.firstOrNull { it.modelProvider == "ANTIGRAVITY" }
+        saveAntigravityApiKey(firstAg?.id ?: "acc_antigravity", apiKey, firstAg?.alias)
+    }
+
+    fun addAntigravityAccount(alias: String = "", apiKey: String = ""): CodexAccount {
+        val count = _accounts.value.count { it.modelProvider == "ANTIGRAVITY" } + 1
+        val newId = "acc_antigravity_${java.util.UUID.randomUUID().toString().take(8)}"
+        val defaultAlias = if (alias.isNotBlank()) alias.trim() else "Google Antigravity $count"
+        val clean = apiKey.trim()
+        val newAccount = CodexAccount(
+            id = newId,
+            alias = defaultAlias,
+            email = null,
+            credentialStatus = if (clean.isNotBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
+            providerType = "API_KEY",
+            modelProvider = "ANTIGRAVITY"
+        )
+        if (clean.isNotBlank()) {
+            credentialStorage.saveAccessToken(newId, clean, Long.MAX_VALUE)
+        }
+        addAccount(newAccount)
+        return newAccount
+    }
+
+    fun removeAntigravityAccount(accountId: String) {
+        val agAccounts = _accounts.value.filter { it.modelProvider == "ANTIGRAVITY" }
+        if (agAccounts.size <= 1) {
+            saveAntigravityApiKey(accountId, "", "Google Antigravity")
+        } else {
+            removeAccountById(accountId)
+        }
+    }
+
+    fun getAntigravityApiKey(accountId: String): String? {
+        return credentialStorage.getAccessToken(accountId)
+    }
+
+    fun getAntigravityApiKey(): String? {
+        val agAcc = _accounts.value.firstOrNull { it.modelProvider == "ANTIGRAVITY" } ?: return null
+        return credentialStorage.getAccessToken(agAcc.id)
+    }
+
     private fun getProviderForAccount(account: CodexAccount, isMockGlobal: Boolean): CodexUsageProvider {
         val slotIndex = _accounts.value.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
         return if (isMockGlobal || account.providerType == "MOCK") {
@@ -490,6 +589,21 @@ class CodexAccountRepository(
                         updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
                     } else if (result is UsageFetchResult.TransientError) {
                         putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, account.credentialStatus, result.message, lastGood = _snapshots.value[accountId], modelProvider = "DEEPSEEK"))
+                    }
+                    return
+                }
+
+                if (account.modelProvider == "ANTIGRAVITY") {
+                    val apiKey = credentialStorage.getAccessToken(account.id)
+                    val result = antigravityProvider.fetchUsage(account.id, account.displayTitle, apiKey)
+                    if (result is UsageFetchResult.Success) {
+                        putSnapshot(accountId, result.snapshot.copy(modelProvider = "ANTIGRAVITY", accountAlias = account.displayTitle))
+                        updateAccount(account.copy(credentialStatus = result.snapshot.credentialStatus, lastSyncTime = result.snapshot.queriedAt ?: System.currentTimeMillis()))
+                    } else if (result is UsageFetchResult.AuthExpired) {
+                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, CredentialStatus.EXPIRED, result.message, lastGood = _snapshots.value[accountId], modelProvider = "ANTIGRAVITY"))
+                        updateAccount(account.copy(credentialStatus = CredentialStatus.EXPIRED))
+                    } else if (result is UsageFetchResult.TransientError) {
+                        putSnapshot(accountId, CodexUsageSnapshot.error(accountId, account.displayTitle, account.credentialStatus, result.message, lastGood = _snapshots.value[accountId], modelProvider = "ANTIGRAVITY"))
                     }
                     return
                 }

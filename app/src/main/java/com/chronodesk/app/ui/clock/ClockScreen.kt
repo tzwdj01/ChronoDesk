@@ -132,9 +132,12 @@ fun ClockScreen(
     selectedAccountToManage?.let { account ->
         val chatGptAccs = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
         val deepSeekAccs = accounts.filter { it.modelProvider == "DEEPSEEK" }
-        val slotIdx = if (account.modelProvider == "DEEPSEEK") {
-            2 + deepSeekAccs.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
-        } else if (chatGptAccs.indexOfFirst { it.id == account.id } == 1) 1 else 0
+        val antigravityAccs = accounts.filter { it.modelProvider == "ANTIGRAVITY" }
+        val slotIdx = when (account.modelProvider) {
+            "ANTIGRAVITY" -> 2 + deepSeekAccs.size + antigravityAccs.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
+            "DEEPSEEK" -> 2 + deepSeekAccs.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
+            else -> if (chatGptAccs.indexOfFirst { it.id == account.id } == 1) 1 else 0
+        }
 
         AccountManagerDialog(
             initialSlot = slotIdx,
@@ -143,6 +146,8 @@ fun ClockScreen(
             accountB = chatGptAccs.getOrNull(1),
             deepSeekAccounts = deepSeekAccs,
             getDeepSeekApiKey = { id -> viewModel.getDeepSeekApiKey(id) },
+            antigravityAccounts = antigravityAccs,
+            getAntigravityApiKey = { id -> viewModel.getAntigravityApiKey(id) },
             onDismiss = { selectedAccountToManage = null },
             onSaveAccount = { slot, acc, ref, accTok ->
                 viewModel.saveAccount(slot, acc, ref, accTok)
@@ -176,6 +181,23 @@ fun ClockScreen(
                 viewModel.saveDeepSeekApiKey(key)
                 selectedAccountToManage = null
                 Toast.makeText(context, "DeepSeek API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
+            },
+            onSaveAntigravityAccount = { accId, key, alias ->
+                viewModel.saveAntigravityAccount(accId, key, alias)
+                selectedAccountToManage = null
+            },
+            onAddAntigravityAccount = {
+                viewModel.addAntigravityAccount()
+            },
+            onRemoveAntigravityAccount = { accId ->
+                viewModel.removeAntigravityAccount(accId)
+                selectedAccountToManage = null
+            },
+            currentAntigravityApiKey = viewModel.getAntigravityApiKey(),
+            onSaveAntigravityApiKey = { key ->
+                viewModel.saveAntigravityAccount("acc_antigravity", key, "Google Antigravity")
+                selectedAccountToManage = null
+                Toast.makeText(context, "Google Antigravity API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -259,7 +281,7 @@ fun ClockScreen(
             // ================= 顶部公共导航栏 =================
             ClockTopBar(
                 isNightMode = isNightMode,
-                accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK") },
+                accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
                 nightModeOption = settings.nightModeOption,
                 onAddAccount = {
                     selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
@@ -400,6 +422,8 @@ fun ClockScreen(
                                         val acc = accounts.find { it.id == id }
                                         if (acc?.modelProvider == "DEEPSEEK") {
                                             viewModel.removeDeepSeekAccount(id)
+                                        } else if (acc?.modelProvider == "ANTIGRAVITY") {
+                                            viewModel.removeAntigravityAccount(id)
                                         } else {
                                             viewModel.removeAccountById(id)
                                         }

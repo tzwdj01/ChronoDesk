@@ -41,6 +41,9 @@ data class CodexAccount(
             modelProvider == "DEEPSEEK" -> {
                 if (alias.isNotBlank()) alias else "DeepSeek"
             }
+            modelProvider == "ANTIGRAVITY" -> {
+                if (alias.isNotBlank() && alias != "Google Antigravity") alias else "Antigravity"
+            }
             alias.isNotBlank() && alias != email && !alias.matches(Regex("账号\\s*[A-Za-z0-9]+.*")) -> alias
             !maskedEmail.isNullOrBlank() -> maskedEmail!!
             !chatgptAccountId.isNullOrBlank() -> "Account (${chatgptAccountId.take(8)})"

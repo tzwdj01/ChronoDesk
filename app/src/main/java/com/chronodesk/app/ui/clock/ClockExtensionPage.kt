@@ -83,6 +83,7 @@ fun ClockExtensionPage(
 
     val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
     val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" }
+    val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" }
 
     Column(
         modifier = modifier
@@ -392,7 +393,112 @@ fun ClockExtensionPage(
             }
         }
 
-        // 第三部分：系统与桌面 Dock 状态遥测
+        // 第三部分：Google Antigravity 官方 API 遥测卡片
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                .padding(13.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        ModelProviderLogo(provider = AiModelProvider.ANTIGRAVITY, size = 22.dp, isNightMode = isNightMode)
+                        Text(
+                            text = "Google Antigravity / Gemini 官方 API 配额遥测",
+                            color = primaryText,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = if (antigravityAccounts.size > 1) "${antigravityAccounts.size}个账号" else "Google Generative Language API",
+                        color = mutedText,
+                        fontSize = 9.sp
+                    )
+                }
+
+                if (antigravityAccounts.isEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = "尚未绑定 Google API Key", color = secondaryText, fontSize = 11.sp)
+                        Text(text = "在账号管理中填入 API Key 即可直连官方验证配额与可用状态", color = mutedText, fontSize = 9.sp)
+                    }
+                } else {
+                    antigravityAccounts.forEachIndexed { index, agAcc ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
+                                thickness = 0.8.dp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                        val agSnap = snapshots[agAcc.id]
+                        val isAgConfigured = agAcc.credentialStatus == CredentialStatus.VALID
+                        val primaryPct = agSnap?.primaryWindow?.remainingPercent?.toInt() ?: 100
+                        val dailyPct = agSnap?.secondaryWindow?.remainingPercent?.toInt() ?: 100
+
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(4.dp)
+                                            .background(if (isAgConfigured) (if (isNightMode) TechCyan else InkStatusGreen) else (if (isNightMode) TechRose else InkWarningRed), CircleShape)
+                                    )
+                                    Text(
+                                        text = agAcc.displayTitle,
+                                        color = primaryText,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Text(
+                                    text = if (isAgConfigured) "服务在线 · 正常可用" else "待配置 API Key",
+                                    color = if (isAgConfigured) (if (isNightMode) TechEmerald else InkStatusGreen) else mutedText,
+                                    fontSize = 8.5.sp
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (isAgConfigured) "5小时配额: 剩余 $primaryPct% · 滚动窗口重置" else "未配置 API Key · 点击主页卡片进行配置",
+                                    color = secondaryText,
+                                    fontSize = 9.5.sp
+                                )
+                                if (isAgConfigured) {
+                                    Text(
+                                        text = "日配额: 剩余 $dailyPct% · 次日 08:00 (UTC 00:00) 重置",
+                                        color = mutedText,
+                                        fontSize = 9.5.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 第四部分：系统与桌面 Dock 状态遥测
         Box(
             modifier = Modifier
                 .fillMaxWidth()

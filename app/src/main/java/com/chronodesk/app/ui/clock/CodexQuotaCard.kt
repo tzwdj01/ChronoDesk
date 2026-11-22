@@ -156,6 +156,7 @@ fun CodexQuotaCard(
                     val modelTitle = when (provider) {
                         AiModelProvider.CHATGPT -> snapshot?.accountAlias?.takeIf { it.isNotBlank() && !it.contains("@") } ?: "ChatGPT Plus"
                         AiModelProvider.DEEPSEEK -> "DeepSeek"
+                        AiModelProvider.ANTIGRAVITY -> "Google Antigravity"
                         AiModelProvider.GEMINI -> "Gemini"
                         AiModelProvider.CLAUDE -> "Claude"
                     }

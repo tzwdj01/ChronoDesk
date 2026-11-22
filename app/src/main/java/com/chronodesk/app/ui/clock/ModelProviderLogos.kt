@@ -24,6 +24,7 @@ import com.chronodesk.app.R
 enum class AiModelProvider(val code: String, val displayName: String, val defaultPlan: String) {
     CHATGPT("CHATGPT", "ChatGPT Plus", "Plus"),
     DEEPSEEK("DEEPSEEK", "DeepSeek", ""),
+    ANTIGRAVITY("ANTIGRAVITY", "Google Antigravity", "Pro"),
     GEMINI("GEMINI", "Gemini", "Plus"),
     CLAUDE("CLAUDE", "Claude", "Plus");
 
@@ -31,6 +32,7 @@ enum class AiModelProvider(val code: String, val displayName: String, val defaul
         fun fromCode(code: String?): AiModelProvider {
             val upper = code?.uppercase() ?: ""
             return when {
+                upper.contains("ANTIGRAVITY") || upper.contains("GOOGLE") -> ANTIGRAVITY
                 upper.contains("DEEPSEEK") -> DEEPSEEK
                 upper.contains("GEMINI") -> GEMINI
                 upper.contains("CLAUDE") || upper.contains("ANTHROPIC") -> CLAUDE
@@ -56,6 +58,7 @@ fun ModelProviderLogo(
         when (provider) {
             AiModelProvider.CHATGPT -> Color(0xFF0F261E)
             AiModelProvider.DEEPSEEK -> Color(0xFF0E1F38)
+            AiModelProvider.ANTIGRAVITY -> Color(0xFF101B30)
             AiModelProvider.GEMINI -> Color(0xFF0E2338)
             AiModelProvider.CLAUDE -> Color(0xFF26190F)
         }
@@ -67,6 +70,7 @@ fun ModelProviderLogo(
         when (provider) {
             AiModelProvider.CHATGPT -> Color(0xFF1B4D3E)
             AiModelProvider.DEEPSEEK -> Color(0xFF1E3A66)
+            AiModelProvider.ANTIGRAVITY -> Color(0xFF1E3860)
             AiModelProvider.GEMINI -> Color(0xFF1E4366)
             AiModelProvider.CLAUDE -> Color(0xFF4D2E1B)
         }
@@ -78,6 +82,7 @@ fun ModelProviderLogo(
         when (provider) {
             AiModelProvider.CHATGPT -> Color(0xFF10A37F)
             AiModelProvider.DEEPSEEK -> Color(0xFF4D6BFE)
+            AiModelProvider.ANTIGRAVITY -> Color(0xFF4285F4)
             AiModelProvider.GEMINI -> Color(0xFF38BDF8)
             AiModelProvider.CLAUDE -> Color(0xFFEA580C)
         }
@@ -110,6 +115,16 @@ fun ModelProviderLogo(
                     painter = painterResource(id = R.drawable.ic_deepseek_logo),
                     contentDescription = "DeepSeek",
                     tint = brandColor,
+                    modifier = Modifier.size(size * 0.62f)
+                )
+            }
+
+            AiModelProvider.ANTIGRAVITY -> {
+                // Google Antigravity 官方色彩标识
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_antigravity_logo),
+                    contentDescription = "Google Antigravity",
+                    tint = if (isNightMode) Color.Unspecified else brandColor,
                     modifier = Modifier.size(size * 0.62f)
                 )
             }

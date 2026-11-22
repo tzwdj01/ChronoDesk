@@ -55,6 +55,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.ui.clock.AiModelProvider
+import com.chronodesk.app.ui.clock.ModelProviderLogo
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
@@ -74,6 +76,8 @@ fun AccountManagerDialog(
     accountB: CodexAccount?,
     deepSeekAccounts: List<CodexAccount> = emptyList(),
     getDeepSeekApiKey: (accountId: String) -> String? = { null },
+    antigravityAccounts: List<CodexAccount> = emptyList(),
+    getAntigravityApiKey: (accountId: String) -> String? = { null },
     onDismiss: () -> Unit,
     onSaveAccount: (slot: Int, account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit,
     onRemoveAccount: (slot: Int) -> Unit,
@@ -82,7 +86,12 @@ fun AccountManagerDialog(
     onAddDeepSeekAccount: () -> CodexAccount? = { null },
     onRemoveDeepSeekAccount: (accountId: String) -> Unit = {},
     currentDeepSeekApiKey: String? = null,
-    onSaveDeepSeekApiKey: (String) -> Unit = {}
+    onSaveDeepSeekApiKey: (String) -> Unit = {},
+    onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Unit = { _, _, _ -> },
+    onAddAntigravityAccount: () -> CodexAccount? = { null },
+    onRemoveAntigravityAccount: (accountId: String) -> Unit = {},
+    currentAntigravityApiKey: String? = null,
+    onSaveAntigravityApiKey: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     var localDeepSeekAccounts by remember(deepSeekAccounts) {
@@ -92,15 +101,32 @@ fun AccountManagerDialog(
         )
     }
 
+    var localAntigravityAccounts by remember(antigravityAccounts) {
+        mutableStateOf(
+            if (antigravityAccounts.isNotEmpty()) antigravityAccounts
+            else listOf(CodexAccount(id = "acc_antigravity", alias = "Google Antigravity", modelProvider = "ANTIGRAVITY"))
+        )
+    }
+
+    val dsStartIndex = 2
+    val dsCount = localDeepSeekAccounts.size
+    val agStartIndex = dsStartIndex + dsCount
+    val agCount = localAntigravityAccounts.size
+
     val defaultTab = remember {
         if (initialAccountId != null) {
-            val dsIdx = localDeepSeekAccounts.indexOfFirst { it.id == initialAccountId }
-            if (dsIdx != -1) {
-                2 + dsIdx
-            } else if (accountB?.id == initialAccountId) {
-                1
+            val agIdx = localAntigravityAccounts.indexOfFirst { it.id == initialAccountId }
+            if (agIdx != -1) {
+                agStartIndex + agIdx
             } else {
-                0
+                val dsIdx = localDeepSeekAccounts.indexOfFirst { it.id == initialAccountId }
+                if (dsIdx != -1) {
+                    dsStartIndex + dsIdx
+                } else if (accountB?.id == initialAccountId) {
+                    1
+                } else {
+                    0
+                }
             }
         } else {
             initialSlot.coerceAtLeast(0)
@@ -173,8 +199,8 @@ fun AccountManagerDialog(
                     fontWeight = FontWeight.Bold
                 )
 
-                // 平台与槽位切换 Tab (ChatGPT 1, ChatGPT 2, DeepSeek 1, DeepSeek 2...)
-                val totalTabs = 2 + localDeepSeekAccounts.size + (if (localDeepSeekAccounts.size < 4) 1 else 0)
+                // 平台与槽位切换 Tab (ChatGPT 1, ChatGPT 2, DeepSeek 1..., Google Antigravity 1...)
+                val totalTabs = 2 + dsCount + agCount + (if (dsCount < 4) 1 else 0) + (if (agCount < 4) 1 else 0)
                 ScrollableTabRow(
                     selectedTabIndex = selectedTab.coerceIn(0, totalTabs - 1),
                     containerColor = DarkSurfaceElevated,
@@ -219,7 +245,7 @@ fun AccountManagerDialog(
                     )
                     val circleSymbols = listOf("①", "②", "③", "④", "⑤")
                     localDeepSeekAccounts.forEachIndexed { idx, dsAcc ->
-                        val tabIdx = 2 + idx
+                        val tabIdx = dsStartIndex + idx
                         val defaultLabel = "DeepSeek ${circleSymbols.getOrElse(idx) { "${idx + 1}" }}"
                         val tabLabel = if (localDeepSeekAccounts.size == 1) {
                             if (dsAcc.alias.isNotBlank() && dsAcc.alias != "DeepSeek") dsAcc.alias.take(8) else "DeepSeek"
@@ -240,6 +266,30 @@ fun AccountManagerDialog(
                             }
                         )
                     }
+
+                    localAntigravityAccounts.forEachIndexed { idx, agAcc ->
+                        val tabIdx = agStartIndex + idx
+                        val defaultLabel = "Google ${circleSymbols.getOrElse(idx) { "${idx + 1}" }}"
+                        val tabLabel = if (localAntigravityAccounts.size == 1) {
+                            if (agAcc.alias.isNotBlank() && agAcc.alias != "Google Antigravity") agAcc.alias.take(8) else "Google"
+                        } else if (agAcc.alias.isNotBlank() && !agAcc.alias.startsWith("Google")) {
+                            agAcc.alias.take(8)
+                        } else {
+                            defaultLabel
+                        }
+                        Tab(
+                            selected = selectedTab == tabIdx,
+                            onClick = { selectedTab = tabIdx },
+                            text = {
+                                Text(
+                                    text = tabLabel,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        )
+                    }
+
                     if (localDeepSeekAccounts.size < 4) {
                         Tab(
                             selected = false,
@@ -247,13 +297,35 @@ fun AccountManagerDialog(
                                 val added = onAddDeepSeekAccount()
                                 if (added != null) {
                                     localDeepSeekAccounts = localDeepSeekAccounts + added
-                                    selectedTab = 2 + localDeepSeekAccounts.lastIndex
+                                    selectedTab = dsStartIndex + localDeepSeekAccounts.lastIndex
                                     Toast.makeText(context, "已新增 DeepSeek 账号卡槽", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             text = {
                                 Text(
-                                    text = "+ 新增账号",
+                                    text = "+ DS账号",
+                                    fontSize = 11.5.sp,
+                                    color = TechCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        )
+                    }
+
+                    if (localAntigravityAccounts.size < 4) {
+                        Tab(
+                            selected = false,
+                            onClick = {
+                                val added = onAddAntigravityAccount()
+                                if (added != null) {
+                                    localAntigravityAccounts = localAntigravityAccounts + added
+                                    selectedTab = agStartIndex + localAntigravityAccounts.lastIndex
+                                    Toast.makeText(context, "已新增 Google 账号卡槽", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            text = {
+                                Text(
+                                    text = "+ Google",
                                     fontSize = 11.5.sp,
                                     color = TechCyan,
                                     fontWeight = FontWeight.Bold
@@ -391,9 +463,9 @@ fun AccountManagerDialog(
                             Text(text = "直接导入 / 更新 Access Token 凭据", fontSize = 13.sp)
                         }
                     }
-                } else {
+                } else if (selectedTab in dsStartIndex until agStartIndex) {
                     // ================= DeepSeek 官方接口配置面板 (支持多账号独立配置与自定义别名) =================
-                    val curDsIndex = (selectedTab - 2).coerceIn(0, localDeepSeekAccounts.lastIndex)
+                    val curDsIndex = (selectedTab - dsStartIndex).coerceIn(0, localDeepSeekAccounts.lastIndex)
                     val curDsAcc = localDeepSeekAccounts[curDsIndex]
 
                     var curDsKeyInput by remember(curDsAcc.id) {
@@ -416,12 +488,18 @@ fun AccountManagerDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "DeepSeek 官方 API 配置",
-                                color = TextPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                ModelProviderLogo(provider = AiModelProvider.DEEPSEEK, size = 18.dp, isNightMode = true)
+                                Text(
+                                    text = "DeepSeek 官方 API 配置",
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             val isDsConfigured = curDsAcc.credentialStatus == CredentialStatus.VALID && curDsKeyInput.isNotBlank()
                             val (stColor, stText) = when {
                                 isDsConfigured -> TechEmerald to "已配置 / 正常在线"
@@ -504,6 +582,137 @@ fun AccountManagerDialog(
                                     onClick = {
                                         onRemoveDeepSeekAccount(curDsAcc.id)
                                         Toast.makeText(context, "已删除该 DeepSeek 账号", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TechRose)
+                                ) {
+                                    Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(text = "删除", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // ================= Google Antigravity 官方接口配置面板 (支持多账号独立配置与自定义别名) =================
+                    val curAgIndex = (selectedTab - agStartIndex).coerceIn(0, localAntigravityAccounts.lastIndex)
+                    val curAgAcc = localAntigravityAccounts[curAgIndex]
+
+                    var curAgKeyInput by remember(curAgAcc.id) {
+                        mutableStateOf(getAntigravityApiKey(curAgAcc.id) ?: (if (curAgIndex == 0) currentAntigravityApiKey ?: "" else ""))
+                    }
+                    var curAgAliasInput by remember(curAgAcc.id, curAgAcc.alias) {
+                        mutableStateOf(if (curAgAcc.alias != "Google Antigravity" && !curAgAcc.alias.startsWith("Google Antigravity ")) curAgAcc.alias else "")
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DarkSurfaceElevated)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                ModelProviderLogo(provider = AiModelProvider.ANTIGRAVITY, size = 18.dp, isNightMode = true)
+                                Text(
+                                    text = "Google Antigravity 官方 API 配置",
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            val isAgConfigured = curAgAcc.credentialStatus == CredentialStatus.VALID && curAgKeyInput.isNotBlank()
+                            val (stColor, stText) = when {
+                                isAgConfigured -> TechEmerald to "已配置 / 正常在线"
+                                curAgAcc.credentialStatus == CredentialStatus.EXPIRED -> TechRose to "Key失效"
+                                else -> TextTertiary to "未配置"
+                            }
+                            Text(text = stText, color = stColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Text(
+                            text = "直连 Google Generative Language 官方接口验证模型配额与在线可用状态。支持自定义别名与多 API Key 接入。",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+
+                        // 1. 自定义账号名称 (参考 ChatGPT / DeepSeek 方式)
+                        OutlinedTextField(
+                            value = curAgAliasInput,
+                            onValueChange = { curAgAliasInput = it },
+                            label = { Text("自定义账号名称 / 备注 (留空显示 Google Antigravity)", fontSize = 11.sp) },
+                            placeholder = { Text("例如：工作主号、Gemini Pro、实验账号", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = DarkSurface,
+                                unfocusedContainerColor = DarkSurface,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedIndicatorColor = TechCyan,
+                                unfocusedIndicatorColor = DarkBorder
+                            )
+                        )
+
+                        // 2. Google API Key 输入框
+                        OutlinedTextField(
+                            value = curAgKeyInput,
+                            onValueChange = { curAgKeyInput = it },
+                            label = { Text("Google API Key (AIzaSy...)", fontSize = 11.sp) },
+                            placeholder = { Text("AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = DarkSurface,
+                                unfocusedContainerColor = DarkSurface,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedIndicatorColor = TechCyan,
+                                unfocusedIndicatorColor = DarkBorder
+                            )
+                        )
+
+                        // 3. 操作按钮组
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    val aliasToSave = curAgAliasInput.trim()
+                                    onSaveAntigravityAccount(curAgAcc.id, curAgKeyInput.trim(), aliasToSave)
+                                    val label = aliasToSave.ifBlank { "Google Antigravity" }
+                                    Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = TechEmerald,
+                                    contentColor = Color.Black
+                                )
+                            ) {
+                                Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(text = "保存并立即验证配额", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            if (localAntigravityAccounts.size > 1) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onRemoveAntigravityAccount(curAgAcc.id)
+                                        Toast.makeText(context, "已删除该 Google 账号", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     },
                                     shape = RoundedCornerShape(8.dp),

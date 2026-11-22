@@ -228,6 +228,31 @@ class ClockViewModel @JvmOverloads constructor(
         return accountRepo.getDeepSeekApiKey()
     }
 
+    fun saveAntigravityAccount(accountId: String, apiKey: String, alias: String) {
+        accountRepo.saveAntigravityApiKey(accountId, apiKey, alias)
+        refreshAccount(accountId)
+    }
+
+    fun addAntigravityAccount(alias: String = "", apiKey: String = ""): CodexAccount {
+        val acc = accountRepo.addAntigravityAccount(alias, apiKey)
+        if (apiKey.isNotBlank()) {
+            refreshAccount(acc.id)
+        }
+        return acc
+    }
+
+    fun removeAntigravityAccount(accountId: String) {
+        accountRepo.removeAntigravityAccount(accountId)
+    }
+
+    fun getAntigravityApiKey(accountId: String): String? {
+        return accountRepo.getAntigravityApiKey(accountId)
+    }
+
+    fun getAntigravityApiKey(): String? {
+        return accountRepo.getAntigravityApiKey()
+    }
+
     private fun getCurrentTimeState(is24Hour: Boolean): TimeState {
         val cal = Calendar.getInstance()
         val hour = if (is24Hour) {

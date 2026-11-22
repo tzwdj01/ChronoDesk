@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,15 +101,20 @@ fun MultiAccountQuotaSection(
 ) {
     val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
     val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" }
+    val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" }
+
+    val hasMultipleProviders = (if (chatGptAccounts.isNotEmpty()) 1 else 0) +
+        (if (deepSeekAccounts.isNotEmpty()) 1 else 0) +
+        (if (antigravityAccounts.isNotEmpty()) 1 else 0) >= 3
 
     val spacing = when (cardDensity) {
-        "COMPACT" -> if (isCompact) 5.dp else 6.5.dp
-        "SPACIOUS" -> if (isCompact) 9.dp else 12.dp
-        else -> if (isCompact) 7.dp else 9.dp
+        "COMPACT" -> if (isCompact) 4.dp else 5.dp
+        "SPACIOUS" -> if (isCompact) 8.dp else 10.dp
+        else -> if (hasMultipleProviders) (if (isCompact) 4.5.dp else 5.5.dp) else (if (isCompact) 7.dp else 9.dp)
     }
 
     Column(
-        modifier = modifier,
+        modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
         // 1. 同一订阅商：OpenAI / ChatGPT 专属大框
@@ -128,6 +135,22 @@ fun MultiAccountQuotaSection(
         if (deepSeekAccounts.isNotEmpty()) {
             DeepSeekUnifiedSubscriptionBox(
                 accounts = deepSeekAccounts,
+                snapshots = snapshots,
+                loadingMap = loadingMap,
+                isNightMode = isNightMode,
+                areControlsVisible = areControlsVisible,
+                isCompact = isCompact,
+                onAccountClick = onAccountClick,
+                onRefreshAccount = onRefreshAccount,
+                onDeleteAccount = onDeleteAccount,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // 3. 同一订阅商：Google Antigravity 专属大框（支持配额监控与多账号接入）
+        if (antigravityAccounts.isNotEmpty()) {
+            GoogleAntigravityUnifiedSubscriptionBox(
+                accounts = antigravityAccounts,
                 snapshots = snapshots,
                 loadingMap = loadingMap,
                 isNightMode = isNightMode,
@@ -168,9 +191,9 @@ fun ChatGptUnifiedSubscriptionBox(
             .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 7.dp else 8.5.dp)
+            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 5.5.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 6.5.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.5.dp)) {
             // 大框顶栏：OpenAI Logo + 订阅商名称 + 套餐标签 + 账号汇总
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -344,7 +367,7 @@ private fun SingleAccountQuotaItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onAccountClick() },
-        verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.dp)
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.dp)
     ) {
         // 账号标识行：别名/脱敏邮箱 + 套餐徽标(Plus/Pro) + 重置次数 + 状态徽标 + 呼出操作按钮
         Row(
@@ -369,7 +392,7 @@ private fun SingleAccountQuotaItem(
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(if (isCompact) 56.dp else 68.dp)
+                    modifier = Modifier.width(if (isCompact) 60.dp else 72.dp)
                 )
                 val plan = snapshot?.planName?.ifBlank { "Plus" } ?: "Plus"
                 Box(
@@ -583,9 +606,9 @@ fun DeepSeekUnifiedSubscriptionBox(
             .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 7.dp else 8.5.dp)
+            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 5.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.5.dp else 6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.5.dp)) {
             // 大框头部：官方 DeepSeek Logo + DeepSeek 名称 + 账号数状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -721,7 +744,7 @@ private fun SingleDeepSeekAccountItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onAccountClick() },
-        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.5.dp)
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 2.5.dp)
     ) {
         // 账号标识行：圆点 + 自定义账号名称 + 状态徽标 + 操作按钮
         Row(
@@ -886,6 +909,403 @@ private fun SingleDeepSeekAccountItem(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Google Antigravity 专属大框（直连 Google 官方接口展示实时配额状态与重置倒计时，支持多账号与自定义别名）
+ */
+@Composable
+fun GoogleAntigravityUnifiedSubscriptionBox(
+    accounts: List<CodexAccount>,
+    snapshots: Map<String, CodexUsageSnapshot>,
+    loadingMap: Map<String, Boolean>,
+    modifier: Modifier = Modifier,
+    isNightMode: Boolean = false,
+    areControlsVisible: Boolean = true,
+    isCompact: Boolean = false,
+    onAccountClick: (CodexAccount) -> Unit = {},
+    onRefreshAccount: (String) -> Unit = {},
+    onDeleteAccount: (String) -> Unit = {}
+) {
+    val cardBg = if (isNightMode) DarkSurface else InkSurface
+    val cardBorder = if (isNightMode) DarkBorder else InkBorder
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 10.dp else 12.dp))
+            .padding(horizontal = if (isCompact) 11.dp else 13.dp, vertical = if (isCompact) 5.dp else 6.5.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 4.5.dp)) {
+            // 大框头部：官方 Google 4 色 Logo + Google Antigravity 名称 + 账号数状态
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    ModelProviderLogo(
+                        provider = AiModelProvider.ANTIGRAVITY,
+                        size = if (isCompact) 26.dp else 28.dp,
+                        isNightMode = isNightMode
+                    )
+                    Text(
+                        text = "Google Antigravity",
+                        color = primaryText,
+                        fontSize = if (isCompact) 13.sp else 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                val hasConfigured = accounts.any { it.credentialStatus == CredentialStatus.VALID }
+                val statusColor = if (isNightMode) {
+                    if (hasConfigured) TechEmerald else TextTertiary
+                } else {
+                    if (hasConfigured) InkStatusGreen else InkTextTertiary
+                }
+                val statusBg = if (isNightMode) statusColor.copy(alpha = 0.12f) else if (hasConfigured) InkStatusTagBg else InkSurfaceElevated
+                val statusTitle = when {
+                    accounts.size > 1 -> "${accounts.size}个账号"
+                    hasConfigured -> "正常"
+                    else -> "未配置"
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.5.dp))
+                        .background(statusBg)
+                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                ) {
+                    Text(
+                        text = statusTitle,
+                        color = statusColor,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // 框内遍历展示各个 Antigravity 账号
+            accounts.forEachIndexed { index, acc ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
+                        thickness = 0.8.dp,
+                        modifier = Modifier.padding(vertical = 1.5.dp)
+                    )
+                }
+                SingleAntigravityAccountItem(
+                    account = acc,
+                    snapshot = snapshots[acc.id],
+                    isLoading = loadingMap[acc.id] == true,
+                    isNightMode = isNightMode,
+                    isCompact = isCompact,
+                    showDelete = accounts.size > 1,
+                    areControlsVisible = areControlsVisible,
+                    onAccountClick = { onAccountClick(acc) },
+                    onRefreshClick = { onRefreshAccount(acc.id) },
+                    onDeleteClick = { onDeleteAccount(acc.id) }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 单个 Google Antigravity 账号行（支持自定义别名、Pro 套餐标识、5小时配额与日配额双进度条及重置时间）
+ */
+@Composable
+private fun SingleAntigravityAccountItem(
+    account: CodexAccount,
+    snapshot: CodexUsageSnapshot?,
+    isLoading: Boolean,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    showDelete: Boolean,
+    areControlsVisible: Boolean,
+    onAccountClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+
+    val isConfigured = account.credentialStatus == CredentialStatus.VALID
+    val isExpired = account.credentialStatus == CredentialStatus.EXPIRED
+
+    val primaryWindow = snapshot?.primaryWindow
+    val secondaryWindow = snapshot?.secondaryWindow
+
+    val primaryPercent = primaryWindow?.remainingPercent ?: 100.0
+    val secondaryPercent = secondaryWindow?.remainingPercent ?: 100.0
+
+    val primaryProgressColor = if (isNightMode) {
+        when {
+            primaryPercent <= 0.0 -> TechRose
+            primaryPercent <= 15.0 -> TechAmber
+            else -> TechCyan
+        }
+    } else {
+        when {
+            primaryPercent <= 0.0 -> InkWarningRed
+            primaryPercent <= 15.0 -> InkWarningAmber
+            else -> InkProgress
+        }
+    }
+
+    val secondaryProgressColor = if (isNightMode) {
+        when {
+            secondaryPercent <= 0.0 -> TechRose
+            secondaryPercent <= 15.0 -> TechAmber
+            else -> TechEmerald
+        }
+    } else {
+        when {
+            secondaryPercent <= 0.0 -> InkWarningRed
+            secondaryPercent <= 15.0 -> InkWarningAmber
+            else -> InkStatusGreen
+        }
+    }
+
+    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
+
+    val (statusText, statusColor, statusBg) = when {
+        isLoading -> Triple(
+            "同步中",
+            if (isNightMode) TechCyan else InkProgress,
+            (if (isNightMode) TechCyan else InkProgress).copy(alpha = 0.12f)
+        )
+        !isConfigured -> Triple(
+            "未配置",
+            mutedText,
+            if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
+        )
+        isExpired -> Triple(
+            "Key失效",
+            if (isNightMode) TechRose else InkWarningRed,
+            (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+        )
+        else -> Triple(
+            "正常",
+            if (isNightMode) TechEmerald else InkStatusGreen,
+            if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
+        )
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "spinAg")
+    val spinAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "spinAngleAg"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onAccountClick() },
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.dp)
+    ) {
+        // 账号标识行：圆点 + 自定义账号名称 + Pro 套餐徽标 + 状态徽标 + 操作按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.5.dp)
+                        .background(
+                            if (isNightMode) {
+                                if (isConfigured) TechCyan else TechRose
+                            } else {
+                                if (isConfigured) InkStatusGreen else InkWarningRed
+                            },
+                            CircleShape
+                        )
+                )
+                Text(
+                    text = account.displayTitle,
+                    color = primaryText,
+                    fontSize = if (isCompact) 11.sp else 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(if (isCompact) 60.dp else 72.dp)
+                )
+                val plan = snapshot?.planName?.ifBlank { "Pro" } ?: "Pro"
+                Box(
+                    modifier = Modifier
+                        .width(if (isCompact) 30.dp else 34.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                        .padding(vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = plan,
+                        color = secondaryText,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(statusBg)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = statusText,
+                        color = statusColor,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = areControlsVisible,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onRefreshClick,
+                            enabled = !isLoading,
+                            modifier = Modifier.size(18.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "刷新",
+                                tint = if (isLoading) (if (isNightMode) TechCyan else InkProgress) else secondaryText,
+                                modifier = Modifier
+                                    .size(11.dp)
+                                    .rotate(if (isLoading) spinAngle else 0f)
+                            )
+                        }
+                        if (showDelete) {
+                            IconButton(
+                                onClick = onDeleteClick,
+                                modifier = Modifier.size(18.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "删除",
+                                    tint = secondaryText.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5 小时配额行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "5小时配额",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
+                )
+                LinearProgressIndicator(
+                    progress = { if (isConfigured) (primaryPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                    modifier = Modifier
+                        .width(if (isCompact) 75.dp else 88.dp)
+                        .height(4.5.dp)
+                        .clip(RoundedCornerShape(2.5.dp)),
+                    color = primaryProgressColor,
+                    trackColor = trackColor
+                )
+            }
+            val fiveHourResetText = when {
+                !isConfigured -> "待配置 API Key"
+                isLoading -> "同步中..."
+                primaryWindow?.resetAtUnix != null -> {
+                    val resetTime = primaryWindow.formattedResetTime()
+                    "剩余 ${primaryPercent.toInt()}% · $resetTime 重置"
+                }
+                else -> "剩余 ${primaryPercent.toInt()}% · 额度已就绪"
+            }
+            Text(
+                text = fiveHourResetText,
+                color = mutedText,
+                fontSize = if (isCompact) 8.5.sp else 9.sp,
+                maxLines = 1
+            )
+        }
+
+        // 日配额行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "日配额",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.5.sp else 10.sp,
+                    modifier = Modifier.width(if (isCompact) 50.dp else 56.dp)
+                )
+                LinearProgressIndicator(
+                    progress = { if (isConfigured) (secondaryPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                    modifier = Modifier
+                        .width(if (isCompact) 75.dp else 88.dp)
+                        .height(4.5.dp)
+                        .clip(RoundedCornerShape(2.5.dp)),
+                    color = secondaryProgressColor,
+                    trackColor = trackColor
+                )
+            }
+            val dailyResetText = when {
+                !isConfigured -> "待配置 API Key"
+                isLoading -> "同步中..."
+                secondaryWindow?.resetAtUnix != null -> {
+                    "剩余 ${secondaryPercent.toInt()}% · 次日 08:00 重置"
+                }
+                else -> "剩余 ${secondaryPercent.toInt()}% · 额度已就绪"
+            }
+            Text(
+                text = dailyResetText,
+                color = mutedText,
+                fontSize = if (isCompact) 8.5.sp else 9.sp,
+                maxLines = 1
+            )
         }
     }
 }
