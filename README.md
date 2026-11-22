@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Language-Kotlin%20100%25-purple?logo=kotlin" alt="Language" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-green?logo=jetpackcompose" alt="Compose" />
   <img src="https://img.shields.io/badge/Architecture-Clean%20MVVM-orange" alt="Architecture" />
-  <img src="https://img.shields.io/badge/Tests-30%20Passed-brightgreen" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-74%20Passed-brightgreen" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
 </p>
 
@@ -152,19 +152,49 @@ app/src/main/java/com/chronodesk/app/
 ```bash
 ./gradlew testDebugUnitTest
 ```
-> 目前包含 **30 项单元测试**，覆盖列式 DataFrame 解析、车辆状态模型换算、URL 安全验证、Token 脱敏、双账号物理隔离等关键路径，全部通过。
+> 目前包含 **74 项单元测试**，全面覆盖 AI 额度状态机、窗口百分比截断、Token 脱敏与安全日志、加密凭据隔离、常亮与夜间生命周期、Tesla 能耗与网络安全配置等关键路径，全部通过。
 
 ### 2. 构建 Release / Debug APK
 ```bash
+# 构建 Debug 版本 (包含内网 HTTP 联调白名单与测试辅助配置)
 ./gradlew assembleDebug
+
+# 构建 Release 正式发布包 (严格仅允许 HTTPS，支持从环境变量注入正式签名)
+./gradlew assembleRelease
 ```
-产物位置：`app/build/outputs/apk/debug/app-debug.apk`
+产物位置：
+- Debug: `app/build/outputs/apk/debug/app-debug.apk`
+- Release: `app/build/outputs/apk/release/app-release.apk`
 
 ### 3. 安装与运行
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.chronodesk.app.debug/com.chronodesk.app.MainActivity
 ```
+
+### 4. 安装与版本升级指引
+
+#### 安装与签名冲突排查
+- **标准安装**:
+  使用 `adb install -r <apk-file>` 进行安装。
+- **覆盖安装签名冲突解决**:
+  若安装提示 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，说明设备上已安装不同签名证书的构建。请先卸载旧版本再安装：
+  ```bash
+  adb uninstall com.chronodesk.app.debug   # 针对 Debug 构建
+  # 或
+  adb uninstall com.chronodesk.app         # 针对 Release 正式包
+  adb install app-release.apk
+  ```
+- **降级限制**: Android 系统默认限制应用版本号降级（不可直接覆盖低于当前已装 versionCode 的安装包）。
+
+#### 数据保留与重新授权指引
+- **通用设置保留范围**:
+  基础桌面配置（时间制式、秒钟开关、常亮策略、主题模式、时钟缩放与位置、天气城市等）在升级过程中完全保留。支持在设置界面通过系统文件选择器导出/导入带 `schemaVersion: 1` 的 JSON 配置文件。
+- **安全升级与重新授权**:
+  新版本已废止所有明文凭据存储通道并自动清理旧迁移缓存。若升级后账号卡片提示「授权已失效」或「待同步」，请按如下指引重新绑定：
+  1. **ChatGPT (Codex)**: 点击卡片或顶栏「账号管理」，点击「重新授权」重新完成 OAuth 认证；
+  2. **DeepSeek / Gemini API**: 点击顶栏「账号管理」，重新填入或校验有效 API Key；
+  3. **Tesla 车辆监控**: 若 Grafana Service Account Token 发生变动，进入「设置 -> TeslaMate 配置」更新 Token 并保存测试。
 
 ---
 
