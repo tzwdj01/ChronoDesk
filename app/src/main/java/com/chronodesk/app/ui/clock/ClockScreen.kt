@@ -38,6 +38,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Refresh
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.chronodesk.app.ui.tesla.TeslaViewModel
+import com.chronodesk.app.ui.tesla.TeslaScreen
+import com.chronodesk.app.ui.settings.TeslaSettingsDialog
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -112,8 +116,20 @@ fun ClockScreen(
     val isNightMode by viewModel.isNightMode.collectAsState()
     val burnInShift by viewModel.burnInShift.collectAsState()
 
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val teslaViewModel: TeslaViewModel = viewModel()
+    val teslaSettings by teslaViewModel.settings.collectAsState()
+    val teslaSnapshot by teslaViewModel.snapshot.collectAsState()
+
+    val pageCount = if (teslaSettings.enabled) 3 else 2
+    val pagerState = rememberPagerState(pageCount = { pageCount })
     val coroutineScope = rememberCoroutineScope()
+
+    // 页面数量变动时的越界安全保护
+    LaunchedEffect(pageCount) {
+        if (pagerState.currentPage >= pageCount) {
+            pagerState.scrollToPage(0)
+        }
+    }
 
     var areControlsVisible by remember { mutableStateOf(false) }
 
@@ -125,6 +141,7 @@ fun ClockScreen(
     }
 
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showTeslaSettingsDialog by remember { mutableStateOf(false) }
     var selectedAccountToManage by remember { mutableStateOf<CodexAccount?>(null) }
     var showDeviceAuthDialogForAccount by remember { mutableStateOf<CodexAccount?>(null) }
 
@@ -132,7 +149,19 @@ fun ClockScreen(
         SettingsDialog(
             currentSettings = settings,
             onDismiss = { showSettingsDialog = false },
-            onSave = { updated -> viewModel.updateSettings(updated) }
+            onSave = { updated -> viewModel.updateSettings(updated) },
+            onOpenTeslaSettings = {
+                showSettingsDialog = false
+                showTeslaSettingsDialog = true
+            }
+        )
+    }
+
+    if (showTeslaSettingsDialog) {
+        TeslaSettingsDialog(
+            viewModel = teslaViewModel,
+            isNightMode = isNightMode,
+            onDismiss = { showTeslaSettingsDialog = false }
         )
     }
 
@@ -288,26 +317,28 @@ fun ClockScreen(
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            // ================= 顶部公共导航栏 =================
-            ClockTopBar(
-                isNightMode = isNightMode,
-                accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
-                nightModeOption = settings.nightModeOption,
-                isCompact = isCompactHeight,
-                onAddAccount = {
-                    selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
-                },
-                onRefreshAll = {
-                    viewModel.refreshAll()
-                    Toast.makeText(context, "已触发全量额度刷新", Toast.LENGTH_SHORT).show()
-                },
-                onToggleNightMode = {
-                    val next = viewModel.toggleNightMode()
-                    val msg = if (next == "FORCE_NIGHT") "已切换为：深色科技模式" else "已切换为：水墨墨水屏模式"
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                },
-                onOpenSettings = { showSettingsDialog = true }
-            )
+            // ================= 顶部公共导航栏 (页面 0 与 页面 1 显示，页面 2 为 Tesla 专属顶栏) =================
+            if (pagerState.currentPage != 2) {
+                ClockTopBar(
+                    isNightMode = isNightMode,
+                    accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
+                    nightModeOption = settings.nightModeOption,
+                    isCompact = isCompactHeight,
+                    onAddAccount = {
+                        selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                    },
+                    onRefreshAll = {
+                        viewModel.refreshAll()
+                        Toast.makeText(context, "已触发全量额度刷新", Toast.LENGTH_SHORT).show()
+                    },
+                    onToggleNightMode = {
+                        val next = viewModel.toggleNightMode()
+                        val msg = if (next == "FORCE_NIGHT") "已切换为：深色科技模式" else "已切换为：水墨墨水屏模式"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenSettings = { showSettingsDialog = true }
+                )
+            }
 
             // ================= 中间区域：HorizontalPager 双页滑屏 =================
             HorizontalPager(
@@ -557,7 +588,7 @@ fun ClockScreen(
                             )
                         }
                     }
-                } else {
+                } else if (page == 1) {
                     // 第二页：扩展页面 (AI 模型 Token 监控、官方接口遥测与系统运行状态)
                     ClockExtensionPage(
                         accounts = accounts,
@@ -574,10 +605,28 @@ fun ClockScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+                } else if (page == 2) {
+                    // 第三页：Tesla 车辆监控页 (TeslaMate / Grafana API)
+                    TeslaScreen(
+                        snapshot = teslaSnapshot,
+                        settings = teslaSettings,
+                        isNightMode = isNightMode,
+                        currentTimeString = String.format("%02d:%02d:%02d", timeState.hour, timeState.minute, timeState.second),
+                        isCompact = isCompactHeight,
+                        onRefresh = {
+                            teslaViewModel.refreshNow()
+                            Toast.makeText(context, "正在刷新车辆实时状态…", Toast.LENGTH_SHORT).show()
+                        },
+                        onOpenSettings = { showTeslaSettingsDialog = true },
+                        onVisibilityChanged = { visible ->
+                            teslaViewModel.setPageVisible(visible)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
 
-            // ================= 底部：双页面指示器小圆点 [ ● ○ ] =================
+            // ================= 底部：多页面指示器小圆点 [ ● ○ ] 或 [ ● ○ ○ ] =================
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -585,7 +634,7 @@ fun ClockScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                for (i in 0 until 2) {
+                for (i in 0 until pageCount) {
                     val isSelected = pagerState.currentPage == i
                     Box(
                         modifier = Modifier

@@ -28,8 +28,16 @@ class DualAccountIsolationTest {
         )
 
         assertNotEquals("两个账号ID必须完全独立", accountA.id, accountB.id)
-        assertEquals("user.a@example.com", accountA.displayTitle)
-        assertEquals("user.b@work.com", accountB.displayTitle)
+        assertEquals("工作账号", accountA.displayTitle)
+        assertEquals("个人主账号", accountB.displayTitle)
+
+        // 当别名为空时回退至脱敏邮箱
+        val accountWithoutAlias = CodexAccount(
+            alias = "",
+            email = "user.a@example.com",
+            credentialStatus = CredentialStatus.VALID
+        )
+        assertEquals("us***a@example.com", accountWithoutAlias.displayTitle)
 
         // 当无邮箱时回退至别名
         val accountWithoutEmail = CodexAccount(

@@ -103,6 +103,18 @@ class CredentialStorage(private val context: Context) {
         editor.commit()
     }
 
+    fun saveGrafanaToken(token: String) {
+        prefs.edit().putString(KEY_GRAFANA_TOKEN, token.trim()).commit()
+    }
+
+    fun getGrafanaToken(): String? {
+        return prefs.getString(KEY_GRAFANA_TOKEN, null)
+    }
+
+    fun clearGrafanaToken() {
+        prefs.edit().remove(KEY_GRAFANA_TOKEN).commit()
+    }
+
     fun clearAll() {
         prefs.edit().clear().apply()
     }
@@ -115,6 +127,7 @@ class CredentialStorage(private val context: Context) {
     companion object {
         private const val TAG = "CredentialStorage"
         private const val PREFS_FILE_NAME = "chronodesk_secure_credentials"
+        private const val KEY_GRAFANA_TOKEN = "tesla_grafana_token"
         private const val BUFFER_EXPIRY_MS = 60_000L // 60s
     }
 }

@@ -31,7 +31,7 @@ object TokenRedactor {
      */
     fun redactJsonString(json: String): String {
         return json
-            .replace(Regex("\"(access_token|refresh_token|id_token)\"\\s*:\\s*\"[^\"]+\"")) { match ->
+            .replace(Regex("\"(access_token|refresh_token|id_token|grafana_token|token|api_key)\"\\s*:\\s*\"[^\"]+\"")) { match ->
                 val key = match.groupValues[1]
                 "\"$key\":\"***REDACTED***\""
             }

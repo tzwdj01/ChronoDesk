@@ -32,8 +32,8 @@ class CodexUsageWindowTest {
     }
 
     @Test
-    fun testZeroUsedSuppressesResetTime() {
-        // 验证 CC Switch 逻辑：已用额度为 0 时屏蔽虚假重置时间
+    fun testZeroUsedPreservesResetTimeForPlusAccounts() {
+        // Plus 账户额度对齐：即使已用额度为0，也保留官方返回的重置时间戳供用户查阅重置时刻
         val window = CodexUsageWindow.fromRaw(
             usedPercent = 0.0,
             limitWindowSeconds = 18000L,
@@ -43,7 +43,7 @@ class CodexUsageWindowTest {
         assertNotNull(window)
         assertEquals(0.0, window!!.usedPercent, 0.001)
         assertEquals(100.0, window.remainingPercent, 0.001)
-        assertNull("已用额度为0时不应展示虚假重置时间", window.resetAtUnix)
+        assertEquals(1700018000L, window.resetAtUnix)
         assertEquals("已就绪", window.formattedCountdown())
     }
 
