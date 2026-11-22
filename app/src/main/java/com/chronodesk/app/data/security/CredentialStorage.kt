@@ -70,6 +70,39 @@ class CredentialStorage(private val context: Context) {
             .apply()
     }
 
+    fun getAllDecryptedCredentials(): Map<String, Any> {
+        return try {
+            val allMap = prefs.all
+            val result = mutableMapOf<String, Any>()
+            for ((k, v) in allMap) {
+                if (!k.startsWith("__androidx_") && v != null) {
+                    result[k] = v
+                }
+            }
+            result
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get all credentials", e)
+            emptyMap()
+        }
+    }
+
+    fun importDecryptedCredentials(entries: Map<String, Any>) {
+        val editor = prefs.edit()
+        for ((k, v) in entries) {
+            if (k.startsWith("__androidx_")) continue
+            when (v) {
+                is String -> editor.putString(k, v)
+                is Long -> editor.putLong(k, v)
+                is Int -> editor.putInt(k, v)
+                is Boolean -> editor.putBoolean(k, v)
+                is Float -> editor.putFloat(k, v)
+                is Number -> editor.putLong(k, v.toLong())
+                else -> editor.putString(k, v.toString())
+            }
+        }
+        editor.commit()
+    }
+
     fun clearAll() {
         prefs.edit().clear().apply()
     }

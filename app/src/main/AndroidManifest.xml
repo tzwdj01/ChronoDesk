@@ -26,6 +26,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".data.migration.DataMigrationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.chronodesk.app.ACTION_EXPORT_DATA" />
+                <action android:name="com.chronodesk.app.ACTION_IMPORT_DATA" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

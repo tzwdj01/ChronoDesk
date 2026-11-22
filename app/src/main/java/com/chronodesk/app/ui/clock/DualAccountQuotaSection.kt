@@ -746,10 +746,15 @@ private fun SingleDeepSeekAccountItem(
             mutedText,
             if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
         )
-        snapshot?.credentialStatus == CredentialStatus.EXPIRED || snapshot?.errorMessage != null -> Triple(
+        snapshot?.credentialStatus == CredentialStatus.EXPIRED -> Triple(
             "Key失效",
             if (isNightMode) TechRose else InkWarningRed,
             (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.12f)
+        )
+        snapshot?.errorMessage != null && !snapshot.isLastGood -> Triple(
+            "网络异常",
+            if (isNightMode) TechAmber else InkWarningAmber,
+            (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
         )
         !hasFunds -> Triple(
             "无可用余额",
