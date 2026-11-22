@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -149,7 +150,7 @@ fun TeslaScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "支持通过 Grafana API 直连本地 TeslaMate PostgreSQL 数据源\n只读采集车辆 SOC、续航、胎压、今日能耗与行驶状态（不唤醒车辆）",
+                        text = "在设置中绑定 TeslaMate 即可查看车辆状态\n通过 Grafana API 直连本地数据源，只读采集车辆状态（不唤醒车辆）",
                         color = secondaryText,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
@@ -158,11 +159,12 @@ fun TeslaScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Box(
                         modifier = Modifier
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isNightMode) TechCyan.copy(alpha = 0.15f) else Color(0xFFE0F2FE))
                             .border(1.dp, if (isNightMode) TechCyan else Color(0xFF0284C7), RoundedCornerShape(8.dp))
                             .clickable { onOpenSettings() }
-                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
                         Text(
                             text = "前往设置配置连接",

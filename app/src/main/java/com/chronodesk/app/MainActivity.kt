@@ -44,6 +44,10 @@ class MainActivity : ComponentActivity() {
                 permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         if (granted) {
             detectCurrentLocation()
+        } else {
+            // 用户拒绝时保持默认城市或已有手工城市，关闭自动定位标记，不再反复弹窗
+            val current = viewModel.settings.value
+            viewModel.updateSettings(current.copy(autoLocation = false))
         }
     }
 
@@ -53,8 +57,7 @@ class MainActivity : ComponentActivity() {
         // 沉浸式全屏与隐藏系统栏（轻触边缘可呼出）
         applyFullScreenImmersive()
 
-        // 检查并请求定位权限（用于自动匹配当前城市天气）
-        checkLocationPermission()
+        // 剥离冷启动强制权限申请：未配置定位前直接按默认城市（北京）拉取天气，不弹窗
 
         setContent {
             val settings by viewModel.settings.collectAsState()
@@ -81,7 +84,10 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = PureBlack
                 ) {
-                    ClockScreen(viewModel = viewModel)
+                    ClockScreen(
+                        viewModel = viewModel,
+                        onRequestLocationPermission = { requestLocationPermissionExplicitly() }
+                    )
                 }
             }
         }
@@ -99,7 +105,14 @@ class MainActivity : ComponentActivity() {
         applyFullScreenImmersive()
         // 重新进入前台时刷新数据
         viewModel.refreshAll()
-        detectCurrentLocation()
+        if (viewModel.settings.value.autoLocation) {
+            val hasCoarse = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasCoarse) {
+                detectCurrentLocation()
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -122,18 +135,18 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun checkLocationPermission() {
+    fun requestLocationPermissionExplicitly() {
         val hasCoarse = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
-        if (!hasCoarse && viewModel.settings.value.autoLocation) {
+        if (!hasCoarse) {
             requestLocationPermissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_COARSE_LOCATION,
                     Manifest.permission.ACCESS_FINE_LOCATION
                 )
             )
-        } else if (hasCoarse) {
+        } else {
             detectCurrentLocation()
         }
     }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.HorizontalDivider
@@ -175,8 +176,48 @@ fun MultiAccountQuotaSection(
             )
         }
 
-        // 4. 当主屏账号全部隐藏或全部分配至第二屏时的温馨指引
-        if (chatGptAccounts.isEmpty() && deepSeekAccounts.isEmpty() && antigravityAccounts.isEmpty()) {
+        // 4. 空状态与账号指引
+        if (accounts.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isNightMode) DarkSurface else InkSurface)
+                    .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(12.dp))
+                    .clickable { onAddAccount() }
+                    .padding(vertical = if (isCompact) 18.dp else 28.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddCircleOutline,
+                        contentDescription = "添加第一个 AI 账号",
+                        tint = if (isNightMode) TechCyan else InkProgress,
+                        modifier = Modifier.size(if (isCompact) 26.dp else 32.dp)
+                    )
+                    Text(
+                        text = "欢迎使用 ChronoDesk",
+                        color = if (isNightMode) TextPrimary else InkTextPrimary,
+                        fontSize = if (isCompact) 13.5.sp else 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "点击配置你的第一个 AI 账号",
+                        color = if (isNightMode) TechCyan else InkProgress,
+                        fontSize = if (isCompact) 11.sp else 12.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "支持 ChatGPT (Codex) / DeepSeek / Gemini API",
+                        color = if (isNightMode) TextTertiary else InkTextTertiary,
+                        fontSize = if (isCompact) 9.5.sp else 10.5.sp
+                    )
+                }
+            }
+        } else if (chatGptAccounts.isEmpty() && deepSeekAccounts.isEmpty() && antigravityAccounts.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -294,17 +335,136 @@ fun ChatGptUnifiedSubscriptionBox(
                         modifier = Modifier.padding(vertical = 1.5.dp)
                     )
                 }
-                SingleAccountQuotaItem(
-                    account = acc,
-                    snapshot = snapshots[acc.id],
-                    isLoading = loadingMap[acc.id] == true,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact,
-                    areControlsVisible = areControlsVisible,
-                    refreshIntervalMinutes = refreshIntervalMinutes,
-                    onAccountClick = { onAccountClick(acc) },
-                    onRefreshClick = { onRefreshAccount(acc.id) },
-                    onDeleteClick = { onDeleteAccount(acc.id) }
+                if (isCompact && index > 0) {
+                    // 16:9 等紧凑横屏下，双账号优先展示主账号，副账号折叠为紧凑条，防止高度溢出
+                    CompactSecondaryAccountQuotaItem(
+                        account = acc,
+                        snapshot = snapshots[acc.id],
+                        isLoading = loadingMap[acc.id] == true,
+                        isNightMode = isNightMode,
+                        refreshIntervalMinutes = refreshIntervalMinutes,
+                        onAccountClick = { onAccountClick(acc) },
+                        onRefreshClick = { onRefreshAccount(acc.id) }
+                    )
+                } else {
+                    SingleAccountQuotaItem(
+                        account = acc,
+                        snapshot = snapshots[acc.id],
+                        isLoading = loadingMap[acc.id] == true,
+                        isNightMode = isNightMode,
+                        isCompact = isCompact,
+                        areControlsVisible = areControlsVisible,
+                        refreshIntervalMinutes = refreshIntervalMinutes,
+                        onAccountClick = { onAccountClick(acc) },
+                        onRefreshClick = { onRefreshAccount(acc.id) },
+                        onDeleteClick = { onDeleteAccount(acc.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 紧凑型副账号行（用于 16:9 紧凑屏折叠展示副账号，空间充裕的长屏则展开完整双额度条）
+ */
+@Composable
+private fun CompactSecondaryAccountQuotaItem(
+    account: CodexAccount,
+    snapshot: CodexUsageSnapshot?,
+    isLoading: Boolean,
+    isNightMode: Boolean,
+    refreshIntervalMinutes: Int = 15,
+    onAccountClick: () -> Unit,
+    onRefreshClick: () -> Unit
+) {
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+
+    val syncStatus = snapshot?.computeStatus(
+        isConfigured = account.isConfigured,
+        isRefreshing = isLoading,
+        refreshIntervalMinutes = refreshIntervalMinutes
+    ) ?: if (account.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+
+    val remainingCooldown = snapshot?.getRemainingRetrySeconds() ?: 0L
+    val isCoolingDown = remainingCooldown > 0L
+
+    val pw = snapshot?.primaryWindow
+    val sw = snapshot?.secondaryWindow
+    val pwRemaining = pw?.formattedRemaining() ?: "—"
+    val swRemaining = sw?.formattedRemaining() ?: "—"
+
+    val statusText = when (syncStatus) {
+        QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+        QuotaSyncStatus.AWAITING_SYNC -> "待同步"
+        QuotaSyncStatus.SYNCING -> "同步中"
+        QuotaSyncStatus.UPDATED -> "正常"
+        QuotaSyncStatus.CACHED_STALE -> "缓存"
+        QuotaSyncStatus.CACHE_EXPIRED -> "已过期"
+        QuotaSyncStatus.AUTH_EXPIRED -> "失效"
+        QuotaSyncStatus.SERVICE_UNAVAILABLE -> if (isCoolingDown) "${remainingCooldown}s" else "暂不可用"
+        QuotaSyncStatus.DATA_FORMAT_ERROR -> "格式异常"
+    }
+    val statusColor = when (syncStatus) {
+        QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+        QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
+        QuotaSyncStatus.AUTH_EXPIRED, QuotaSyncStatus.CACHE_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
+        else -> if (isNightMode) TechAmber else InkWarningAmber
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.45f) else InkSurfaceElevated.copy(alpha = 0.45f))
+            .clickable { onAccountClick() }
+            .padding(horizontal = 7.dp, vertical = 2.5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.weight(1f, fill = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(4.dp)
+                    .background(statusColor, CircleShape)
+            )
+            Text(
+                text = account.displayTitle,
+                color = primaryText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            if (syncStatus != QuotaSyncStatus.AUTH_EXPIRED && syncStatus != QuotaSyncStatus.NOT_CONFIGURED) {
+                Text(
+                    text = "5h: $pwRemaining · 周: $swRemaining",
+                    color = secondaryText,
+                    fontSize = 8.5.sp
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(statusColor.copy(alpha = 0.12f))
+                    .padding(horizontal = 4.dp, vertical = 0.5.dp)
+            ) {
+                Text(
+                    text = statusText,
+                    color = statusColor,
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
@@ -541,28 +701,28 @@ private fun SingleAccountQuotaItem(
                         IconButton(
                             onClick = onRefreshClick,
                             enabled = !isLoading && !isCoolingDown,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = "刷新 ${account.displayTitle} 额度",
                                 tint = if (isLoading) (if (isNightMode) TechCyan else InkProgress)
                                        else if (isCoolingDown) secondaryText.copy(alpha = 0.35f)
                                        else secondaryText,
                                 modifier = Modifier
-                                    .size(11.dp)
+                                    .size(13.dp)
                                     .rotate(if (isLoading) spinAngle else 0f)
                             )
                         }
                         IconButton(
                             onClick = onDeleteClick,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = "删除",
+                                contentDescription = "删除 ${account.displayTitle}",
                                 tint = secondaryText.copy(alpha = 0.6f),
-                                modifier = Modifier.size(11.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                         }
                     }
@@ -995,29 +1155,29 @@ private fun SingleDeepSeekAccountItem(
                         IconButton(
                             onClick = onRefreshClick,
                             enabled = !isLoading && !isCoolingDown,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = "刷新 ${account.displayTitle} 额度",
                                 tint = if (isLoading) (if (isNightMode) TechCyan else InkProgress)
                                        else if (isCoolingDown) secondaryText.copy(alpha = 0.35f)
                                        else secondaryText,
                                 modifier = Modifier
-                                    .size(11.dp)
+                                    .size(13.dp)
                                     .rotate(if (isLoading) spinAngle else 0f)
                             )
                         }
                         if (showDelete) {
                             IconButton(
                                 onClick = onDeleteClick,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "删除",
+                                    contentDescription = "删除 ${account.displayTitle}",
                                     tint = secondaryText.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(11.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
@@ -1375,29 +1535,29 @@ private fun SingleAntigravityAccountItem(
                         IconButton(
                             onClick = onRefreshClick,
                             enabled = !isLoading && !isCoolingDown,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = "刷新 ${account.displayTitle} 额度",
                                 tint = if (isLoading) (if (isNightMode) TechCyan else InkProgress)
                                        else if (isCoolingDown) secondaryText.copy(alpha = 0.35f)
                                        else secondaryText,
                                 modifier = Modifier
-                                    .size(11.dp)
+                                    .size(13.dp)
                                     .rotate(if (isLoading) spinAngle else 0f)
                             )
                         }
                         if (showDelete) {
                             IconButton(
                                 onClick = onDeleteClick,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "删除",
+                                    contentDescription = "删除 ${account.displayTitle}",
                                     tint = secondaryText.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(11.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }

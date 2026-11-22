@@ -75,7 +75,8 @@ fun SettingsDialog(
     onOpenTeslaSettings: () -> Unit = {},
     onExportSettings: () -> String = { "" },
     onValidateSettings: (String) -> SettingsValidationResult = { SettingsValidationResult.Invalid("未实现") },
-    onApplySettingsBackup: (GeneralSettingsBackup) -> Unit = {}
+    onApplySettingsBackup: (GeneralSettingsBackup) -> Unit = {},
+    onRequestLocationPermission: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var previewBackup by remember { mutableStateOf<GeneralSettingsBackup?>(null) }
@@ -607,10 +608,15 @@ fun SettingsDialog(
                     )
 
                     SettingToggleItem(
-                        title = "自动定位匹配",
-                        subtitle = "依据设备 GPS 或网络自动获取首选城市",
+                        title = "开启自动定位",
+                        subtitle = "依据设备 GPS 或网络自动获取首选城市天气（关闭则固定使用选中城市）",
                         checked = autoLocation,
-                        onCheckedChange = { autoLocation = it }
+                        onCheckedChange = { checked ->
+                            autoLocation = checked
+                            if (checked) {
+                                onRequestLocationPermission()
+                            }
+                        }
                     )
 
                     val extraList = remember(additionalCities) {

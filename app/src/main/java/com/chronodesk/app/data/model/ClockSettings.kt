@@ -18,10 +18,10 @@ data class ClockSettings(
     val normalBrightness: Float = -1.0f, // -1.0f 遵循系统亮度
     val autoRefreshIntervalMinutes: Int = 10,
     val useMockData: Boolean = false,
-    val autoLocation: Boolean = true,
-    val cityName: String = "深圳",
-    val latitude: Double = 22.5431,
-    val longitude: Double = 114.0579,
+    val autoLocation: Boolean = false,
+    val cityName: String = "北京",
+    val latitude: Double = 39.9042,
+    val longitude: Double = 116.4074,
     val additionalCities: String = "",     // 额外城市列表，格式: "城市:纬度:经度;城市:纬度:经度"
     val quotaWidthPercent: Int = 38,       // 右侧额度看板宽度占比 (28% ~ 50%)
     val quotaCardDensity: String = "NORMAL", // COMPACT, NORMAL, SPACIOUS

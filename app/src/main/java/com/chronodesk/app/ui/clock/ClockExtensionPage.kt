@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -141,65 +142,83 @@ fun ClockExtensionPage(
                 }
             }
 
-            // 快速工具条
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 快速工具条 (触控区域 >= 48dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(cardBg)
-                        .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
-                        .clickable { onRefreshAll() }
-                        .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable { onRefreshAll() },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            tint = if (isNightMode) TechCyan else primaryText,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "全量同步", color = primaryText, fontSize = 11.sp)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(cardBg)
+                            .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "全量同步",
+                                tint = if (isNightMode) TechCyan else primaryText,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = "全量同步", color = primaryText, fontSize = 11.sp)
+                        }
                     }
                 }
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(cardBg)
-                        .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
-                        .clickable { onManageAccount() }
-                        .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable { onManageAccount() },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Key,
-                            contentDescription = null,
-                            tint = if (isNightMode) TechCyan else primaryText,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "接口配置", color = primaryText, fontSize = 11.sp)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(cardBg)
+                            .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = "接口配置",
+                                tint = if (isNightMode) TechCyan else primaryText,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = "接口配置", color = primaryText, fontSize = 11.sp)
+                        }
                     }
                 }
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(cardBg)
-                        .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
-                        .clickable { onOpenSettings() }
-                        .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable { onOpenSettings() },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = null,
-                            tint = primaryText,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "高级设置", color = primaryText, fontSize = 11.sp)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(cardBg)
+                            .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "高级设置",
+                                tint = primaryText,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = "高级设置", color = primaryText, fontSize = 11.sp)
+                        }
                     }
                 }
             }
