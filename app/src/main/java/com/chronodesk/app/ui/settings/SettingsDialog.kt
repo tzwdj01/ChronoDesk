@@ -21,6 +21,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.platform.LocalContext
+import com.chronodesk.app.data.repository.GeneralSettingsBackup
+import com.chronodesk.app.data.repository.SettingsValidationResult
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -63,8 +72,141 @@ fun SettingsDialog(
     currentSettings: ClockSettings,
     onDismiss: () -> Unit,
     onSave: (ClockSettings) -> Unit,
-    onOpenTeslaSettings: () -> Unit = {}
+    onOpenTeslaSettings: () -> Unit = {},
+    onExportSettings: () -> String = { "" },
+    onValidateSettings: (String) -> SettingsValidationResult = { SettingsValidationResult.Invalid("未实现") },
+    onApplySettingsBackup: (GeneralSettingsBackup) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    var previewBackup by remember { mutableStateOf<GeneralSettingsBackup?>(null) }
+    var previewSummary by remember { mutableStateOf<String?>(null) }
+    var importErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val json = onExportSettings()
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(json.toByteArray(Charsets.UTF_8))
+                }
+                Toast.makeText(context, "通用设置已成功导出", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "导出失败: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val json = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.bufferedReader(Charsets.UTF_8).readText()
+                } ?: ""
+                when (val result = onValidateSettings(json)) {
+                    is SettingsValidationResult.Valid -> {
+                        previewBackup = result.backup
+                        previewSummary = result.previewSummary
+                    }
+                    is SettingsValidationResult.Invalid -> {
+                        importErrorMessage = result.errorMessage
+                    }
+                }
+            } catch (e: Exception) {
+                importErrorMessage = "读取文件失败: ${e.message}"
+            }
+        }
+    }
+
+    if (previewBackup != null && previewSummary != null) {
+        AlertDialog(
+            onDismissRequest = {
+                previewBackup = null
+                previewSummary = null
+            },
+            containerColor = DarkSurfaceElevated,
+            title = {
+                Text("确认导入设置", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text("检测到合法的通用设置备份文件，内容预览如下：", color = TextSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(DarkSurface)
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = previewSummary ?: "",
+                            color = TechCyan,
+                            fontSize = 11.5.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "提示：此操作仅更新界面、时钟与显示偏好，不含账号与凭据数据。",
+                        color = TextTertiary,
+                        fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val backup = previewBackup
+                        if (backup != null) {
+                            onApplySettingsBackup(backup)
+                            Toast.makeText(context, "已成功应用导入的设置", Toast.LENGTH_SHORT).show()
+                            previewBackup = null
+                            previewSummary = null
+                            onDismiss()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TechCyan, contentColor = Color.Black)
+                ) {
+                    Text("确认应用", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        previewBackup = null
+                        previewSummary = null
+                    }
+                ) {
+                    Text("取消", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    if (importErrorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { importErrorMessage = null },
+            containerColor = DarkSurfaceElevated,
+            title = {
+                Text("导入失败", color = Color(0xFFEF4444), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(importErrorMessage ?: "", color = TextSecondary, fontSize = 13.sp)
+            },
+            confirmButton = {
+                Button(
+                    onClick = { importErrorMessage = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = TechCyan, contentColor = Color.Black)
+                ) {
+                    Text("确定", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
     var is24Hour by remember { mutableStateOf(currentSettings.is24Hour) }
     var showSeconds by remember { mutableStateOf(currentSettings.showSeconds) }
     var keepScreenOn by remember { mutableStateOf(currentSettings.keepScreenOn) }
@@ -627,6 +769,59 @@ fun SettingsDialog(
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 通用设置导入/导出卡片 (schemaVersion: 1)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkSurfaceElevated)
+                        .border(1.dp, DarkBorder, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "普通设置迁移 (安全无凭据)",
+                                color = TextPrimary,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "导出/导入时间制式、时钟尺寸、夜间模式等偏好 (schema v1)",
+                                color = TextTertiary,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = { exportLauncher.launch("chronodesk_settings_v1.json") },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(13.dp), tint = TechCyan)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("导出", fontSize = 11.sp, color = TechCyan)
+                            }
+                            OutlinedButton(
+                                onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp), tint = TechEmerald)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("导入", fontSize = 11.sp, color = TechEmerald)
+                            }
+                        }
                     }
                 }
 

@@ -5,118 +5,110 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.File
 
-class CredentialStorage(private val context: Context) {
+class CredentialStorage @JvmOverloads constructor(
+    private val context: Context,
+    testPrefs: SharedPreferences? = null,
+    forceStorageUnavailable: Boolean = false
+) {
 
-    private val prefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+    val isStorageAvailable: Boolean
+        get() = prefs != null
 
-            EncryptedSharedPreferences.create(
-                context,
-                PREFS_FILE_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Throwable) {
-            // 在单元测试或低端模拟器不支持硬件 Keystore 时降级处理
-            Log.w(TAG, "EncryptedSharedPreferences unavailable, falling back to private SharedPreferences", e)
-            context.getSharedPreferences(PREFS_FILE_NAME + "_fallback", Context.MODE_PRIVATE)
+    private var prefs: SharedPreferences? = null
+
+    init {
+        cleanupLegacyPlaintextFiles(context)
+        if (forceStorageUnavailable) {
+            prefs = null
+        } else if (testPrefs != null) {
+            prefs = testPrefs
+        } else {
+            prefs = try {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+
+                EncryptedSharedPreferences.create(
+                    context,
+                    PREFS_FILE_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            } catch (e: Throwable) {
+                // 不再创建或回退到明文 SharedPreferences
+                Log.e(TAG, "EncryptedSharedPreferences unavailable, secure storage disabled", e)
+                null
+            }
         }
     }
 
-    fun saveRefreshToken(accountId: String, token: String) {
-        prefs.edit().putString(keyRefresh(accountId), token).apply()
+    fun saveRefreshToken(accountId: String, token: String): Boolean {
+        val p = prefs ?: return false
+        return p.edit().putString(keyRefresh(accountId), token).commit()
     }
 
     fun getRefreshToken(accountId: String): String? {
-        return prefs.getString(keyRefresh(accountId), null)
+        return prefs?.getString(keyRefresh(accountId), null)
     }
 
-    fun saveAccessToken(accountId: String, token: String, expiresAtMs: Long) {
-        prefs.edit()
+    fun saveAccessToken(accountId: String, token: String, expiresAtMs: Long): Boolean {
+        val p = prefs ?: return false
+        return p.edit()
             .putString(keyAccess(accountId), token)
             .putLong(keyAccessExpires(accountId), expiresAtMs)
-            .apply()
+            .commit()
     }
 
     fun getAccessToken(accountId: String): String? {
-        val expiresAt = prefs.getLong(keyAccessExpires(accountId), 0L)
+        val p = prefs ?: return null
+        val expiresAt = p.getLong(keyAccessExpires(accountId), 0L)
         val now = System.currentTimeMillis()
         // 提前 60 秒判定过期
         if (expiresAt - now < BUFFER_EXPIRY_MS) {
             return null
         }
-        return prefs.getString(keyAccess(accountId), null)
+        return p.getString(keyAccess(accountId), null)
     }
 
-    fun saveIdToken(accountId: String, idToken: String) {
-        prefs.edit().putString(keyIdToken(accountId), idToken).apply()
+    fun saveIdToken(accountId: String, idToken: String): Boolean {
+        val p = prefs ?: return false
+        return p.edit().putString(keyIdToken(accountId), idToken).commit()
     }
 
     fun getIdToken(accountId: String): String? {
-        return prefs.getString(keyIdToken(accountId), null)
+        return prefs?.getString(keyIdToken(accountId), null)
     }
 
-    fun removeAccountCredentials(accountId: String) {
-        prefs.edit()
+    fun removeAccountCredentials(accountId: String): Boolean {
+        val p = prefs ?: return false
+        return p.edit()
             .remove(keyRefresh(accountId))
             .remove(keyAccess(accountId))
             .remove(keyAccessExpires(accountId))
             .remove(keyIdToken(accountId))
-            .apply()
+            .commit()
     }
 
-    fun getAllDecryptedCredentials(): Map<String, Any> {
-        return try {
-            val allMap = prefs.all
-            val result = mutableMapOf<String, Any>()
-            for ((k, v) in allMap) {
-                if (!k.startsWith("__androidx_") && v != null) {
-                    result[k] = v
-                }
-            }
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get all credentials", e)
-            emptyMap()
-        }
-    }
-
-    fun importDecryptedCredentials(entries: Map<String, Any>) {
-        val editor = prefs.edit()
-        for ((k, v) in entries) {
-            if (k.startsWith("__androidx_")) continue
-            when (v) {
-                is String -> editor.putString(k, v)
-                is Long -> editor.putLong(k, v)
-                is Int -> editor.putInt(k, v)
-                is Boolean -> editor.putBoolean(k, v)
-                is Float -> editor.putFloat(k, v)
-                is Number -> editor.putLong(k, v.toLong())
-                else -> editor.putString(k, v.toString())
-            }
-        }
-        editor.commit()
-    }
-
-    fun saveGrafanaToken(token: String) {
-        prefs.edit().putString(KEY_GRAFANA_TOKEN, token.trim()).commit()
+    fun saveGrafanaToken(token: String): Boolean {
+        val p = prefs ?: return false
+        return p.edit().putString(KEY_GRAFANA_TOKEN, token.trim()).commit()
     }
 
     fun getGrafanaToken(): String? {
-        return prefs.getString(KEY_GRAFANA_TOKEN, null)
+        return prefs?.getString(KEY_GRAFANA_TOKEN, null)
     }
 
-    fun clearGrafanaToken() {
-        prefs.edit().remove(KEY_GRAFANA_TOKEN).commit()
+    fun clearGrafanaToken(): Boolean {
+        val p = prefs ?: return false
+        return p.edit().remove(KEY_GRAFANA_TOKEN).commit()
     }
 
-    fun clearAll() {
-        prefs.edit().clear().apply()
+    fun clearAll(): Boolean {
+        val p = prefs ?: return false
+        return p.edit().clear().commit()
     }
 
     private fun keyRefresh(accountId: String) = "acc_${accountId}_refresh_token"
@@ -129,5 +121,35 @@ class CredentialStorage(private val context: Context) {
         private const val PREFS_FILE_NAME = "chronodesk_secure_credentials"
         private const val KEY_GRAFANA_TOKEN = "tesla_grafana_token"
         private const val BUFFER_EXPIRY_MS = 60_000L // 60s
+
+        /**
+         * 启动或更新时幂等清理历史遗留的明文迁移文件及降级明文文件
+         */
+        fun cleanupLegacyPlaintextFiles(context: Context) {
+            try {
+                val payload = File(context.filesDir, "migration_payload.json")
+                if (payload.exists()) {
+                    payload.delete()
+                }
+                val status = File(context.filesDir, "migration_status.txt")
+                if (status.exists()) {
+                    status.delete()
+                }
+                val fallbackPrefs = context.getSharedPreferences(
+                    PREFS_FILE_NAME + "_fallback",
+                    Context.MODE_PRIVATE
+                )
+                fallbackPrefs.edit().clear().commit()
+                val parentDir = context.filesDir.parentFile
+                if (parentDir != null) {
+                    val fallbackFile = File(parentDir, "shared_prefs/${PREFS_FILE_NAME}_fallback.xml")
+                    if (fallbackFile.exists()) {
+                        fallbackFile.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to cleanup legacy plaintext files, will retry next launch", e)
+            }
+        }
     }
 }

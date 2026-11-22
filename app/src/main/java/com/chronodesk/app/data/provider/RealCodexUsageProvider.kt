@@ -192,11 +192,11 @@ class RealCodexUsageProvider : CodexUsageProvider {
                         Log.d(TAG, "getResetCredits non-fatal: ${e.message}")
                     }
 
-                    Log.i(TAG, "fetchUsage success for $detectedEmail: limitReached=$limitReached, primary=${primary?.remainingPercent}%, secondary=${secondary?.remainingPercent}%, resetCredits=$resetCount")
+                    Log.i(TAG, "fetchUsage success for account=$accountId: limitReached=$limitReached, primary=${primary?.remainingPercent}%, secondary=${secondary?.remainingPercent}%, resetCredits=$resetCount")
 
                     val snapshot = CodexUsageSnapshot(
                         accountId = accountId,
-                        accountAlias = detectedEmail ?: accountAlias,
+                        accountAlias = if (accountAlias.isNotBlank() && !accountAlias.contains("@")) accountAlias else (detectedEmail ?: accountAlias),
                         email = detectedEmail,
                         credentialStatus = CredentialStatus.VALID,
                         primaryWindow = primary,

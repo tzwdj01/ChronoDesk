@@ -33,8 +33,8 @@ class TeslaViewModel @JvmOverloads constructor(
     private val _discoveredCars = MutableStateFlow<List<TeslaVehicle>>(emptyList())
     val discoveredCars: StateFlow<List<TeslaVehicle>> = _discoveredCars.asStateFlow()
 
-    fun updateSettings(newSettings: TeslaSettings, newToken: String? = null) {
-        repository.updateSettings(newSettings, newToken)
+    fun updateSettings(newSettings: TeslaSettings, newToken: String? = null): Boolean {
+        return repository.updateSettings(newSettings, newToken)
     }
 
     fun getStoredToken(): String? {

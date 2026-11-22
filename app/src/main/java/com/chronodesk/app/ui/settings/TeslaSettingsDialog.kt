@@ -585,9 +585,13 @@ fun TeslaSettingsDialog(
                                         timeZone = timeZone.trim(),
                                         allowHttp = allowHttp
                                     )
-                                    viewModel.updateSettings(updated, token.takeIf { it.isNotBlank() })
-                                    Toast.makeText(context, "TeslaMate 配置已保存", Toast.LENGTH_SHORT).show()
-                                    onDismiss()
+                                    val saved = viewModel.updateSettings(updated, token.takeIf { it.isNotBlank() })
+                                    if (saved) {
+                                        Toast.makeText(context, "TeslaMate 配置已保存", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    } else {
+                                        Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {

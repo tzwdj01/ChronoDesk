@@ -153,7 +153,10 @@ fun ClockScreen(
             onOpenTeslaSettings = {
                 showSettingsDialog = false
                 showTeslaSettingsDialog = true
-            }
+            },
+            onExportSettings = { viewModel.exportSettingsJson() },
+            onValidateSettings = { json -> viewModel.validateAndParseSettingsJson(json) },
+            onApplySettingsBackup = { backup -> viewModel.applySettingsBackup(backup) }
         )
     }
 

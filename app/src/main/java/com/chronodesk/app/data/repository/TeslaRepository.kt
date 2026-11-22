@@ -68,7 +68,14 @@ class TeslaRepository(
         )
     }
 
-    fun updateSettings(newSettings: TeslaSettings, newToken: String? = null) {
+    fun updateSettings(newSettings: TeslaSettings, newToken: String? = null): Boolean {
+        if (newToken != null) {
+            val savedToken = credentialStorage.saveGrafanaToken(newToken)
+            if (!savedToken) {
+                Log.e(tag, "设备安全存储不可用，凭据未保存")
+                return false
+            }
+        }
         val oldSettings = _settingsFlow.value
         // 切换服务器或车辆时，清除旧缓存
         if (oldSettings.baseUrl != newSettings.baseUrl || oldSettings.carId != newSettings.carId || oldSettings.dataSourceUid != newSettings.dataSourceUid) {
@@ -87,10 +94,6 @@ class TeslaRepository(
             .putBoolean("allow_http", newSettings.allowHttp)
             .apply()
 
-        if (newToken != null) {
-            credentialStorage.saveGrafanaToken(newToken)
-        }
-
         _settingsFlow.value = newSettings
 
         // 重新调度或停止轮询
@@ -99,6 +102,7 @@ class TeslaRepository(
         } else {
             stopPolling()
         }
+        return true
     }
 
     fun getStoredToken(): String? {

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- 排除所有凭据、密钥与私有存储 -->
+    <exclude domain="sharedpref" path="chronodesk_secure_credentials.xml" />
+    <exclude domain="sharedpref" path="chronodesk_secure_credentials_fallback.xml" />
+    <exclude domain="sharedpref" path="chronodesk_accounts_meta.xml" />
+    <exclude domain="sharedpref" path="chronodesk_tesla_settings.xml" />
+    <exclude domain="sharedpref" path="chronodesk_tesla_cache.xml" />
+    <exclude domain="sharedpref" path="chronodesk_settings.xml" />
+    <exclude domain="file" path="migration_payload.json" />
+    <exclude domain="file" path="migration_status.txt" />
+</full-backup-content>

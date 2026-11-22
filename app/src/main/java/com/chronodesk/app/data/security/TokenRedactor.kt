@@ -40,4 +40,13 @@ object TokenRedactor {
                 "\"$key\":\"***REDACTED***\""
             }
     }
+
+    /**
+     * 对请求 URL 中的敏感查询参数（如 key, token, apikey, secret）进行脱敏，避免泄露在日志中
+     */
+    fun redactUrl(url: String): String {
+        return url.replace(Regex("(?i)([?&](?:key|token|apikey|secret)=)[^&#]+")) { match ->
+            "${match.groupValues[1]}***REDACTED***"
+        }
+    }
 }

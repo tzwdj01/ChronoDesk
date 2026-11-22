@@ -109,80 +109,84 @@ class CodexAccountRepository(
             }
         }
 
-        // 3. 确保恢复用户的两个真实 ChatGPT 账号：alex19900223@gmail.com 与 wangxinyu297@jd.com
+        // 3. 确保包含基础 ChatGPT 账号插槽，默认别名为「Codex 账号 1」、「Codex 账号 2」
         val chatGptAccounts = loadedList.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
         if (chatGptAccounts.isEmpty()) {
             loadedList.add(0, CodexAccount(
                 id = accA?.id ?: "acc_chatgpt_1",
-                alias = "alex19900223@gmail.com",
-                email = "alex19900223@gmail.com",
-                credentialStatus = CredentialStatus.VALID,
+                alias = "Codex 账号 1",
+                email = null,
+                credentialStatus = CredentialStatus.NOT_LOGGED_IN,
                 providerType = accA?.providerType ?: "OAUTH_DEVICE",
                 modelProvider = "CHATGPT"
             ))
             loadedList.add(1, CodexAccount(
                 id = accB?.id ?: "acc_chatgpt_2",
-                alias = "wangxinyu297@jd.com",
-                email = "wangxinyu297@jd.com",
-                credentialStatus = CredentialStatus.VALID,
+                alias = "Codex 账号 2",
+                email = null,
+                credentialStatus = CredentialStatus.NOT_LOGGED_IN,
                 providerType = accB?.providerType ?: "OAUTH_DEVICE",
                 modelProvider = "CHATGPT"
             ))
         } else if (chatGptAccounts.size == 1) {
-            // 如果仅有 1 个，补全第 2 个已知账号
             val first = chatGptAccounts[0]
-            val secondEmail = if (first.email == "alex19900223@gmail.com") "wangxinyu297@jd.com" else "alex19900223@gmail.com"
             val secondId = if (first.id == (accA?.id ?: "")) (accB?.id ?: "acc_chatgpt_2") else (accA?.id ?: "acc_chatgpt_1")
             loadedList.add(1, CodexAccount(
                 id = secondId,
-                alias = secondEmail,
-                email = secondEmail,
-                credentialStatus = CredentialStatus.VALID,
+                alias = "Codex 账号 2",
+                email = null,
+                credentialStatus = CredentialStatus.NOT_LOGGED_IN,
                 providerType = "OAUTH_DEVICE",
                 modelProvider = "CHATGPT"
             ))
         }
 
-        // 4. 自动尝试从 Keystore / JWT 中提取并核对邮箱与状态
-        for (i in loadedList.indices) {
-            val acc = loadedList[i]
-            if (acc.modelProvider == "CHATGPT" || acc.modelProvider == null) {
-                val idToken = credentialStorage.getIdToken(acc.id)
-                val access = credentialStorage.getAccessToken(acc.id)
-                val refresh = credentialStorage.getRefreshToken(acc.id)
-                val extracted = JwtUtils.extractEmail(idToken)
-                    ?: JwtUtils.extractEmail(access)
-                    ?: JwtUtils.extractEmail(refresh)
-                val email = acc.email ?: extracted ?: if (i == 0) "alex19900223@gmail.com" else "wangxinyu297@jd.com"
-                val alias = if (acc.alias.isBlank() || acc.alias.contains("账号")) email else acc.alias
-                loadedList[i] = acc.copy(
-                    email = email,
-                    alias = alias,
-                    credentialStatus = CredentialStatus.VALID,
-                    modelProvider = "CHATGPT"
-                )
+        // 4. 自动核对凭据有效性；区分「凭据不存在」与「加密存储打不开」
+        if (credentialStorage.isStorageAvailable) {
+            for (i in loadedList.indices) {
+                val acc = loadedList[i]
+                if (acc.modelProvider == "CHATGPT" || acc.modelProvider == null) {
+                    val idToken = credentialStorage.getIdToken(acc.id)
+                    val access = credentialStorage.getAccessToken(acc.id)
+                    val refresh = credentialStorage.getRefreshToken(acc.id)
+                    val extracted = JwtUtils.extractEmail(idToken)
+                        ?: JwtUtils.extractEmail(access)
+                        ?: JwtUtils.extractEmail(refresh)
+                    val email = acc.email ?: extracted
+                    val defaultAlias = "Codex 账号 ${i + 1}"
+                    val alias = if (acc.alias.isBlank() || acc.alias.contains("@")) defaultAlias else acc.alias
+                    val status = if (!refresh.isNullOrBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN
+                    loadedList[i] = acc.copy(
+                        email = email,
+                        alias = alias,
+                        credentialStatus = status,
+                        modelProvider = "CHATGPT"
+                    )
+                }
             }
+        } else {
+            Log.w(TAG, "安全存储当前不可用，保留既有账号元数据，不执行清除或强制登出")
         }
 
         // 5. 确保包含 DeepSeek 账号
         if (loadedList.none { it.modelProvider == "DEEPSEEK" }) {
-            val dsKey = credentialStorage.getAccessToken("acc_deepseek")
+            val dsKey = if (credentialStorage.isStorageAvailable) credentialStorage.getAccessToken("acc_deepseek") else null
             loadedList.add(CodexAccount(
                 id = "acc_deepseek",
                 alias = "DeepSeek",
                 email = null,
-                credentialStatus = CredentialStatus.VALID,
-                providerType = if (!dsKey.isNullOrBlank()) "API_KEY" else "MOCK",
+                credentialStatus = if (!dsKey.isNullOrBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
+                providerType = "API_KEY",
                 modelProvider = "DEEPSEEK"
             ))
         }
 
         // 5.1 确保包含 Google Antigravity 账号
         if (loadedList.none { it.modelProvider == "ANTIGRAVITY" }) {
-            val agKey = credentialStorage.getAccessToken("acc_antigravity")
+            val agKey = if (credentialStorage.isStorageAvailable) credentialStorage.getAccessToken("acc_antigravity") else null
             loadedList.add(CodexAccount(
                 id = "acc_antigravity",
-                alias = "Google Antigravity",
+                alias = "Gemini API",
                 email = null,
                 credentialStatus = if (!agKey.isNullOrBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
                 providerType = "API_KEY",
@@ -374,8 +378,16 @@ class CodexAccountRepository(
         refreshToken: String,
         accessToken: String?,
         expiresInSeconds: Long = 3600L
-    ) {
-        credentialStorage.saveRefreshToken(account.id, refreshToken)
+    ): Boolean {
+        if (!credentialStorage.isStorageAvailable) {
+            Log.e(TAG, "设备安全存储不可用，凭据未保存")
+            return false
+        }
+        val savedRefresh = credentialStorage.saveRefreshToken(account.id, refreshToken)
+        if (!savedRefresh) {
+            Log.e(TAG, "设备安全存储不可用，凭据未保存")
+            return false
+        }
         if (!accessToken.isNullOrBlank()) {
             val expiresAtMs = System.currentTimeMillis() + (expiresInSeconds * 1000)
             credentialStorage.saveAccessToken(account.id, accessToken, expiresAtMs)
@@ -388,7 +400,7 @@ class CodexAccountRepository(
         val finalAccount = if (detectedEmail != null) {
             account.copy(
                 email = detectedEmail,
-                alias = if (account.alias.isBlank() || account.alias.contains("账号")) detectedEmail else account.alias
+                alias = if (account.alias.isBlank() || account.alias.contains("@")) "Codex 账号 ${slot + 1}" else account.alias
             )
         } else {
             account
@@ -406,6 +418,7 @@ class CodexAccountRepository(
         val newMap = _snapshots.value.toMutableMap()
         newMap[finalAccount.id] = CodexUsageSnapshot.empty(finalAccount.id, finalAccount.displayTitle)
         _snapshots.value = newMap
+        return true
     }
 
     fun saveAccount(
@@ -414,11 +427,11 @@ class CodexAccountRepository(
         refreshToken: String,
         accessToken: String?,
         expiresInSeconds: Long = 3600L
-    ) {
-        saveAccountAtSlot(slot, account, refreshToken, accessToken, expiresInSeconds)
+    ): Boolean {
+        return saveAccountAtSlot(slot, account, refreshToken, accessToken, expiresInSeconds)
     }
 
-    fun saveDeepSeekApiKey(accountId: String, apiKey: String, alias: String? = null) {
+    fun saveDeepSeekApiKey(accountId: String, apiKey: String, alias: String? = null): Boolean {
         val clean = apiKey.trim()
         val current = _accounts.value.firstOrNull { it.id == accountId }
         val finalAlias = if (!alias.isNullOrBlank()) alias.trim() else current?.alias?.ifBlank { "DeepSeek" } ?: "DeepSeek"
@@ -431,7 +444,15 @@ class CodexAccountRepository(
             modelProvider = "DEEPSEEK"
         )
         if (clean.isNotBlank()) {
-            credentialStorage.saveAccessToken(target.id, clean, Long.MAX_VALUE)
+            if (!credentialStorage.isStorageAvailable) {
+                Log.e(TAG, "设备安全存储不可用，凭据未保存")
+                return false
+            }
+            val saved = credentialStorage.saveAccessToken(target.id, clean, Long.MAX_VALUE)
+            if (!saved) {
+                Log.e(TAG, "设备安全存储不可用，凭据未保存")
+                return false
+            }
             val updated = target.copy(
                 alias = finalAlias,
                 providerType = "API_KEY",
@@ -448,11 +469,12 @@ class CodexAccountRepository(
             if (current != null) updateAccount(updated) else addAccount(updated)
             putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "DEEPSEEK"))
         }
+        return true
     }
 
-    fun saveDeepSeekApiKey(apiKey: String) {
+    fun saveDeepSeekApiKey(apiKey: String): Boolean {
         val firstDs = _accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }
-        saveDeepSeekApiKey(firstDs?.id ?: "acc_deepseek", apiKey, firstDs?.alias)
+        return saveDeepSeekApiKey(firstDs?.id ?: "acc_deepseek", apiKey, firstDs?.alias)
     }
 
     fun addDeepSeekAccount(alias: String = "", apiKey: String = ""): CodexAccount {
@@ -493,10 +515,10 @@ class CodexAccountRepository(
         return credentialStorage.getAccessToken(deepSeekAcc.id)
     }
 
-    fun saveAntigravityApiKey(accountId: String, apiKey: String, alias: String? = null) {
+    fun saveAntigravityApiKey(accountId: String, apiKey: String, alias: String? = null): Boolean {
         val clean = apiKey.trim()
         val current = _accounts.value.firstOrNull { it.id == accountId }
-        val finalAlias = if (!alias.isNullOrBlank()) alias.trim() else current?.alias?.ifBlank { "Google Antigravity" } ?: "Google Antigravity"
+        val finalAlias = if (!alias.isNullOrBlank()) alias.trim() else current?.alias?.ifBlank { "Gemini API" } ?: "Gemini API"
         val target = current ?: CodexAccount(
             id = accountId,
             alias = finalAlias,
@@ -506,7 +528,15 @@ class CodexAccountRepository(
             modelProvider = "ANTIGRAVITY"
         )
         if (clean.isNotBlank()) {
-            credentialStorage.saveAccessToken(target.id, clean, Long.MAX_VALUE)
+            if (!credentialStorage.isStorageAvailable) {
+                Log.e(TAG, "设备安全存储不可用，凭据未保存")
+                return false
+            }
+            val saved = credentialStorage.saveAccessToken(target.id, clean, Long.MAX_VALUE)
+            if (!saved) {
+                Log.e(TAG, "设备安全存储不可用，凭据未保存")
+                return false
+            }
             val updated = target.copy(
                 alias = finalAlias,
                 providerType = "API_KEY",
@@ -521,13 +551,14 @@ class CodexAccountRepository(
                 credentialStatus = CredentialStatus.NOT_LOGGED_IN
             )
             if (current != null) updateAccount(updated) else addAccount(updated)
-            putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "ANTIGRAVITY", planName = "Pro"))
+            putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "ANTIGRAVITY"))
         }
+        return true
     }
 
-    fun saveAntigravityApiKey(apiKey: String) {
+    fun saveAntigravityApiKey(apiKey: String): Boolean {
         val firstAg = _accounts.value.firstOrNull { it.modelProvider == "ANTIGRAVITY" }
-        saveAntigravityApiKey(firstAg?.id ?: "acc_antigravity", apiKey, firstAg?.alias)
+        return saveAntigravityApiKey(firstAg?.id ?: "acc_antigravity", apiKey, firstAg?.alias)
     }
 
     fun addAntigravityAccount(alias: String = "", apiKey: String = ""): CodexAccount {

@@ -49,12 +49,12 @@ data class CodexAccount(
                 if (alias.isNotBlank()) alias else "DeepSeek"
             }
             modelProvider == "ANTIGRAVITY" -> {
-                if (alias.isNotBlank() && alias != "Google Antigravity") alias else "Antigravity"
+                if (alias.isNotBlank() && alias != "Google Antigravity") alias else "Gemini API"
             }
-            alias.isNotBlank() && alias != email && !alias.matches(Regex("账号\\s*[A-Za-z0-9]+.*")) -> alias
+            alias.isNotBlank() && alias != email -> alias
             !maskedEmail.isNullOrBlank() -> maskedEmail!!
             !chatgptAccountId.isNullOrBlank() -> "Account (${chatgptAccountId.take(8)})"
-            else -> "ChatGPT 账号"
+            else -> "Codex 账号"
         }
 
     val isConfigured: Boolean

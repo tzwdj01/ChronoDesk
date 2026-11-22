@@ -268,6 +268,18 @@ class ClockViewModel @JvmOverloads constructor(
         return accountRepo.getAntigravityApiKey()
     }
 
+    fun exportSettingsJson(): String {
+        return settingsRepo.exportSettingsJson()
+    }
+
+    fun validateAndParseSettingsJson(json: String): com.chronodesk.app.data.repository.SettingsValidationResult {
+        return settingsRepo.validateAndParseSettingsJson(json)
+    }
+
+    fun applySettingsBackup(backup: com.chronodesk.app.data.repository.GeneralSettingsBackup) {
+        settingsRepo.applySettingsBackup(backup)
+    }
+
     private fun getCurrentTimeState(is24Hour: Boolean): TimeState {
         val cal = Calendar.getInstance()
         val hour = if (is24Hour) {
