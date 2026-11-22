@@ -103,4 +103,37 @@ class DualAccountIsolationTest {
         assertNotNull("账号 B 额度应正常保持", snapshotB.primaryWindow)
         assertEquals(85.0, snapshotB.primaryWindow!!.remainingPercent!!, 0.01)
     }
+
+    @Test
+    fun testPrimaryExhaustedWithLimitReachedDoesNotAffectSecondaryQuota() {
+        // 模拟 OpenAI 5小时额度用尽 (used=100%, allowed=false, limit_reached=true)，但周额度剩余 79% (used=21%)
+        val snapshot = CodexUsageSnapshot(
+            accountId = "acc-wang",
+            accountAlias = "wang",
+            credentialStatus = CredentialStatus.VALID,
+            primaryWindow = CodexUsageWindow.fromRaw(100.0, 18000L, 1700010000L),
+            secondaryWindow = CodexUsageWindow.fromRaw(21.0, 604800L, 1700500000L),
+            limitReached = true,
+            queriedAt = 1700000000000L,
+            lastSuccessTime = 1700000000000L
+        )
+
+        val pw = snapshot.primaryWindow
+        val sw = snapshot.secondaryWindow
+        assertNotNull("主窗口数据不为空", pw)
+        assertNotNull("副窗口数据不为空", sw)
+
+        assertEquals("5小时主窗口剩余应为 0%", 0.0, pw!!.remainingPercent!!, 0.01)
+        assertEquals("主窗口格式化应为耗尽", "耗尽", pw.formattedRemaining())
+
+        assertEquals("周额度副窗口剩余应为 79%", 79.0, sw!!.remainingPercent!!, 0.01)
+        assertEquals("副窗口格式化应为 79%", "79%", sw.formattedRemaining())
+
+        // 验证主副窗口状态解耦：5小时限额绝不连带影响周额度显示
+        val isPrimaryExhausted = (pw.remainingPercent != null && pw.remainingPercent!! <= 0.0) || snapshot.limitReached
+        val isSecondaryExhausted = sw.remainingPercent != null && sw.remainingPercent!! <= 0.0
+
+        assertTrue("5小时主窗口应被判定为耗尽/限额", isPrimaryExhausted)
+        assertFalse("周额度副窗口绝不能被 limitReached 连带判定为耗尽", isSecondaryExhausted)
+    }
 }

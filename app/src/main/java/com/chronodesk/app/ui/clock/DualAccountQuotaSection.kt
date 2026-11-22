@@ -396,11 +396,23 @@ private fun CompactSecondaryAccountQuotaItem(
     val pwRemaining = pw?.formattedRemaining() ?: "—"
     val swRemaining = sw?.formattedRemaining() ?: "—"
 
+    val isPwExhausted = (pw?.remainingPercent != null && pw.remainingPercent <= 0.0) || snapshot?.limitReached == true
+    val isSwExhausted = sw?.remainingPercent != null && sw.remainingPercent <= 0.0
+    val isWarning = !isPwExhausted && !isSwExhausted && (
+        (pw?.remainingPercent != null && pw.remainingPercent in 0.01..15.0) ||
+        (sw?.remainingPercent != null && sw.remainingPercent in 0.01..15.0)
+    )
+
     val statusText = when (syncStatus) {
         QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
         QuotaSyncStatus.AWAITING_SYNC -> "待同步"
         QuotaSyncStatus.SYNCING -> "同步中"
-        QuotaSyncStatus.UPDATED -> "正常"
+        QuotaSyncStatus.UPDATED -> when {
+            isSwExhausted -> "周额耗尽"
+            isPwExhausted -> "5h限额"
+            isWarning -> "即将耗尽"
+            else -> "正常"
+        }
         QuotaSyncStatus.CACHED_STALE -> "缓存"
         QuotaSyncStatus.CACHE_EXPIRED -> "已过期"
         QuotaSyncStatus.AUTH_EXPIRED -> "失效"
@@ -409,7 +421,11 @@ private fun CompactSecondaryAccountQuotaItem(
     }
     val statusColor = when (syncStatus) {
         QuotaSyncStatus.NOT_CONFIGURED -> mutedText
-        QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
+        QuotaSyncStatus.UPDATED -> when {
+            isSwExhausted -> if (isNightMode) TechRose else InkWarningRed
+            isPwExhausted || isWarning -> if (isNightMode) TechAmber else InkWarningAmber
+            else -> if (isNightMode) TechEmerald else InkStatusGreen
+        }
         QuotaSyncStatus.AUTH_EXPIRED, QuotaSyncStatus.CACHE_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
         else -> if (isNightMode) TechAmber else InkWarningAmber
     }
@@ -499,11 +515,9 @@ private fun SingleAccountQuotaItem(
     val primaryRemainingStr = primaryWindow?.formattedRemaining() ?: "—"
     val secondaryRemainingStr = secondaryWindow?.formattedRemaining() ?: "—"
 
-    val isPrimaryExhausted = primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent <= 0.0
+    val isPrimaryExhausted = (primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent <= 0.0) || snapshot?.limitReached == true
     val isSecondaryExhausted = secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 0.0
-    val isLimitReached = snapshot?.limitReached == true || isSecondaryExhausted
-    val isFullyExhausted = isLimitReached || isPrimaryExhausted || isSecondaryExhausted
-    val isWarning = !isLimitReached && (
+    val isWarning = !isPrimaryExhausted && !isSecondaryExhausted && (
         (primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent in 0.01..15.0) ||
         (secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent in 0.01..15.0)
     )
@@ -534,13 +548,13 @@ private fun SingleAccountQuotaItem(
 
     val secondaryProgressColor = if (isNightMode) {
         when {
-            isSecondaryExhausted || isLimitReached -> TechRose
+            isSecondaryExhausted -> TechRose
             secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 15.0 -> TechAmber
             else -> TechEmerald
         }
     } else {
         when {
-            isSecondaryExhausted || isLimitReached -> InkWarningRed
+            isSecondaryExhausted -> InkWarningRed
             secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 15.0 -> InkWarningAmber
             else -> InkProgress
         }
@@ -563,13 +577,20 @@ private fun SingleAccountQuotaItem(
             if (isNightMode) TechCyan else InkProgress,
             (if (isNightMode) TechCyan else InkProgress).copy(alpha = 0.14f)
         )
-        QuotaSyncStatus.UPDATED -> Triple(
-            if (isFullyExhausted) "额度耗尽" else if (isWarning) "即将耗尽" else "已更新",
-            if (isNightMode) (if (isFullyExhausted) TechRose else if (isWarning) TechAmber else TechEmerald)
-            else (if (isFullyExhausted) InkWarningRed else if (isWarning) InkWarningAmber else InkStatusGreen),
-            (if (isNightMode) (if (isFullyExhausted) TechRose else if (isWarning) TechAmber else TechEmerald)
-            else (if (isFullyExhausted) InkWarningRed else if (isWarning) InkWarningAmber else InkStatusGreen)).copy(alpha = 0.14f)
-        )
+        QuotaSyncStatus.UPDATED -> {
+            val label = when {
+                isSecondaryExhausted -> "周额度耗尽"
+                isPrimaryExhausted -> "5h限额"
+                isWarning -> "即将耗尽"
+                else -> "正常"
+            }
+            val color = when {
+                isSecondaryExhausted -> if (isNightMode) TechRose else InkWarningRed
+                isPrimaryExhausted || isWarning -> if (isNightMode) TechAmber else InkWarningAmber
+                else -> if (isNightMode) TechEmerald else InkStatusGreen
+            }
+            Triple(label, color, color.copy(alpha = 0.14f))
+        }
         QuotaSyncStatus.CACHED_STALE -> Triple(
             "缓存 · ${snapshot?.errorMessage?.take(6) ?: "异常"}",
             if (isNightMode) TechAmber else InkWarningAmber,
@@ -629,7 +650,18 @@ private fun SingleAccountQuotaItem(
                 Box(
                     modifier = Modifier
                         .size(4.5.dp)
-                        .background(if (isNightMode) (if (isFullyExhausted || syncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose else TechCyan) else (if (isFullyExhausted || syncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed else InkStatusGreen), CircleShape)
+                        .background(
+                            if (isNightMode) {
+                                if (isSecondaryExhausted || syncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose
+                                else if (isPrimaryExhausted) TechAmber
+                                else TechCyan
+                            } else {
+                                if (isSecondaryExhausted || syncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed
+                                else if (isPrimaryExhausted) InkWarningAmber
+                                else InkStatusGreen
+                            },
+                            CircleShape
+                        )
                 )
                 Text(
                     text = account.displayTitle,
@@ -862,7 +894,7 @@ private fun SingleAccountQuotaItem(
                 } else ""
                 Text(
                     text = "剩余 $secondaryRemainingStr · $secondaryResetDesc$cachedTimeSuffix",
-                    color = if (isSecondaryExhausted || isLimitReached) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
+                    color = if (isSecondaryExhausted) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
                     fontSize = if (isCompact) 7.5.sp else 9.sp,
                     maxLines = 1
                 )
