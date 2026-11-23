@@ -159,7 +159,8 @@ fun ClockScreen(
             onExportSettings = { viewModel.exportSettingsJson() },
             onValidateSettings = { json -> viewModel.validateAndParseSettingsJson(json) },
             onApplySettingsBackup = { backup -> viewModel.applySettingsBackup(backup) },
-            onRequestLocationPermission = onRequestLocationPermission
+            onRequestLocationPermission = onRequestLocationPermission,
+            onSearchLocations = { query -> viewModel.searchLocations(query) }
         )
     }
 

@@ -60,6 +60,39 @@ fun WeatherRowContent(
     val dividerColor = if (isNightMode) TextTertiary.copy(alpha = 0.5f) else InkTextTertiary.copy(alpha = 0.6f)
     val iconColor = TechAmber
 
+    if (weather.cityName == "选择城市") {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = if (isNightMode) TechCyan else Color(0xFF16A34A),
+                    modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
+                )
+                Text(
+                    text = "选择城市",
+                    color = primaryText,
+                    fontSize = if (isCompact) 11.sp else 12.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(text = "｜", color = dividerColor, fontSize = if (isCompact) 9.5.sp else 11.sp)
+            Text(
+                text = "点击配置天气地点",
+                color = secondaryText,
+                fontSize = if (isCompact) 10.5.sp else 12.sp,
+                fontWeight = FontWeight.Normal
+            )
+        }
+        return
+    }
+
     val (_, iconType) = WeatherInfo.decodeWmoCode(weather.weatherCode)
     val weatherIcon: ImageVector = when (iconType) {
         "sunny" -> Icons.Default.WbSunny
@@ -120,9 +153,16 @@ fun WeatherRowContent(
                     fontSize = if (isCompact) 12.sp else 14.sp,
                     fontWeight = FontWeight.Bold
                 )
+                val statusText = buildString {
+                    append(weather.weatherDescription ?: "—")
+                    if (weather.isStale && weather.updatedAt > 0) {
+                        val timeStr = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(weather.updatedAt))
+                        append(" ($timeStr 更新)")
+                    }
+                }
                 Text(
-                    text = weather.weatherDescription ?: "—",
-                    color = secondaryText,
+                    text = statusText,
+                    color = if (weather.isStale && weather.updatedAt > 0) TechAmber else secondaryText,
                     fontSize = if (isCompact) 10.5.sp else 12.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -184,7 +224,7 @@ fun MultiCityWeatherCapsule(
 ) {
     if (weatherList.isEmpty()) {
         WeatherCapsule(
-            weather = WeatherInfo.default(),
+            weather = WeatherInfo(cityName = "选择城市", isLoaded = false),
             modifier = modifier,
             isNightMode = isNightMode,
             isCompact = isCompact,

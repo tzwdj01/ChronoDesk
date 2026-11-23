@@ -2,6 +2,8 @@ package com.chronodesk.app.data.model
 
 data class WeatherInfo(
     val cityName: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val temperature: Double? = null,
     val apparentTemperature: Double? = null,
     val weatherCode: Int? = null,
@@ -9,12 +11,20 @@ data class WeatherInfo(
     val humidity: Int? = null,
     val windSpeed: Double? = null,
     val isLoaded: Boolean = true,
+    val isStale: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 ) {
+    val coordinateKey: String?
+        get() = if (latitude != null && longitude != null) {
+            String.format(java.util.Locale.US, "%.4f_%.4f", latitude, longitude)
+        } else null
+
     companion object {
-        fun initial(cityName: String = "北京"): WeatherInfo {
+        fun initial(cityName: String = "北京", lat: Double? = null, lng: Double? = null): WeatherInfo {
             return WeatherInfo(
                 cityName = cityName,
+                latitude = lat,
+                longitude = lng,
                 temperature = null,
                 apparentTemperature = null,
                 weatherCode = null,
@@ -22,11 +32,12 @@ data class WeatherInfo(
                 humidity = null,
                 windSpeed = null,
                 isLoaded = false,
+                isStale = false,
                 updatedAt = 0L
             )
         }
 
-        fun default(): WeatherInfo = initial("北京")
+        fun default(): WeatherInfo = initial("北京", 39.9042, 116.4074)
 
         fun decodeWmoCode(code: Int?): Pair<String, String> {
             if (code == null) return "—" to "cloudy"

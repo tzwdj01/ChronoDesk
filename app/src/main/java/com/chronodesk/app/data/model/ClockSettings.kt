@@ -4,7 +4,10 @@ data class WeatherCity(
     val name: String,
     val latitude: Double,
     val longitude: Double
-)
+) {
+    val coordinateKey: String
+        get() = String.format(java.util.Locale.US, "%.4f_%.4f", latitude, longitude)
+}
 
 data class ClockSettings(
     val is24Hour: Boolean = true,
@@ -62,9 +65,13 @@ data class ClockSettings(
     }
     /**
      * 获取所有配置的天气城市（主城市 + 额外城市）
+     * 严格按坐标去重，同名不同坐标的地点可同时添加
      */
     fun getAllCities(): List<WeatherCity> {
-        val list = mutableListOf(WeatherCity(cityName, latitude, longitude))
+        val list = mutableListOf<WeatherCity>()
+        if (cityName.isNotBlank()) {
+            list.add(WeatherCity(cityName, latitude, longitude))
+        }
         if (additionalCities.isNotBlank()) {
             additionalCities.split(";").forEach { item ->
                 val parts = item.split(":")
@@ -72,8 +79,11 @@ data class ClockSettings(
                     val n = parts[0].trim()
                     val la = parts[1].toDoubleOrNull()
                     val lo = parts[2].toDoubleOrNull()
-                    if (n.isNotBlank() && la != null && lo != null && list.none { it.name == n }) {
-                        list.add(WeatherCity(n, la, lo))
+                    if (n.isNotBlank() && la != null && lo != null) {
+                        val key = String.format(java.util.Locale.US, "%.4f_%.4f", la, lo)
+                        if (list.none { it.coordinateKey == key }) {
+                            list.add(WeatherCity(n, la, lo))
+                        }
                     }
                 }
             }

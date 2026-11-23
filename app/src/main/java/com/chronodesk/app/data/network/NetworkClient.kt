@@ -77,6 +77,15 @@ object NetworkClient {
             .create(WeatherApi::class.java)
     }
 
+    val geocodingApi: GeocodingApi by lazy {
+        Retrofit.Builder()
+            .baseUrl("https://geocoding-api.open-meteo.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(GeocodingApi::class.java)
+    }
+
     const val CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     const val DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback"
     const val DEVICE_VERIFY_URL = "https://auth.openai.com/codex/device"

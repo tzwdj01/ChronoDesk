@@ -21,33 +21,44 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Search
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.platform.LocalContext
+import com.chronodesk.app.data.network.GeocodingItem
 import com.chronodesk.app.data.repository.GeneralSettingsBackup
 import com.chronodesk.app.data.repository.SettingsValidationResult
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,8 +72,10 @@ import kotlin.math.roundToInt
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
+import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TechEmerald
+import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
@@ -77,7 +90,8 @@ fun SettingsDialog(
     onExportSettings: () -> String = { "" },
     onValidateSettings: (String) -> SettingsValidationResult = { SettingsValidationResult.Invalid("未实现") },
     onApplySettingsBackup: (GeneralSettingsBackup) -> Unit = {},
-    onRequestLocationPermission: () -> Unit = {}
+    onRequestLocationPermission: () -> Unit = {},
+    onSearchLocations: suspend (String) -> List<GeocodingItem> = { emptyList() }
 ) {
     val context = LocalContext.current
     var previewBackup by remember { mutableStateOf<GeneralSettingsBackup?>(null) }
@@ -217,15 +231,49 @@ fun SettingsDialog(
     var nightBrightness by remember { mutableFloatStateOf(currentSettings.nightBrightness) }
     var refreshInterval by remember { mutableIntStateOf(currentSettings.autoRefreshIntervalMinutes) }
     var autoLocation by remember { mutableStateOf(currentSettings.autoLocation) }
-    var selectedCity by remember { mutableStateOf(currentSettings.cityName) }
-    var lat by remember { mutableStateOf(currentSettings.latitude) }
-    var lng by remember { mutableStateOf(currentSettings.longitude) }
-    var additionalCities by remember { mutableStateOf(currentSettings.additionalCities) }
     var clockScale by remember { mutableFloatStateOf(currentSettings.clockScale) }
     var clockOffsetX by remember { mutableFloatStateOf(currentSettings.clockOffsetX) }
     var clockOffsetY by remember { mutableFloatStateOf(currentSettings.clockOffsetY) }
     var quotaWidthPercent by remember { mutableIntStateOf(currentSettings.quotaWidthPercent) }
     var quotaCardDensity by remember { mutableStateOf(currentSettings.quotaCardDensity) }
+
+    data class LocationItem(val name: String, val lat: Double, val lng: Double)
+
+    var locationList by remember {
+        val list = mutableListOf<LocationItem>()
+        if (currentSettings.cityName.isNotBlank()) {
+            list.add(LocationItem(currentSettings.cityName, currentSettings.latitude, currentSettings.longitude))
+        }
+        if (currentSettings.additionalCities.isNotBlank()) {
+            currentSettings.additionalCities.split(";").forEach { item ->
+                val parts = item.split(":")
+                if (parts.size >= 3) {
+                    val n = parts[0].trim()
+                    val la = parts[1].toDoubleOrNull()
+                    val lo = parts[2].toDoubleOrNull()
+                    if (n.isNotBlank() && la != null && lo != null) {
+                        val key = String.format(Locale.US, "%.4f_%.4f", la, lo)
+                        if (list.none { String.format(Locale.US, "%.4f_%.4f", it.lat, it.lng) == key }) {
+                            list.add(LocationItem(n, la, lo))
+                        }
+                    }
+                }
+            }
+        }
+        mutableStateOf<List<LocationItem>>(list)
+    }
+
+    var weatherAddMode by remember { mutableStateOf(0) } // 0: 搜索地名, 1: 经纬度录入, 2: 常用预设
+    var weatherSearchQuery by remember { mutableStateOf("") }
+    var weatherSearchResults by remember { mutableStateOf<List<GeocodingItem>>(emptyList()) }
+    var isWeatherSearching by remember { mutableStateOf(false) }
+    var weatherSearchMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    var manualLat by remember { mutableStateOf("") }
+    var manualLng by remember { mutableStateOf("") }
+    var manualName by remember { mutableStateOf("") }
+    var manualError by remember { mutableStateOf<String?>(null) }
 
     val cityPresets = listOf(
         Triple("深圳", 22.5431, 114.0579),
@@ -643,10 +691,10 @@ fun SettingsDialog(
                     }
                 }
 
-                // 4. 天气与城市设置 (多城市与多行天气支持)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // 4. 天气与城市设置 (地名搜索、经纬度录入、多地点并列)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "天气与城市位置 (支持多地区多行并列显示)",
+                        text = "天气与城市位置 (地名搜索与经纬度支持)",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
@@ -654,7 +702,7 @@ fun SettingsDialog(
 
                     SettingToggleItem(
                         title = "开启自动定位",
-                        subtitle = "依据设备 GPS 或网络自动获取首选城市天气（关闭则固定使用选中城市）",
+                        subtitle = "依据设备 GPS 或网络自动获取首选城市天气（关闭则固定使用列表地点）",
                         checked = autoLocation,
                         onCheckedChange = { checked ->
                             autoLocation = checked
@@ -664,46 +712,131 @@ fun SettingsDialog(
                         }
                     )
 
-                    val extraList = remember(additionalCities) {
-                        if (additionalCities.isBlank()) emptyList<String>()
-                        else additionalCities.split(";").mapNotNull { it.split(":").firstOrNull()?.trim() }.filter { it.isNotBlank() }
-                    }
-
-                    // 1. 首选主城市 (第1行天气)
+                    // 1. 已配置天气地点列表
                     Text(
-                        text = "1. 首选主城市（天气第 1 行）：",
+                        text = "1. 已配置天气地点 (${locationList.size} 处)：",
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        cityPresets.forEach { (name, cLat, cLng) ->
-                            val isSel = selectedCity == name
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isSel) TechCyan.copy(alpha = 0.22f) else DarkSurfaceElevated)
-                                    .border(1.dp, if (isSel) TechCyan else Color.Transparent, RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        selectedCity = name
-                                        lat = cLat
-                                        lng = cLng
-                                        autoLocation = false
-                                        if (extraList.contains(name)) {
-                                            additionalCities = additionalCities.split(";")
-                                                .filter { !it.startsWith("$name:") && it.isNotBlank() }
-                                                .joinToString(";")
+                    if (locationList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(DarkSurfaceElevated)
+                                .border(1.dp, TechAmber.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "未配置任何天气地点，主屏天气卡片将显示「选择城市」",
+                                color = TechAmber,
+                                fontSize = 11.sp
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            locationList.forEachIndexed { index, loc ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(DarkSurfaceElevated)
+                                        .border(
+                                            1.dp,
+                                            if (index == 0) TechCyan.copy(alpha = 0.35f) else DarkBorder,
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(
+                                                        if (index == 0) TechCyan.copy(alpha = 0.2f)
+                                                        else DarkBorder.copy(alpha = 0.5f)
+                                                    )
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (index == 0) "主地点 (第1行)" else "地点 ${index + 1}",
+                                                    color = if (index == 0) TechCyan else TextTertiary,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                            Text(
+                                                text = loc.name,
+                                                color = TextPrimary,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = String.format(Locale.US, "(%.2f, %.2f)", loc.lat, loc.lng),
+                                                color = TextTertiary,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+
+                                        // 删除按钮
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .clickable {
+                                                    locationList = locationList.filterIndexed { i, _ -> i != index }
+                                                }
+                                                .padding(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "删除该地点",
+                                                tint = TechRose.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(15.dp)
+                                            )
                                         }
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. 添加新地点操作区
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "2. 录入或添加新地点：",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+
+                    // 录入方式切换标签
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(0 to "地名搜索", 1 to "经纬度录入", 2 to "常用预设").forEach { (mode, label) ->
+                            val isSel = weatherAddMode == mode
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) TechCyan.copy(alpha = 0.2f) else DarkSurfaceElevated)
+                                    .border(1.dp, if (isSel) TechCyan else DarkBorder, RoundedCornerShape(6.dp))
+                                    .clickable { weatherAddMode = mode }
+                                    .padding(vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = if (isSel) "★ $name" else name,
+                                    text = label,
                                     color = if (isSel) TechCyan else TextSecondary,
                                     fontSize = 11.sp,
                                     fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
@@ -712,51 +845,298 @@ fun SettingsDialog(
                         }
                     }
 
-                    // 2. 添加额外地区 (开启多行并列显示)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "2. 额外地区（点击开启第 2、3 行多地天气并列展示）：",
-                        color = TextSecondary,
-                        fontSize = 11.sp
-                    )
+                    // 模式 0: Geocoding 地名搜索
+                    if (weatherAddMode == 0) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = weatherSearchQuery,
+                                    onValueChange = {
+                                        weatherSearchQuery = it
+                                        weatherSearchMessage = null
+                                    },
+                                    placeholder = {
+                                        Text(text = "输入地名，如：海淀、延庆、London", fontSize = 11.sp, color = TextTertiary)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = DarkSurfaceElevated,
+                                        unfocusedContainerColor = DarkSurfaceElevated,
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedIndicatorColor = TechCyan,
+                                        unfocusedIndicatorColor = DarkBorder
+                                    )
+                                )
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        cityPresets.filter { it.first != selectedCity }.forEach { (name, cLat, cLng) ->
-                            val isExtra = extraList.contains(name)
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isExtra) TechEmerald.copy(alpha = 0.22f) else DarkSurfaceElevated)
-                                    .border(1.dp, if (isExtra) TechEmerald else Color.Transparent, RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        if (isExtra) {
-                                            additionalCities = additionalCities.split(";")
-                                                .filter { !it.startsWith("$name:") && it.isNotBlank() }
-                                                .joinToString(";")
-                                        } else {
-                                            val entry = "$name:$cLat:$cLng"
-                                            additionalCities = if (additionalCities.isBlank()) entry else "$additionalCities;$entry"
+                                Button(
+                                    onClick = {
+                                        if (weatherSearchQuery.isBlank()) {
+                                            weatherSearchMessage = "请输入地名关键词"
+                                            return@Button
+                                        }
+                                        isWeatherSearching = true
+                                        weatherSearchMessage = null
+                                        coroutineScope.launch {
+                                            try {
+                                                val results = onSearchLocations(weatherSearchQuery)
+                                                weatherSearchResults = results
+                                                if (results.isEmpty()) {
+                                                    weatherSearchMessage = "未找到匹配地点，请尝试其他关键词或使用经纬度录入"
+                                                }
+                                            } catch (e: Exception) {
+                                                weatherSearchMessage = "搜索异常: ${e.message}"
+                                            } finally {
+                                                isWeatherSearching = false
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = TechCyan, contentColor = Color.Black),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    if (isWeatherSearching) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            color = Color.Black,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("搜索", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            if (weatherSearchMessage != null) {
+                                Text(
+                                    text = weatherSearchMessage!!,
+                                    color = TechAmber,
+                                    fontSize = 10.5.sp
+                                )
+                            }
+
+                            // 搜索结果列表
+                            if (weatherSearchResults.isNotEmpty()) {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    weatherSearchResults.take(5).forEach { item ->
+                                        val key = String.format(Locale.US, "%.4f_%.4f", item.latitude, item.longitude)
+                                        val isAlreadyAdded = locationList.any {
+                                            String.format(Locale.US, "%.4f_%.4f", it.lat, it.lng) == key
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(DarkSurfaceElevated)
+                                                .border(1.dp, if (isAlreadyAdded) TechEmerald.copy(alpha = 0.3f) else DarkBorder, RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = item.displayName,
+                                                        color = TextPrimary,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = item.subtitle,
+                                                        color = TextTertiary,
+                                                        fontSize = 9.5.sp
+                                                    )
+                                                }
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(if (isAlreadyAdded) DarkBorder else TechCyan.copy(alpha = 0.18f))
+                                                        .border(1.dp, if (isAlreadyAdded) Color.Transparent else TechCyan, RoundedCornerShape(4.dp))
+                                                        .clickable(enabled = !isAlreadyAdded) {
+                                                            locationList = locationList + LocationItem(item.displayName, item.latitude, item.longitude)
+                                                            Toast.makeText(context, "已添加 ${item.displayName}", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (isAlreadyAdded) "已添加" else "+ 添加",
+                                                        color = if (isAlreadyAdded) TextTertiary else TechCyan,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                contentAlignment = Alignment.Center
+                                }
+                            }
+                        }
+                    }
+
+                    // 模式 1: 经纬度录入
+                    if (weatherAddMode == 1) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                OutlinedTextField(
+                                    value = manualLat,
+                                    onValueChange = {
+                                        manualLat = it
+                                        manualError = null
+                                    },
+                                    placeholder = { Text("纬度 (-90 ~ 90)", fontSize = 10.5.sp, color = TextTertiary) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = DarkSurfaceElevated,
+                                        unfocusedContainerColor = DarkSurfaceElevated,
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedIndicatorColor = TechCyan,
+                                        unfocusedIndicatorColor = DarkBorder
+                                    )
+                                )
+                                OutlinedTextField(
+                                    value = manualLng,
+                                    onValueChange = {
+                                        manualLng = it
+                                        manualError = null
+                                    },
+                                    placeholder = { Text("经度 (-180 ~ 180)", fontSize = 10.5.sp, color = TextTertiary) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = DarkSurfaceElevated,
+                                        unfocusedContainerColor = DarkSurfaceElevated,
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedIndicatorColor = TechCyan,
+                                        unfocusedIndicatorColor = DarkBorder
+                                    )
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = manualName,
+                                    onValueChange = { manualName = it },
+                                    placeholder = { Text("地点自定义名称 (可选)", fontSize = 10.5.sp, color = TextTertiary) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = DarkSurfaceElevated,
+                                        unfocusedContainerColor = DarkSurfaceElevated,
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        focusedIndicatorColor = TechCyan,
+                                        unfocusedIndicatorColor = DarkBorder
+                                    )
+                                )
+
+                                Button(
+                                    onClick = {
+                                        val pLat = manualLat.trim().toDoubleOrNull()
+                                        val pLng = manualLng.trim().toDoubleOrNull()
+                                        if (pLat == null || pLat < -90.0 || pLat > 90.0) {
+                                            manualError = "纬度格式无效，范围须在 -90 到 90 之间"
+                                            return@Button
+                                        }
+                                        if (pLng == null || pLng < -180.0 || pLng > 180.0) {
+                                            manualError = "经度格式无效，范围须在 -180 到 180 之间"
+                                            return@Button
+                                        }
+
+                                        val key = String.format(Locale.US, "%.4f_%.4f", pLat, pLng)
+                                        if (locationList.any { String.format(Locale.US, "%.4f_%.4f", it.lat, it.lng) == key }) {
+                                            manualError = "该坐标地点已在列表中"
+                                            return@Button
+                                        }
+
+                                        val dName = manualName.trim().ifBlank {
+                                            String.format(Locale.US, "%.2f, %.2f", pLat, pLng)
+                                        }
+                                        locationList = locationList + LocationItem(dName, pLat, pLng)
+                                        manualName = ""
+                                        manualLat = ""
+                                        manualLng = ""
+                                        manualError = null
+                                        Toast.makeText(context, "已添加坐标地点 $dName", Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = TechEmerald, contentColor = Color.Black),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text("+ 添加坐标", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            if (manualError != null) {
                                 Text(
-                                    text = if (isExtra) "✓ $name" else "+ $name",
-                                    color = if (isExtra) TechEmerald else TextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isExtra) FontWeight.Bold else FontWeight.Normal
+                                    text = manualError!!,
+                                    color = TechRose,
+                                    fontSize = 10.5.sp
                                 )
                             }
                         }
                     }
 
+                    // 模式 2: 常用预设
+                    if (weatherAddMode == 2) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            cityPresets.forEach { (name, cLat, cLng) ->
+                                val key = String.format(Locale.US, "%.4f_%.4f", cLat, cLng)
+                                val isAdded = locationList.any {
+                                    String.format(Locale.US, "%.4f_%.4f", it.lat, it.lng) == key
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isAdded) TechEmerald.copy(alpha = 0.22f) else DarkSurfaceElevated)
+                                        .border(1.dp, if (isAdded) TechEmerald else Color.Transparent, RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            if (isAdded) {
+                                                locationList = locationList.filter {
+                                                    String.format(Locale.US, "%.4f_%.4f", it.lat, it.lng) != key
+                                                }
+                                            } else {
+                                                locationList = locationList + LocationItem(name, cLat, cLng)
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isAdded) "✓ $name" else "+ $name",
+                                        color = if (isAdded) TechEmerald else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isAdded) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // 天气行概览标签
-                    val totalWeatherCount = 1 + extraList.size
+                    val totalWeatherCount = locationList.size
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -765,7 +1145,8 @@ fun SettingsDialog(
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "天气栏预览：共 $totalWeatherCount 行 ($selectedCity${if (extraList.isNotEmpty()) " ｜ " + extraList.joinToString(" ｜ ") else ""})",
+                            text = if (totalWeatherCount == 0) "天气栏预览：未配置地点 (主屏显示「选择城市」)"
+                            else "天气栏预览：共 $totalWeatherCount 行 (${locationList.joinToString(" ｜ ") { it.name }})",
                             color = TechCyan,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
@@ -893,6 +1274,12 @@ fun SettingsDialog(
 
                     Button(
                         onClick = {
+                            val finalCityName = locationList.firstOrNull()?.name ?: ""
+                            val finalLat = locationList.firstOrNull()?.lat ?: 0.0
+                            val finalLng = locationList.firstOrNull()?.lng ?: 0.0
+                            val finalAdditional = if (locationList.size > 1) {
+                                locationList.drop(1).joinToString(";") { "${it.name}:${it.lat}:${it.lng}" }
+                            } else ""
                             val updated = currentSettings.copy(
                                 is24Hour = is24Hour,
                                 showSeconds = showSeconds,
@@ -903,10 +1290,10 @@ fun SettingsDialog(
                                 nightBrightness = nightBrightness,
                                 autoRefreshIntervalMinutes = refreshInterval,
                                 autoLocation = autoLocation,
-                                cityName = selectedCity,
-                                latitude = lat,
-                                longitude = lng,
-                                additionalCities = additionalCities,
+                                cityName = finalCityName,
+                                latitude = finalLat,
+                                longitude = finalLng,
+                                additionalCities = finalAdditional,
                                 quotaWidthPercent = quotaWidthPercent,
                                 quotaCardDensity = quotaCardDensity,
                                 clockScale = clockScale,

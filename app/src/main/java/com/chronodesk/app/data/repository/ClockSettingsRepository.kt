@@ -54,7 +54,7 @@ class ClockSettingsRepository(context: Context) {
             autoRefreshIntervalMinutes = prefs.getInt("refresh_interval_min", 10),
             useMockData = prefs.getBoolean("use_mock_data", false),
             autoLocation = prefs.getBoolean("auto_location", false),
-            cityName = prefs.getString("city_name", "北京") ?: "北京",
+            cityName = if (prefs.contains("city_name")) (prefs.getString("city_name", "") ?: "") else "北京",
             latitude = prefs.getFloat("city_lat", 39.9042f).toDouble(),
             longitude = prefs.getFloat("city_lng", 116.4074f).toDouble(),
             additionalCities = prefs.getString("additional_cities", "") ?: "",

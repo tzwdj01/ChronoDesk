@@ -7,6 +7,7 @@ import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CredentialStatus
 import com.chronodesk.app.data.model.WeatherInfo
+import com.chronodesk.app.data.network.GeocodingItem
 import com.chronodesk.app.data.repository.ClockSettingsRepository
 import com.chronodesk.app.data.repository.CodexAccountRepository
 import com.chronodesk.app.data.repository.WeatherRepository
@@ -204,12 +205,20 @@ class ClockViewModel @JvmOverloads constructor(
         return next
     }
 
+    suspend fun searchLocations(query: String): List<GeocodingItem> {
+        return weatherRepo.searchLocations(query).getOrDefault(emptyList())
+    }
+
     fun updateSettings(newSettings: ClockSettings) {
         val old = settings.value
         settingsRepo.updateSettings(newSettings)
         val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         _isNightMode.value = newSettings.isNightTime(currentHour)
-        if (old.cityName != newSettings.cityName || old.additionalCities != newSettings.additionalCities) {
+        if (old.cityName != newSettings.cityName ||
+            old.additionalCities != newSettings.additionalCities ||
+            old.latitude != newSettings.latitude ||
+            old.longitude != newSettings.longitude
+        ) {
             viewModelScope.launch {
                 weatherRepo.refreshAllWeather(newSettings.getAllCities(), force = true)
             }
