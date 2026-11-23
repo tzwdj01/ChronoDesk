@@ -50,6 +50,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.collectAsState
@@ -286,8 +289,8 @@ fun ClockScreen(
                 }
                 saved
             },
-            onUpdateAccountVisibility = { accId, showMain, showSecond ->
-                viewModel.updateAccountVisibility(accId, showMain, showSecond)
+            onUpdateAccountVisibility = { accId, showMain, showSecond, isPinned ->
+                viewModel.updateAccountVisibility(accId, showMain, showSecond, isPinned)
             }
         )
     }
@@ -693,27 +696,41 @@ fun ClockScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val pageNames = listOf("时钟", "详情", "车辆")
                 for (i in 0 until pageCount) {
                     val isSelected = pagerState.currentPage == i
+                    val pageName = pageNames.getOrElse(i) { "页面 ${i + 1}" }
                     Box(
                         modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .height(5.dp)
-                            .width(if (isSelected) 16.dp else 5.dp)
-                            .clip(RoundedCornerShape(2.5.dp))
-                            .background(
-                                if (isSelected) {
-                                    if (isNightMode) TechCyan else InkTextPrimary
-                                } else {
-                                    if (isNightMode) DarkBorder else InkBorder
-                                }
-                            )
-                            .clickable {
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .clickable(
+                                role = Role.Tab,
+                                onClickLabel = "切换至$pageName"
+                            ) {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(i)
                                 }
                             }
-                    )
+                            .semantics {
+                                contentDescription = pageName
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .height(5.dp)
+                                .width(if (isSelected) 16.dp else 5.dp)
+                                .clip(RoundedCornerShape(2.5.dp))
+                                .background(
+                                    if (isSelected) {
+                                        if (isNightMode) TechCyan else InkTextPrimary
+                                    } else {
+                                        if (isNightMode) DarkBorder else InkBorder
+                                    }
+                                )
+                        )
+                    }
                 }
             }
         }
@@ -746,60 +763,80 @@ private fun ClockTopBar(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 右侧操作按钮组
+        // 右侧操作按钮组 (具备 >=48dp 无障碍触控热区与读屏语义)
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp)
         ) {
             // 账号管理按钮
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                    .clickable { onAddAccount() }
-                    .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "添加与管理账号"
+                    ) { onAddAccount() }
+                    .semantics { contentDescription = "添加账号与管理" },
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "添加账号",
-                        tint = if (isNightMode) TechCyan else InkTextPrimary,
-                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "账号管理 ($accountCount)",
-                        color = buttonText,
-                        fontSize = if (isCompact) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(buttonBg)
+                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = if (isNightMode) TechCyan else InkTextPrimary,
+                            modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "账号管理 ($accountCount)",
+                            color = buttonText,
+                            fontSize = if (isCompact) 10.sp else 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
             // 全部刷新按钮
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                    .clickable { onRefreshAll() }
-                    .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "刷新全部数据"
+                    ) { onRefreshAll() }
+                    .semantics { contentDescription = "刷新全部数据" },
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "刷新全部",
-                        tint = buttonText,
-                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "刷新",
-                        color = buttonText,
-                        fontSize = if (isCompact) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(buttonBg)
+                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = buttonText,
+                            modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "刷新",
+                            color = buttonText,
+                            fontSize = if (isCompact) 10.sp else 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
@@ -807,43 +844,63 @@ private fun ClockTopBar(
             val themeIcon = if (isNightMode) Icons.Default.LightMode else Icons.Default.DarkMode
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                    .clickable { onToggleNightMode() }
-                    .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "日夜主题切换"
+                    ) { onToggleNightMode() }
+                    .semantics { contentDescription = "日夜主题切换" },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = themeIcon,
-                    contentDescription = "日夜主题切换",
-                    tint = if (isNightMode) TechAmber else InkTextPrimary,
-                    modifier = Modifier.size(if (isCompact) 11.5.dp else 12.5.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(buttonBg)
+                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                ) {
+                    Icon(
+                        imageVector = themeIcon,
+                        contentDescription = null,
+                        tint = if (isNightMode) TechAmber else InkTextPrimary,
+                        modifier = Modifier.size(if (isCompact) 11.5.dp else 12.5.dp)
+                    )
+                }
             }
 
             // 设置按钮
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                    .clickable { onOpenSettings() }
-                    .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "系统设置"
+                    ) { onOpenSettings() }
+                    .semantics { contentDescription = "系统设置" },
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "系统设置",
-                        tint = buttonText,
-                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "设置",
-                        color = buttonText,
-                        fontSize = if (isCompact) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(buttonBg)
+                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = buttonText,
+                            modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "设置",
+                            color = buttonText,
+                            fontSize = if (isCompact) 10.sp else 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }

@@ -33,10 +33,10 @@ import java.util.concurrent.ConcurrentHashMap
 class CodexAccountRepository(
     private val context: Context,
     private val credentialStorage: CredentialStorage = CredentialStorage(context),
-    private val realProvider: CodexUsageProvider = RealCodexUsageProvider()
+    private val realProvider: CodexUsageProvider = RealCodexUsageProvider(),
+    private val deepSeekProvider: com.chronodesk.app.data.provider.DeepSeekUsageProvider = com.chronodesk.app.data.provider.DeepSeekUsageProvider(),
+    private val antigravityProvider: com.chronodesk.app.data.provider.GoogleAntigravityUsageProvider = com.chronodesk.app.data.provider.GoogleAntigravityUsageProvider()
 ) {
-    private val deepSeekProvider = com.chronodesk.app.data.provider.DeepSeekUsageProvider()
-    private val antigravityProvider = com.chronodesk.app.data.provider.GoogleAntigravityUsageProvider()
     private val prefs: SharedPreferences =
         context.getSharedPreferences("chronodesk_accounts_meta", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -373,15 +373,33 @@ class CodexAccountRepository(
         updateAccount(updated)
     }
 
-    fun updateAccountVisibility(accountId: String, showOnMain: Boolean, showOnSecond: Boolean) {
+    fun updateAccountVisibility(
+        accountId: String,
+        showOnMain: Boolean,
+        showOnSecond: Boolean,
+        isPinnedMain: Boolean = false
+    ) {
         val current = _accounts.value.find { it.id == accountId } ?: return
-        val updated = current.copy(showOnMainScreen = showOnMain, showOnSecondScreen = showOnSecond)
+        val updated = current.copy(
+            showOnMainScreen = showOnMain,
+            showOnSecondScreen = showOnSecond,
+            isPinnedMain = if (showOnMain) isPinnedMain else false
+        )
         updateAccount(updated)
     }
 
-    fun updateAccountVisibility(slot: Int, showOnMain: Boolean, showOnSecond: Boolean) {
+    fun updateAccountVisibility(
+        slot: Int,
+        showOnMain: Boolean,
+        showOnSecond: Boolean,
+        isPinnedMain: Boolean = false
+    ) {
         val current = _accounts.value.getOrNull(slot) ?: return
-        val updated = current.copy(showOnMainScreen = showOnMain, showOnSecondScreen = showOnSecond)
+        val updated = current.copy(
+            showOnMainScreen = showOnMain,
+            showOnSecondScreen = showOnSecond,
+            isPinnedMain = if (showOnMain) isPinnedMain else false
+        )
         updateAccount(updated)
     }
 
@@ -705,6 +723,42 @@ class CodexAccountRepository(
                 return
             }
             setLoading(accountId, true)
+
+            // 演示模式开启时，整个额度看板使用本地示例，三个真实额度 Provider 的请求数为零
+            if (isMockGlobal) {
+                if (account.modelProvider == "CHATGPT" || account.modelProvider == null) {
+                    val slotIndex = _accounts.value.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
+                    val mockProvider = MockCodexProvider(slotIndex)
+                    val usageResult = mockProvider.fetchUsage(
+                        accountId = account.id,
+                        accountAlias = account.displayTitle,
+                        accessToken = "mock_token",
+                        chatgptAccountId = account.chatgptAccountId
+                    )
+                    if (usageResult is UsageFetchResult.Success) {
+                        val snap = usageResult.snapshot.copy(isMock = true)
+                        putSnapshot(accountId, snap)
+                        updateAccount(account.copy(credentialStatus = CredentialStatus.VALID, lastSyncTime = System.currentTimeMillis()))
+                    }
+                    setLoading(accountId, false)
+                    return
+                } else {
+                    // 没有示例的供应商显示「暂无演示数据」
+                    val mockSnapshot = CodexUsageSnapshot(
+                        accountId = account.id,
+                        accountAlias = account.displayTitle,
+                        credentialStatus = CredentialStatus.VALID,
+                        errorMessage = "暂无演示数据",
+                        queriedAt = System.currentTimeMillis(),
+                        modelProvider = account.modelProvider,
+                        isMock = true
+                    )
+                    putSnapshot(accountId, mockSnapshot)
+                    setLoading(accountId, false)
+                    return
+                }
+            }
+
             val provider = getProviderForAccount(account, isMockGlobal)
 
             try {
@@ -1032,14 +1086,39 @@ class CodexAccountRepository(
         }
     }
 
+    fun clearMockSnapshots() {
+        val map = _snapshots.value.toMutableMap()
+        _accounts.value.forEach { acc ->
+            val cur = map[acc.id]
+            if (cur?.isMock == true) {
+                val savedSnapJson = prefs.getString("snap_${acc.id}", null)
+                val savedSnap = savedSnapJson?.let {
+                    try {
+                        gson.fromJson(it, CodexUsageSnapshot::class.java)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                if (savedSnap != null) {
+                    map[acc.id] = savedSnap.copy(isMock = false)
+                } else {
+                    map[acc.id] = CodexUsageSnapshot.initial(acc.id, acc.displayTitle, acc.modelProvider)
+                }
+            }
+        }
+        _snapshots.value = map
+    }
+
     private fun putSnapshot(accountId: String, snapshot: CodexUsageSnapshot) {
         val map = _snapshots.value.toMutableMap()
         map[accountId] = snapshot
         _snapshots.value = map
-        try {
-            prefs.edit().putString("snap_$accountId", gson.toJson(snapshot)).apply()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to persist snapshot for $accountId: ${e.message}")
+        if (!snapshot.isMock) {
+            try {
+                prefs.edit().putString("snap_$accountId", gson.toJson(snapshot)).apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist snapshot for $accountId: ${e.message}")
+            }
         }
     }
 

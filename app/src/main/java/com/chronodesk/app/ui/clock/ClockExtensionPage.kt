@@ -87,8 +87,11 @@ fun ClockExtensionPage(
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
 
     val chatGptAccounts = accounts.filter { (it.modelProvider == "CHATGPT" || it.modelProvider == null) && it.isVisibleOnSecond }
+        .sortedByDescending { it.isPinnedMain }
     val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" && it.isVisibleOnSecond }
+        .sortedByDescending { it.isPinnedMain }
     val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" && it.isVisibleOnSecond }
+        .sortedByDescending { it.isPinnedMain }
 
     Column(
         modifier = modifier
@@ -435,7 +438,8 @@ fun ClockExtensionPage(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
-                                    val dsStatusText = when (dsSyncStatus) {
+                                    val isDsDemo = dsSnap?.isMock == true && dsSnap.errorMessage == "暂无演示数据"
+                                    val dsStatusText = if (isDsDemo) "暂无演示数据" else when (dsSyncStatus) {
                                         QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
                                         QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
                                         QuotaSyncStatus.SYNCING -> "同步中"
@@ -577,7 +581,8 @@ fun ClockExtensionPage(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
-                                val agStatusText = when (agSyncStatus) {
+                                val isAgDemo = agSnap?.isMock == true && agSnap.errorMessage == "暂无演示数据"
+                                val agStatusText = if (isAgDemo) "暂无演示数据" else when (agSyncStatus) {
                                     QuotaSyncStatus.NOT_CONFIGURED -> "待配置 API Key"
                                     QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
                                     QuotaSyncStatus.SYNCING -> "同步中"

@@ -13,7 +13,8 @@ data class CodexAccount(
     val providerType: String = "OAUTH_DEVICE", // OAUTH_DEVICE, DIRECT_TOKEN, MOCK
     val modelProvider: String = "CHATGPT",     // CHATGPT, DEEPSEEK, ANTIGRAVITY, GEMINI, CLAUDE
     val showOnMainScreen: Boolean? = true,     // 是否在主页（第一屏）展示
-    val showOnSecondScreen: Boolean? = true    // 是否在扩展页（第二屏）展示
+    val showOnSecondScreen: Boolean? = true,   // 是否在扩展页（第二屏）展示
+    val isPinnedMain: Boolean = false          // 主屏常用置顶
 ) {
     val isVisibleOnMain: Boolean
         get() = showOnMainScreen != false

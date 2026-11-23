@@ -93,7 +93,7 @@ fun AccountManagerDialog(
     onRemoveAntigravityAccount: (accountId: String) -> Unit = {},
     currentAntigravityApiKey: String? = null,
     onSaveAntigravityApiKey: (String) -> Boolean = { true },
-    onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean) -> Unit = { _, _, _ -> }
+    onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     var localAccountA by remember(accountA) { mutableStateOf(accountA) }
@@ -447,16 +447,17 @@ fun AccountManagerDialog(
                                 modifier = Modifier.padding(vertical = 2.dp)
                             )
 
-                            // 账号在主屏/第二屏的展示位置选择
+                            // 账号在主屏/第二屏的展示位置选择与置顶
                             AccountVisibilityToggleRow(
                                 showOnMain = currentAccount.isVisibleOnMain,
                                 showOnSecond = currentAccount.isVisibleOnSecond,
-                                onVisibilityChanged = { m, s ->
-                                    onUpdateAccountVisibility(currentAccount.id, m, s)
+                                isPinnedMain = currentAccount.isPinnedMain,
+                                onVisibilityChanged = { m, s, p ->
+                                    onUpdateAccountVisibility(currentAccount.id, m, s, p)
                                     if (selectedTab == 0) {
-                                        localAccountA = localAccountA?.copy(showOnMainScreen = m, showOnSecondScreen = s)
+                                        localAccountA = localAccountA?.copy(showOnMainScreen = m, showOnSecondScreen = s, isPinnedMain = p)
                                     } else {
-                                        localAccountB = localAccountB?.copy(showOnMainScreen = m, showOnSecondScreen = s)
+                                        localAccountB = localAccountB?.copy(showOnMainScreen = m, showOnSecondScreen = s, isPinnedMain = p)
                                     }
                                 }
                             )
@@ -582,14 +583,15 @@ fun AccountManagerDialog(
                             )
                         )
 
-                        // 账号在主屏/第二屏的展示位置选择
+                        // 账号在主屏/第二屏的展示位置选择与置顶
                         AccountVisibilityToggleRow(
                             showOnMain = curDsAcc.isVisibleOnMain,
                             showOnSecond = curDsAcc.isVisibleOnSecond,
-                            onVisibilityChanged = { m, s ->
-                                onUpdateAccountVisibility(curDsAcc.id, m, s)
+                            isPinnedMain = curDsAcc.isPinnedMain,
+                            onVisibilityChanged = { m, s, p ->
+                                onUpdateAccountVisibility(curDsAcc.id, m, s, p)
                                 localDeepSeekAccounts = localDeepSeekAccounts.mapIndexed { idx, acc ->
-                                    if (idx == curDsIndex) acc.copy(showOnMainScreen = m, showOnSecondScreen = s) else acc
+                                    if (idx == curDsIndex) acc.copy(showOnMainScreen = m, showOnSecondScreen = s, isPinnedMain = p) else acc
                                 }
                             }
                         )
@@ -729,14 +731,15 @@ fun AccountManagerDialog(
                             )
                         )
 
-                        // 账号在主屏/第二屏的展示位置选择
+                        // 账号在主屏/第二屏的展示位置选择与置顶
                         AccountVisibilityToggleRow(
                             showOnMain = curAgAcc.isVisibleOnMain,
                             showOnSecond = curAgAcc.isVisibleOnSecond,
-                            onVisibilityChanged = { m, s ->
-                                onUpdateAccountVisibility(curAgAcc.id, m, s)
+                            isPinnedMain = curAgAcc.isPinnedMain,
+                            onVisibilityChanged = { m, s, p ->
+                                onUpdateAccountVisibility(curAgAcc.id, m, s, p)
                                 localAntigravityAccounts = localAntigravityAccounts.mapIndexed { idx, acc ->
-                                    if (idx == curAgIndex) acc.copy(showOnMainScreen = m, showOnSecondScreen = s) else acc
+                                    if (idx == curAgIndex) acc.copy(showOnMainScreen = m, showOnSecondScreen = s, isPinnedMain = p) else acc
                                 }
                             }
                         )
@@ -802,13 +805,14 @@ fun AccountManagerDialog(
 }
 
 /**
- * 账号在屏幕上的显示位置选择组件（主屏幕显示 / 第二屏显示）
+ * 账号在屏幕上的显示位置选择组件（主屏幕显示 / 第二屏显示 / 主屏常用置顶）
  */
 @Composable
 private fun AccountVisibilityToggleRow(
     showOnMain: Boolean,
     showOnSecond: Boolean,
-    onVisibilityChanged: (showOnMain: Boolean, showOnSecond: Boolean) -> Unit
+    isPinnedMain: Boolean,
+    onVisibilityChanged: (showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -825,12 +829,14 @@ private fun AccountVisibilityToggleRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "看板显示屏幕选择：",
+                text = "看板显示与排序：",
                 color = TextSecondary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium
             )
             val statusHint = when {
+                isPinnedMain && showOnMain && showOnSecond -> "两屏展示 · 主屏置顶"
+                isPinnedMain && showOnMain -> "仅主屏展示 · 主屏置顶"
                 showOnMain && showOnSecond -> "两屏均展示"
                 showOnMain -> "仅主屏幕展示"
                 showOnSecond -> "仅第二屏展示"
@@ -846,7 +852,7 @@ private fun AccountVisibilityToggleRow(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // 主屏幕显示 Toggle Chip
             Box(
@@ -855,14 +861,17 @@ private fun AccountVisibilityToggleRow(
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (showOnMain) TechCyan.copy(alpha = 0.18f) else DarkSurfaceElevated)
                     .border(1.dp, if (showOnMain) TechCyan else DarkBorder, RoundedCornerShape(6.dp))
-                    .clickable { onVisibilityChanged(!showOnMain, showOnSecond) }
-                    .padding(vertical = 6.dp, horizontal = 8.dp),
+                    .clickable {
+                        val nextMain = !showOnMain
+                        onVisibilityChanged(nextMain, showOnSecond, if (nextMain) isPinnedMain else false)
+                    }
+                    .padding(vertical = 6.dp, horizontal = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (showOnMain) "✓ 主屏幕 (第1屏)" else "+ 主屏幕 (第1屏)",
+                    text = if (showOnMain) "✓ 主屏幕" else "+ 主屏幕",
                     color = if (showOnMain) TechCyan else TextTertiary,
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = if (showOnMain) FontWeight.Bold else FontWeight.Normal
                 )
             }
@@ -874,15 +883,37 @@ private fun AccountVisibilityToggleRow(
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (showOnSecond) TechEmerald.copy(alpha = 0.18f) else DarkSurfaceElevated)
                     .border(1.dp, if (showOnSecond) TechEmerald else DarkBorder, RoundedCornerShape(6.dp))
-                    .clickable { onVisibilityChanged(showOnMain, !showOnSecond) }
-                    .padding(vertical = 6.dp, horizontal = 8.dp),
+                    .clickable { onVisibilityChanged(showOnMain, !showOnSecond, isPinnedMain) }
+                    .padding(vertical = 6.dp, horizontal = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (showOnSecond) "✓ 扩展屏 (第2屏)" else "+ 扩展屏 (第2屏)",
+                    text = if (showOnSecond) "✓ 扩展屏" else "+ 扩展屏",
                     color = if (showOnSecond) TechEmerald else TextTertiary,
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = if (showOnSecond) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+
+            // 主屏常用置顶 Toggle Chip
+            Box(
+                modifier = Modifier
+                    .weight(1.1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isPinnedMain) TechAmber.copy(alpha = 0.18f) else DarkSurfaceElevated)
+                    .border(1.dp, if (isPinnedMain) TechAmber else DarkBorder, RoundedCornerShape(6.dp))
+                    .clickable {
+                        val nextPinned = !isPinnedMain
+                        onVisibilityChanged(if (nextPinned) true else showOnMain, showOnSecond, nextPinned)
+                    }
+                    .padding(vertical = 6.dp, horizontal = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (isPinnedMain) "★ 主屏常用" else "☆ 主屏常用",
+                    color = if (isPinnedMain) TechAmber else TextTertiary,
+                    fontSize = 10.5.sp,
+                    fontWeight = if (isPinnedMain) FontWeight.Bold else FontWeight.Normal
                 )
             }
         }

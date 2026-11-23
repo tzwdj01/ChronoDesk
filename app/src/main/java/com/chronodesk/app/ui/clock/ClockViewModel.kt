@@ -258,23 +258,39 @@ class ClockViewModel @JvmOverloads constructor(
         settingsRepo.updateSettings(newSettings)
         val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         _isNightMode.value = newSettings.isNightTime(currentHour)
+        if (old.useMockData && !newSettings.useMockData) {
+            // 退出演示模式：清除演示快照，恢复真实缓存或待同步，再触发一次真实刷新
+            accountRepo.clearMockSnapshots()
+            refreshQuota(force = true)
+        } else if (!old.useMockData && newSettings.useMockData) {
+            // 开启演示模式：立即刷新为演示数据
+            refreshQuota(force = true)
+        }
         if (old.cityName != newSettings.cityName ||
             old.additionalCities != newSettings.additionalCities ||
             old.latitude != newSettings.latitude ||
             old.longitude != newSettings.longitude
         ) {
-            viewModelScope.launch {
-                weatherRepo.refreshAllWeather(newSettings.getAllCities(), force = true)
-            }
+            refreshWeather(force = true)
         }
     }
 
-    fun updateAccountVisibility(accountId: String, showOnMain: Boolean, showOnSecond: Boolean) {
-        accountRepo.updateAccountVisibility(accountId, showOnMain, showOnSecond)
+    fun updateAccountVisibility(
+        accountId: String,
+        showOnMain: Boolean,
+        showOnSecond: Boolean,
+        isPinnedMain: Boolean = false
+    ) {
+        accountRepo.updateAccountVisibility(accountId, showOnMain, showOnSecond, isPinnedMain)
     }
 
-    fun updateAccountVisibility(slot: Int, showOnMain: Boolean, showOnSecond: Boolean) {
-        accountRepo.updateAccountVisibility(slot, showOnMain, showOnSecond)
+    fun updateAccountVisibility(
+        slot: Int,
+        showOnMain: Boolean,
+        showOnSecond: Boolean,
+        isPinnedMain: Boolean = false
+    ) {
+        accountRepo.updateAccountVisibility(slot, showOnMain, showOnSecond, isPinnedMain)
     }
 
     fun saveAccount(

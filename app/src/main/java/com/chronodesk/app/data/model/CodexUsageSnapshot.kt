@@ -55,7 +55,8 @@ data class CodexUsageSnapshot(
     val lastErrorType: SyncErrorType? = null,        // 失败类型
     val retryAfterUnixMs: Long? = null,             // 429 冷却截止时间戳 (ms)
     val limitReached: Boolean = false,
-    val modelProvider: String = "CHATGPT"
+    val modelProvider: String = "CHATGPT",
+    val isMock: Boolean = false
 ) {
     val formattedQueriedAt: String
         get() {
@@ -152,6 +153,7 @@ data class CodexUsageSnapshot(
     val formattedBalanceText: String
         get() {
             if (modelProvider == "DEEPSEEK") {
+                if (isMock && errorMessage == "暂无演示数据") return "暂无演示数据"
                 if (isAvailable == false) return "服务不可用"
                 val list = balanceList
                 if (!list.isNullOrEmpty()) {
@@ -173,6 +175,16 @@ data class CodexUsageSnapshot(
         }
 
     companion object {
+        fun initial(accountId: String, alias: String, modelProvider: String = "CHATGPT"): CodexUsageSnapshot {
+            return CodexUsageSnapshot(
+                accountId = accountId,
+                accountAlias = alias,
+                credentialStatus = CredentialStatus.NOT_LOGGED_IN,
+                modelProvider = modelProvider,
+                queriedAt = null
+            )
+        }
+
         fun empty(accountId: String, alias: String): CodexUsageSnapshot {
             return CodexUsageSnapshot(
                 accountId = accountId,

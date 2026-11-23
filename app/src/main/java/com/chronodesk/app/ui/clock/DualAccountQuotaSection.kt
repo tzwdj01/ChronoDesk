@@ -105,8 +105,11 @@ fun MultiAccountQuotaSection(
     onSettingsClick: () -> Unit = {}
 ) {
     val chatGptAccounts = accounts.filter { (it.modelProvider == "CHATGPT" || it.modelProvider == null) && it.isVisibleOnMain }
+        .sortedByDescending { it.isPinnedMain }
     val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" && it.isVisibleOnMain }
+        .sortedByDescending { it.isPinnedMain }
     val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" && it.isVisibleOnMain }
+        .sortedByDescending { it.isPinnedMain }
 
     val hasMultipleProviders = (if (chatGptAccounts.isNotEmpty()) 1 else 0) +
         (if (deepSeekAccounts.isNotEmpty()) 1 else 0) +
@@ -437,6 +440,14 @@ private fun CompactSecondaryAccountQuotaItem(
                     .size(4.dp)
                     .background(statusColor, CircleShape)
             )
+            if (account.isPinnedMain) {
+                Text(
+                    text = "★",
+                    color = if (isNightMode) TechAmber else InkWarningAmber,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             Text(
                 text = account.displayTitle,
                 color = primaryText,
@@ -650,6 +661,14 @@ private fun SingleAccountQuotaItem(
                             CircleShape
                         )
                 )
+                if (account.isPinnedMain) {
+                    Text(
+                        text = "★",
+                        color = if (isNightMode) TechAmber else InkWarningAmber,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = account.displayTitle,
                     color = primaryText,
@@ -1021,7 +1040,14 @@ private fun SingleDeepSeekAccountItem(
     val isCoolingDown = remainingCooldown > 0L
 
     // 状态徽标与文本
-    val (statusText, statusColor, statusBg) = when (syncStatus) {
+    val isDemoMock = snapshot?.isMock == true && snapshot.errorMessage == "暂无演示数据"
+    val (statusText, statusColor, statusBg) = if (isDemoMock) {
+        Triple(
+            "暂无演示数据",
+            if (isNightMode) TechAmber else InkWarningAmber,
+            (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
+        )
+    } else when (syncStatus) {
         QuotaSyncStatus.NOT_CONFIGURED -> Triple(
             "未配置",
             mutedText,
@@ -1123,6 +1149,14 @@ private fun SingleDeepSeekAccountItem(
                             CircleShape
                         )
                 )
+                if (account.isPinnedMain) {
+                    Text(
+                        text = "★",
+                        color = if (isNightMode) TechAmber else InkWarningAmber,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = account.displayTitle,
                     color = primaryText,
@@ -1413,7 +1447,14 @@ private fun SingleAntigravityAccountItem(
     val remainingCooldown = snapshot?.getRemainingRetrySeconds() ?: 0L
     val isCoolingDown = remainingCooldown > 0L
 
-    val (statusText, statusColor, statusBg) = when (syncStatus) {
+    val isDemoMock = snapshot?.isMock == true && snapshot.errorMessage == "暂无演示数据"
+    val (statusText, statusColor, statusBg) = if (isDemoMock) {
+        Triple(
+            "暂无演示数据",
+            if (isNightMode) TechAmber else InkWarningAmber,
+            (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
+        )
+    } else when (syncStatus) {
         QuotaSyncStatus.NOT_CONFIGURED -> Triple(
             "未配置",
             mutedText,
@@ -1501,6 +1542,14 @@ private fun SingleAntigravityAccountItem(
                             CircleShape
                         )
                 )
+                if (account.isPinnedMain) {
+                    Text(
+                        text = "★",
+                        color = if (isNightMode) TechAmber else InkWarningAmber,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = account.displayTitle,
                     color = primaryText,
