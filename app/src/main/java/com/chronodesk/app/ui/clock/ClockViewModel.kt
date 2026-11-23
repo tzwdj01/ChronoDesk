@@ -76,11 +76,18 @@ class ClockViewModel @JvmOverloads constructor(
     private var burnInShifterJob: Job? = null
 
     private var isForeground = false
-    private var lastForegroundRefreshTimeMs: Long = 0L
+    var lastForegroundRefreshTimeMs: Long = 0L
+        private set
+    var lastQuotaSuccessTimeMs: Long = 0L
+        private set
+    var lastWeatherSuccessTimeMs: Long = 0L
+        private set
+
+    private var quotaRefreshJob: Job? = null
+    private var weatherRefreshJob: Job? = null
 
     init {
         onAppForeground()
-        refreshAll()
     }
 
     fun isPollingActive(): Boolean =
@@ -94,12 +101,16 @@ class ClockViewModel @JvmOverloads constructor(
         startWeatherScheduler()
         startBurnInShifter()
 
-        // 重新回到前台时，若与上次静默刷新间隔超过刷新阈值，立即补齐一次最新数据
+        // 统一前台调度：按额度、天气各自的成功时间与过期时间决定补刷；未过期直接复用，避免频繁切后台带来的请求洪峰
         val now = System.currentTimeMillis()
-        val refreshIntervalMs = settings.value.autoRefreshIntervalMinutes.coerceAtLeast(5) * 60 * 1000L
-        if (now - lastForegroundRefreshTimeMs >= refreshIntervalMs) {
-            lastForegroundRefreshTimeMs = now
-            refreshAll()
+        val quotaIntervalMs = settings.value.autoRefreshIntervalMinutes.coerceAtLeast(1) * 60 * 1000L
+        if (now - lastQuotaSuccessTimeMs >= quotaIntervalMs) {
+            refreshQuota()
+        }
+
+        val weatherIntervalMs = 30 * 60 * 1000L
+        if (now - lastWeatherSuccessTimeMs >= weatherIntervalMs) {
+            refreshWeather()
         }
     }
 
@@ -113,6 +124,12 @@ class ClockViewModel @JvmOverloads constructor(
         weatherSchedulerJob = null
         burnInShifterJob?.cancel()
         burnInShifterJob = null
+
+        // 退后台取消在途自动任务
+        quotaRefreshJob?.cancel()
+        quotaRefreshJob = null
+        weatherRefreshJob?.cancel()
+        weatherRefreshJob = null
     }
 
     private fun startTimeTicker() {
@@ -136,9 +153,9 @@ class ClockViewModel @JvmOverloads constructor(
         quotaSchedulerJob?.cancel()
         quotaSchedulerJob = viewModelScope.launch {
             while (isActive) {
-                val intervalMin = settings.value.autoRefreshIntervalMinutes.coerceAtLeast(5)
+                val intervalMin = settings.value.autoRefreshIntervalMinutes.coerceAtLeast(1)
                 delay(intervalMin * 60 * 1000L)
-                accountRepo.refreshAll(settings.value.useMockData)
+                refreshQuota()
             }
         }
     }
@@ -147,9 +164,8 @@ class ClockViewModel @JvmOverloads constructor(
         weatherSchedulerJob?.cancel()
         weatherSchedulerJob = viewModelScope.launch {
             while (isActive) {
-                val s = settings.value
-                weatherRepo.refreshAllWeather(s.getAllCities())
                 delay(30 * 60 * 1000L) // 30 分钟轮询天气
+                refreshWeather()
             }
         }
     }
@@ -186,12 +202,40 @@ class ClockViewModel @JvmOverloads constructor(
         }
     }
 
-    fun refreshAll() {
-        viewModelScope.launch {
-            accountRepo.refreshAll(settings.value.useMockData)
-            val s = settings.value
-            weatherRepo.refreshAllWeather(s.getAllCities(), force = true)
+    fun refreshQuota(force: Boolean = false): Job {
+        quotaRefreshJob?.let {
+            if (it.isActive) return it
         }
+        val job = viewModelScope.launch {
+            try {
+                accountRepo.refreshAll(settings.value.useMockData)
+                lastQuotaSuccessTimeMs = System.currentTimeMillis()
+                lastForegroundRefreshTimeMs = lastQuotaSuccessTimeMs
+            } catch (_: Exception) {}
+        }
+        quotaRefreshJob = job
+        return job
+    }
+
+    fun refreshWeather(force: Boolean = false): Job {
+        weatherRefreshJob?.let {
+            if (it.isActive) return it
+        }
+        val job = viewModelScope.launch {
+            try {
+                val s = settings.value
+                weatherRepo.refreshAllWeather(s.getAllCities(), force = force)
+                lastWeatherSuccessTimeMs = System.currentTimeMillis()
+            } catch (_: Exception) {}
+        }
+        weatherRefreshJob = job
+        return job
+    }
+
+    fun refreshAll() {
+        lastForegroundRefreshTimeMs = System.currentTimeMillis()
+        refreshQuota(force = true)
+        refreshWeather(force = true)
     }
 
     fun toggleNightMode(): String {

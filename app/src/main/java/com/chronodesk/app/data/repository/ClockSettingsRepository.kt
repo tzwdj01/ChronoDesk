@@ -40,11 +40,27 @@ class ClockSettingsRepository(context: Context) {
     val settingsFlow: StateFlow<ClockSettings> = _settingsFlow.asStateFlow()
 
     private fun loadSettings(): ClockSettings {
+        // 单向迁移布尔常亮配置：检测到旧版布尔值且未设置 screen_on_policy 时，true 迁移为 ALWAYS，false 迁移为 SYSTEM。新装用户默认使用 CHARGING_ONLY。
+        val policy: String
+        if (prefs.contains("screen_on_policy")) {
+            val raw = prefs.getString("screen_on_policy", "CHARGING_ONLY") ?: "CHARGING_ONLY"
+            policy = if (raw == "ALWAYS_ON") "ALWAYS" else raw
+        } else if (prefs.contains("keep_screen_on")) {
+            val oldBoolean = prefs.getBoolean("keep_screen_on", true)
+            policy = if (oldBoolean) "ALWAYS" else "SYSTEM"
+            prefs.edit()
+                .putString("screen_on_policy", policy)
+                .remove("keep_screen_on")
+                .apply()
+        } else {
+            policy = "CHARGING_ONLY"
+        }
+
         return ClockSettings(
             is24Hour = prefs.getBoolean("is_24_hour", true),
             showSeconds = prefs.getBoolean("show_seconds", true),
-            keepScreenOn = prefs.getBoolean("keep_screen_on", true),
-            screenOnPolicy = prefs.getString("screen_on_policy", "CHARGING_ONLY") ?: "CHARGING_ONLY",
+            keepScreenOn = policy != "SYSTEM",
+            screenOnPolicy = policy,
             nightModeOption = prefs.getString("night_mode_option", "AUTO") ?: "AUTO",
             autoNightDim = prefs.getBoolean("auto_night_dim", true),
             nightDimStartHour = prefs.getInt("night_start_hour", 22),
@@ -68,9 +84,9 @@ class ClockSettingsRepository(context: Context) {
 
     fun updateSettings(newSettings: ClockSettings) {
         prefs.edit()
+            .remove("keep_screen_on") // 保存普通设置时移除历史布尔键
             .putBoolean("is_24_hour", newSettings.is24Hour)
             .putBoolean("show_seconds", newSettings.showSeconds)
-            .putBoolean("keep_screen_on", newSettings.keepScreenOn)
             .putString("screen_on_policy", newSettings.screenOnPolicy)
             .putString("night_mode_option", newSettings.nightModeOption)
             .putBoolean("auto_night_dim", newSettings.autoNightDim)
@@ -140,9 +156,10 @@ class ClockSettingsRepository(context: Context) {
 
             val is24Hour = if (root.has("is24Hour")) root.get("is24Hour").asBoolean else true
             val showSeconds = if (root.has("showSeconds")) root.get("showSeconds").asBoolean else true
-            val screenOnPolicy = if (root.has("screenOnPolicy")) root.get("screenOnPolicy").asString else "CHARGING_ONLY"
+            val rawPolicy = if (root.has("screenOnPolicy")) root.get("screenOnPolicy").asString else "CHARGING_ONLY"
+            val screenOnPolicy = if (rawPolicy == "ALWAYS_ON") "ALWAYS" else rawPolicy
             if (screenOnPolicy !in listOf("CHARGING_ONLY", "ALWAYS", "SYSTEM")) {
-                return SettingsValidationResult.Invalid("屏幕常亮策略非法: $screenOnPolicy")
+                return SettingsValidationResult.Invalid("屏幕常亮策略非法: $rawPolicy")
             }
             val nightModeOption = if (root.has("nightModeOption")) root.get("nightModeOption").asString else "AUTO"
             if (nightModeOption !in listOf("AUTO", "FORCE_NIGHT", "FORCE_DAY")) {

@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,15 +44,15 @@ class TeslaRepository(
     val snapshotFlow: StateFlow<TeslaFullSnapshot> = _snapshotFlow.asStateFlow()
 
     private var pollingJob: Job? = null
-    private var isPageVisible: Boolean = false
+    var isAppForeground: Boolean = false
+        private set
+    var isPageVisible: Boolean = false
+        private set
+    var lastSuccessFetchTime: Long = 0L
+        private set
 
     init {
-        // 如果已配置且开启，加载后尝试刷新一次
-        if (_settingsFlow.value.enabled && _settingsFlow.value.isConfigured) {
-            scope.launch {
-                refresh()
-            }
-        }
+        // 冷启动时不直接发起请求，统一由页面可见性与前台调度控制
     }
 
     private fun loadSettings(): TeslaSettings {
@@ -102,12 +103,8 @@ class TeslaRepository(
 
         _settingsFlow.value = newSettings
 
-        // 重新调度或停止轮询
-        if (newSettings.enabled && newSettings.isConfigured && isPageVisible) {
-            startPolling()
-        } else {
-            stopPolling()
-        }
+        // 重新调度或停止轮询（要求前台、车辆页可见、已启用且已配置）
+        evaluatePolling()
         return true
     }
 
@@ -171,6 +168,7 @@ class TeslaRepository(
                 )
 
                 _snapshotFlow.value = newSnapshot
+                lastSuccessFetchTime = System.currentTimeMillis()
                 saveCachedSnapshot(newSnapshot)
                 true
             } catch (e: Exception) {
@@ -186,15 +184,35 @@ class TeslaRepository(
         }
     }
 
+    fun onAppForeground() {
+        isAppForeground = true
+        evaluatePolling()
+    }
+
+    fun onAppBackground() {
+        isAppForeground = false
+        stopPolling()
+    }
+
     /**
      * 页面可见性变动通知：控制轮询开关
      */
     fun setPageVisible(visible: Boolean) {
         isPageVisible = visible
-        if (visible && _settingsFlow.value.enabled && _settingsFlow.value.isConfigured) {
-            startPolling()
-            scope.launch {
-                refresh()
+        evaluatePolling()
+    }
+
+    fun isPollingActive(): Boolean = pollingJob?.isActive == true
+
+    private fun evaluatePolling() {
+        val settings = _settingsFlow.value
+        val shouldPoll = isAppForeground && isPageVisible && settings.enabled && settings.isConfigured
+        if (shouldPoll) {
+            if (pollingJob == null || pollingJob?.isActive != true) {
+                startPolling()
+                scope.launch {
+                    refresh()
+                }
             }
         } else {
             stopPolling()
@@ -204,7 +222,7 @@ class TeslaRepository(
     private fun startPolling() {
         pollingJob?.cancel()
         pollingJob = scope.launch {
-            while (true) {
+            while (isActive) {
                 val settings = _settingsFlow.value
                 val currentState = _snapshotFlow.value.state
 
@@ -216,8 +234,11 @@ class TeslaRepository(
                 }
 
                 delay(intervalSec * 1000L)
-                if (isPageVisible && settings.enabled && settings.isConfigured) {
+                val shouldPoll = isAppForeground && isPageVisible && _settingsFlow.value.enabled && _settingsFlow.value.isConfigured
+                if (shouldPoll) {
                     refresh()
+                } else {
+                    break
                 }
             }
         }

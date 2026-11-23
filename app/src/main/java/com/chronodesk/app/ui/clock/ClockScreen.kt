@@ -47,7 +47,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -131,6 +135,27 @@ fun ClockScreen(
         if (pagerState.currentPage >= pageCount) {
             pagerState.scrollToPage(0)
         }
+    }
+
+    // 绑定前后台生命周期与车辆页轮询
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> teslaViewModel.onAppForeground()
+                Lifecycle.Event.ON_STOP -> teslaViewModel.onAppBackground()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage, teslaSettings.enabled, teslaSettings.isConfigured) {
+        val isTeslaPage = teslaSettings.enabled && pagerState.currentPage == 2
+        teslaViewModel.setPageVisible(isTeslaPage)
     }
 
     var areControlsVisible by remember { mutableStateOf(false) }

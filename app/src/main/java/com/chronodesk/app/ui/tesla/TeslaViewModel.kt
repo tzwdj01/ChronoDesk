@@ -54,6 +54,16 @@ class TeslaViewModel @JvmOverloads constructor(
         }
     }
 
+    fun onAppForeground() {
+        repository.onAppForeground()
+    }
+
+    fun onAppBackground() {
+        repository.onAppBackground()
+    }
+
+    fun isPollingActive(): Boolean = repository.isPollingActive()
+
     fun setPageVisible(visible: Boolean) {
         repository.setPageVisible(visible)
     }
