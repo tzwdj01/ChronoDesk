@@ -7,10 +7,16 @@ import com.chronodesk.app.data.model.TeslaVehicle
 import com.chronodesk.app.data.model.VehicleLocation
 import com.chronodesk.app.data.model.VehicleSnapshot
 import com.chronodesk.app.data.model.VehicleState
+import com.chronodesk.app.data.network.GrafanaApiClient
 import com.chronodesk.app.data.provider.TeslaDataProvider
 import com.chronodesk.app.data.security.CredentialStorage
 import com.chronodesk.app.data.repository.TeslaRepository
 import com.chronodesk.app.data.utils.TeslaPhotoManager
+import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -157,5 +163,115 @@ class TeslaVehicleAndLocationTest {
         assertFalse("位置应重置", currentSnap.location.isValid)
 
         tempDir.deleteRecursively()
+    }
+
+    private fun grafanaFrameJson(fieldsJson: String, valuesJson: String): MockResponse {
+        val body = """
+            {
+              "results": {
+                "A": {
+                  "frames": [
+                    {
+                      "schema": { "fields": $fieldsJson },
+                      "data": { "values": $valuesJson }
+                    }
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+        return MockResponse().setResponseCode(200).setBody(body)
+    }
+
+    private fun createLocationDispatcher(geofenceHandler: () -> MockResponse): Dispatcher {
+        return object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val sql = request.body.readUtf8()
+                return when {
+                    sql.contains("FROM geofences") -> geofenceHandler()
+                    sql.contains("SELECT date, latitude, longitude") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"latitude"},{"name":"longitude"}]""",
+                        """[[1795415440951],[32.0268],[121.06508]]"""
+                    )
+                    sql.contains("FROM positions") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"battery_level"},{"name":"rated_battery_range_km"},{"name":"est_battery_range_km"},{"name":"odometer"},{"name":"inside_temp"},{"name":"outside_temp"}]""",
+                        """[[1795415440951],[53],[210.0],[195.0],[127580.7],[21.0],[17.0]]"""
+                    )
+                    sql.contains("FROM states") -> grafanaFrameJson(
+                        """[{"name":"state"},{"name":"start_date"}]""",
+                        """[["online"],["2026-11-23T08:00:00Z"]]"""
+                    )
+                    sql.contains("trim_badging") -> MockResponse().setResponseCode(400).setBody("""{"message":"column trim_badging does not exist"}""")
+                    sql.contains("FROM cars") -> grafanaFrameJson(
+                        """[{"name":"id"},{"name":"name"},{"name":"model"}]""",
+                        """[[1],["No.1 Lucky"],["3"]]"""
+                    )
+                    else -> grafanaFrameJson("[]", "[]")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun testFetchVehicleSnapshot_locationStillWorksWhenGeofencesFailsAndFormatsNumericDate() = runBlocking {
+        val server = MockWebServer()
+        server.dispatcher = createLocationDispatcher {
+            MockResponse().setResponseCode(400).setBody("""{"message":"permission denied for relation geofences"}""")
+        }
+        server.start()
+        try {
+            val provider = TeslaDataProvider(GrafanaApiClient())
+            val settings = TeslaSettings(
+                enabled = true,
+                baseUrl = server.url("/").toString(),
+                dataSourceUid = "ds_test",
+                carId = 1,
+                allowHttp = true
+            )
+            val snap = provider.fetchVehicleSnapshot(settings, "test_token")
+            assertTrue("即使 geofences 返回 400，经纬度位置仍必须有效", snap.location.isValid)
+            assertEquals(32.0268, snap.location.latitude ?: 0.0, 0.0001)
+            assertEquals(121.06508, snap.location.longitude ?: 0.0, 0.0001)
+            assertNull("geofences 失败时围栏名应为 null 而非阻断坐标", snap.location.geofenceName)
+
+            val formattedLocTime = snap.location.formattedSampledTime
+            assertNotNull("科学计数法纪元时间应成功格式化", formattedLocTime)
+            assertTrue("位置时间应为 HH:mm 格式: $formattedLocTime", formattedLocTime!!.matches(Regex("^\\d{2}:\\d{2}$")))
+
+            val formattedSnapTime = snap.snapshot.formattedSampledTime
+            assertNotNull(formattedSnapTime)
+            assertTrue("快照时间应为 HH:mm 格式: $formattedSnapTime", formattedSnapTime!!.matches(Regex("^\\d{2}:\\d{2}$")))
+
+            assertEquals("cars 缺 trim_badging 列时降级查询仍应识别车型", "Model 3", snap.car?.normalizedModel)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun testFetchVehicleSnapshot_matchesClosestGeofenceByHaversineRadius() = runBlocking {
+        val server = MockWebServer()
+        server.dispatcher = createLocationDispatcher {
+            grafanaFrameJson(
+                """[{"name":"name"},{"name":"latitude"},{"name":"longitude"},{"name":"radius"}]""",
+                """[["公司充电站","家 · 地下车库"],[32.1000,32.02685],[121.1000,121.06510],[100.0,80.0]]"""
+            )
+        }
+        server.start()
+        try {
+            val provider = TeslaDataProvider(GrafanaApiClient())
+            val settings = TeslaSettings(
+                enabled = true,
+                baseUrl = server.url("/").toString(),
+                dataSourceUid = "ds_test",
+                carId = 1,
+                allowHttp = true
+            )
+            val snap = provider.fetchVehicleSnapshot(settings, "test_token")
+            assertTrue(snap.location.isValid)
+            assertEquals("Haversine 距离命中半径内围栏", "家 · 地下车库", snap.location.geofenceName)
+        } finally {
+            server.shutdown()
+        }
     }
 }

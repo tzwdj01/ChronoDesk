@@ -165,22 +165,28 @@ class TeslaDataProvider(
             monthCharge = totalCharges.monthCharge
         )
 
-        // 查询车辆型号代码与配置信息
+        // 查询车辆型号代码与配置信息（兼容精简表结构）
         var carModel = lastSnapshot?.car?.model
         var trimBadging = lastSnapshot?.car?.trimBadging
         var carName = settings.carName.takeIf { it.isNotBlank() } ?: lastSnapshot?.car?.name ?: "Tesla"
-        try {
-            val carSql = "SELECT id, name, model, trim_badging FROM cars WHERE id = $carId LIMIT 1"
-            val carResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, carSql))))
-            val carRow = GrafanaFrameParser.parseResultToRows(carResp, "A").firstOrNull()
-            if (carRow != null) {
-                if (settings.carName.isBlank()) {
-                    carName = carRow.getString("name") ?: carName
+        val carSqlCandidates = listOf(
+            "SELECT id, name, model, trim_badging FROM cars WHERE id = $carId LIMIT 1",
+            "SELECT id, name, model FROM cars WHERE id = $carId LIMIT 1"
+        )
+        for (carSql in carSqlCandidates) {
+            try {
+                val carResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, carSql))))
+                val carRow = GrafanaFrameParser.parseResultToRows(carResp, "A").firstOrNull()
+                if (carRow != null) {
+                    if (settings.carName.isBlank()) {
+                        carName = carRow.getString("name") ?: carName
+                    }
+                    carModel = carRow.getString("model") ?: carModel
+                    trimBadging = carRow.getString("trim_badging") ?: trimBadging
                 }
-                carModel = carRow.getString("model") ?: carModel
-                trimBadging = carRow.getString("trim_badging") ?: trimBadging
-            }
-        } catch (_: Exception) {}
+                break
+            } catch (_: Exception) {}
+        }
 
         val carObj = TeslaVehicle(
             id = carId,
@@ -214,11 +220,10 @@ class TeslaDataProvider(
         previousLocation: VehicleLocation?
     ): com.chronodesk.app.data.model.VehicleLocation {
         val sqlLoc = """
-            SELECT p.date, p.latitude, p.longitude, g.name AS geofence_name
-            FROM positions p
-            LEFT JOIN geofences g ON p.geofence_id = g.id
-            WHERE p.car_id = $carId AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL
-            ORDER BY p.date DESC LIMIT 1
+            SELECT date, latitude, longitude
+            FROM positions
+            WHERE car_id = $carId AND latitude IS NOT NULL AND longitude IS NOT NULL
+            ORDER BY date DESC LIMIT 1
         """.trimIndent()
         return try {
             val resp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, sqlLoc))))
@@ -226,12 +231,16 @@ class TeslaDataProvider(
             if (row != null) {
                 val lat = row.getDouble("latitude")
                 val lng = row.getDouble("longitude")
-                val geofence = row.getString("geofence_name")
                 val sampledAt = row.getString("date")
+                val geofenceName = if (lat != null && lng != null) {
+                    resolveMatchedGeofenceName(service, auth, dsRef, lat, lng)
+                } else {
+                    null
+                }
                 com.chronodesk.app.data.model.VehicleLocation(
                     latitude = lat,
                     longitude = lng,
-                    geofenceName = geofence,
+                    geofenceName = geofenceName,
                     sampledAt = sampledAt
                 )
             } else {
@@ -241,6 +250,51 @@ class TeslaDataProvider(
             Log.w(tag, "Failed to fetch vehicle location: ${e.message}")
             previousLocation ?: com.chronodesk.app.data.model.VehicleLocation()
         }
+    }
+
+    /**
+     * 可选地理围栏匹配：单独查询 geofences 并用 Haversine 距离判定，失败时静默降级仅展示坐标
+     */
+    private suspend fun resolveMatchedGeofenceName(
+        service: com.chronodesk.app.data.network.GrafanaRetrofitService,
+        auth: String,
+        dsRef: GrafanaDatasourceRef,
+        lat: Double,
+        lng: Double
+    ): String? {
+        return try {
+            val sqlGeo = "SELECT name, latitude, longitude, radius FROM geofences LIMIT 100"
+            val geoResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, sqlGeo))))
+            val geoRows = GrafanaFrameParser.parseResultToRows(geoResp, "A")
+            var matchedName: String? = null
+            var bestDistance = Double.MAX_VALUE
+            for (gRow in geoRows) {
+                val gLat = gRow.getDouble("latitude") ?: continue
+                val gLng = gRow.getDouble("longitude") ?: continue
+                val gName = gRow.getString("name")?.takeIf { it.isNotBlank() } ?: continue
+                val radius = gRow.getDouble("radius") ?: 50.0
+                val dist = haversineMeters(lat, lng, gLat, gLng)
+                if (dist <= radius && dist < bestDistance) {
+                    bestDistance = dist
+                    matchedName = gName
+                }
+            }
+            matchedName
+        } catch (e: Exception) {
+            Log.d(tag, "Optional geofence match skipped: ${e.message}")
+            null
+        }
+    }
+
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val earthRadiusMeters = 6_371_000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+            kotlin.math.sin(dLon / 2) * kotlin.math.sin(dLon / 2)
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+        return earthRadiusMeters * c
     }
 
     private suspend fun fetchLatestPositions(
