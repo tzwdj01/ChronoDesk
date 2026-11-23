@@ -67,7 +67,8 @@ class TeslaRepository(
             carName = prefs.getString("car_name", "Tesla") ?: "Tesla",
             refreshIntervalSec = prefs.getInt("refresh_interval_sec", 60),
             timeZone = prefs.getString("timezone", "Asia/Shanghai") ?: "Asia/Shanghai",
-            allowHttp = prefs.getBoolean("allow_http", false)
+            allowHttp = prefs.getBoolean("allow_http", false),
+            vehicleColor = prefs.getString("vehicle_color", "AUTO") ?: "AUTO"
         )
     }
 
@@ -101,6 +102,7 @@ class TeslaRepository(
             .putInt("refresh_interval_sec", newSettings.refreshIntervalSec)
             .putString("timezone", newSettings.timeZone)
             .putBoolean("allow_http", newSettings.allowHttp)
+            .putString("vehicle_color", newSettings.vehicleColor)
             .apply()
 
         _settingsFlow.value = newSettings

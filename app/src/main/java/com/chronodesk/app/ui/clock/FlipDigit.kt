@@ -199,6 +199,7 @@ fun FlipDigitPair(
     digitWidth: Dp = 64.dp,
     digitHeight: Dp = 96.dp,
     fontSize: TextUnit = 64.sp,
+    digitSpacing: Dp = 4.5.dp,
     textColor: Color? = null,
     isNightMode: Boolean = false
 ) {
@@ -214,7 +215,7 @@ fun FlipDigitPair(
             textColor = textColor,
             isNightMode = isNightMode
         )
-        Spacer(modifier = Modifier.width(4.5.dp))
+        Spacer(modifier = Modifier.width(digitSpacing))
         FlipDigit(
             digit = units,
             width = digitWidth,

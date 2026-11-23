@@ -31,7 +31,8 @@ data class ClockSettings(
     val quotaCardDensity: String = "NORMAL", // COMPACT, NORMAL, SPACIOUS
     val clockScale: Float = 1.0f,          // 时钟缩放比例 (0.6f ~ 1.8f)
     val clockOffsetX: Float = 0f,          // 时钟水平偏移 (-300f ~ 300f)
-    val clockOffsetY: Float = 0f           // 时钟垂直偏移 (-200f ~ 200f)
+    val clockOffsetY: Float = 0f,          // 时钟垂直偏移 (-200f ~ 200f)
+    val showTeslaOnHome: Boolean = true    // 首页时钟下方是否显示车辆电量与续航胶囊
 ) {
     /**
      * 判断当前是否处于设定的夜间熄屏/调暗时段

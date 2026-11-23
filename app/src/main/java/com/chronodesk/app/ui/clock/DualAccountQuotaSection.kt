@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -275,16 +276,15 @@ fun ChatGptUnifiedSubscriptionBox(
     val cardBg = if (isNightMode) DarkSurface else InkSurface
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
+            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 5.dp else 7.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 6.dp)) {
             // 大框顶栏：OpenAI Logo + 订阅商名称 + 演示标签 + 账号汇总
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -297,13 +297,13 @@ fun ChatGptUnifiedSubscriptionBox(
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.CHATGPT,
-                        size = if (isCompact) 22.dp else 28.dp,
+                        size = if (isCompact) 20.dp else 24.dp,
                         isNightMode = isNightMode
                     )
                     Text(
                         text = "ChatGPT",
                         color = primaryText,
-                        fontSize = if (isCompact) 12.5.sp else 14.sp,
+                        fontSize = if (isCompact) 13.sp else 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                     if (isMockMode) {
@@ -672,8 +672,8 @@ private fun SingleAccountQuotaItem(
                 Text(
                     text = account.displayTitle,
                     color = primaryText,
-                    fontSize = if (isCompact) 10.5.sp else 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = if (isCompact) 11.5.sp else 13.5.sp,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -816,93 +816,109 @@ private fun SingleAccountQuotaItem(
                 )
             }
         } else {
-            // 5 小时 / 主额度行 (对齐起始位置与 100% 进度条长度)
+            val primaryPercentColor = when {
+                isPrimaryExhausted -> if (isNightMode) TechRose else InkWarningRed
+                primaryWindow?.remainingPercent != null && primaryWindow.remainingPercent <= 15.0 -> if (isNightMode) TechAmber else InkWarningAmber
+                else -> primaryText
+            }
+            val secondaryPercentColor = when {
+                isSecondaryExhausted -> if (isNightMode) TechRose else InkWarningRed
+                secondaryWindow?.remainingPercent != null && secondaryWindow.remainingPercent <= 15.0 -> if (isNightMode) TechAmber else InkWarningAmber
+                else -> primaryText
+            }
+
+            // 5 小时 / 主额度行：强化大字百分比与粗进度条，远距清晰可读
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)
-                ) {
-                    val primaryLabel = if (isCompact) {
-                        if (primaryWindow?.limitWindowSeconds == 18000L) "5小时" else (primaryWindow?.label ?: "额度")
-                    } else {
-                        primaryWindow?.label ?: "额度窗口"
-                    }
-                    Text(
-                        text = primaryLabel,
-                        color = secondaryText,
-                        fontSize = if (isCompact) 8.5.sp else 10.sp,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.width(if (isCompact) 34.dp else 56.dp)
-                    )
-                    val pPercent = primaryWindow?.remainingPercent
-                    LinearProgressIndicator(
-                        progress = { if (pPercent != null && pPercent.isFinite()) (pPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
-                        modifier = Modifier
-                            .width(if (isCompact) 48.dp else 88.dp)
-                            .height(if (isCompact) 3.5.dp else 4.5.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = primaryProgressColor,
-                        trackColor = trackColor
-                    )
+                val primaryLabel = if (isCompact) {
+                    if (primaryWindow?.limitWindowSeconds == 18000L) "5小时" else (primaryWindow?.label ?: "额度")
+                } else {
+                    primaryWindow?.label ?: "额度窗口"
                 }
+                Text(
+                    text = primaryLabel,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.5.sp else 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.width(if (isCompact) 32.dp else 52.dp)
+                )
+                val pPercent = primaryWindow?.remainingPercent
+                LinearProgressIndicator(
+                    progress = { if (pPercent != null && pPercent.isFinite()) (pPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                    modifier = Modifier
+                        .weight(1f)
+                        .widthIn(min = if (isCompact) 36.dp else 56.dp)
+                        .height(if (isCompact) 5.5.dp else 7.5.dp)
+                        .clip(RoundedCornerShape(if (isCompact) 3.dp else 4.dp)),
+                    color = primaryProgressColor,
+                    trackColor = trackColor
+                )
                 val primaryResetDesc = when {
                     primaryWindow == null -> if (isLoading) "同步中..." else "待同步"
                     primaryWindow.resetAtUnix == null -> "重置时间未知"
                     nowUnix >= primaryWindow.resetAtUnix -> "等待更新"
-                    else -> "${primaryWindow.formattedResetTime(nowUnix)} 重置"
+                    else -> primaryWindow.formattedResetTime(nowUnix)
                 }
-                Text(
-                    text = "剩余 $primaryRemainingStr · $primaryResetDesc",
-                    color = if (isPrimaryExhausted) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
-                    fontSize = if (isCompact) 7.5.sp else 9.sp,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .padding(start = 4.dp)
-                )
-            }
-
-            // 周额度 / 次额度行 (对齐起始位置与 100% 进度条长度)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 5.dp)
                 ) {
-                    val secondaryLabel = if (isCompact) {
-                        if (secondaryWindow?.limitWindowSeconds == 604800L) "周额度" else (secondaryWindow?.label ?: "额度")
-                    } else {
-                        secondaryWindow?.label ?: "周额度"
-                    }
                     Text(
-                        text = secondaryLabel,
-                        color = secondaryText,
+                        text = primaryRemainingStr,
+                        color = primaryPercentColor,
+                        fontSize = if (isCompact) 12.5.sp else 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = primaryResetDesc,
+                        color = mutedText,
                         fontSize = if (isCompact) 8.5.sp else 10.sp,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.width(if (isCompact) 34.dp else 56.dp)
-                    )
-                    val sPercent = secondaryWindow?.remainingPercent
-                    LinearProgressIndicator(
-                        progress = { if (sPercent != null && sPercent.isFinite()) (sPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
-                        modifier = Modifier
-                            .width(if (isCompact) 48.dp else 88.dp)
-                            .height(if (isCompact) 3.5.dp else 4.5.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = secondaryProgressColor,
-                        trackColor = trackColor
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+
+            // 周额度 / 次额度行：强化大字百分比与粗进度条
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp)
+            ) {
+                val secondaryLabel = if (isCompact) {
+                    if (secondaryWindow?.limitWindowSeconds == 604800L) "周额度" else (secondaryWindow?.label ?: "额度")
+                } else {
+                    secondaryWindow?.label ?: "周额度"
+                }
+                Text(
+                    text = secondaryLabel,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.5.sp else 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.width(if (isCompact) 32.dp else 52.dp)
+                )
+                val sPercent = secondaryWindow?.remainingPercent
+                LinearProgressIndicator(
+                    progress = { if (sPercent != null && sPercent.isFinite()) (sPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                    modifier = Modifier
+                        .weight(1f)
+                        .widthIn(min = if (isCompact) 36.dp else 56.dp)
+                        .height(if (isCompact) 5.5.dp else 7.5.dp)
+                        .clip(RoundedCornerShape(if (isCompact) 3.dp else 4.dp)),
+                    color = secondaryProgressColor,
+                    trackColor = trackColor
+                )
                 val secondaryResetDesc = when {
                     secondaryWindow == null -> if (isLoading) "同步中..." else "待同步"
                     secondaryWindow.resetAtUnix == null -> "重置时间未知"
@@ -911,28 +927,37 @@ private fun SingleAccountQuotaItem(
                 }
                 val cachedTimeSuffix = if (syncStatus == QuotaSyncStatus.CACHED_STALE || syncStatus == QuotaSyncStatus.CACHE_EXPIRED) {
                     val timeStr = snapshot?.formattedSuccessTime ?: snapshot?.formattedQueriedAt
-                    if (timeStr != null) {
-                        if (isCompact) " ($timeStr)" else " (更新于 $timeStr)"
-                    } else ""
+                    if (timeStr != null) " ($timeStr)" else ""
                 } else ""
-                Text(
-                    text = "剩余 $secondaryRemainingStr · $secondaryResetDesc$cachedTimeSuffix",
-                    color = if (isSecondaryExhausted) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
-                    fontSize = if (isCompact) 7.5.sp else 9.sp,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .padding(start = 4.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 5.dp)
+                ) {
+                    Text(
+                        text = secondaryRemainingStr,
+                        color = secondaryPercentColor,
+                        fontSize = if (isCompact) 12.5.sp else 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = "$secondaryResetDesc$cachedTimeSuffix",
+                        color = mutedText,
+                        fontSize = if (isCompact) 8.5.sp else 10.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
 }
 
 /**
- * DeepSeek 专属大框（严格直连官方 /user/balance 接口展示真实余额与状态，支持多账号与自定义账号名称）
+ * DeepSeek 精简紧凑卡片（减少主屏占用比例，同时保留真实余额、零余额、多币种与鉴权状态）
  */
 @Composable
 fun DeepSeekUnifiedSubscriptionBox(
@@ -951,17 +976,17 @@ fun DeepSeekUnifiedSubscriptionBox(
 ) {
     val cardBg = if (isNightMode) DarkSurface else InkSurface
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
+            .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+            .padding(horizontal = if (isCompact) 9.dp else 12.dp, vertical = if (isCompact) 3.5.dp else 5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
-            // 大框头部：官方 DeepSeek Logo + DeepSeek 名称 + 账号数状态
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)) {
+            // 超紧凑顶栏
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -969,18 +994,18 @@ fun DeepSeekUnifiedSubscriptionBox(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.DEEPSEEK,
-                        size = if (isCompact) 22.dp else 28.dp,
+                        size = if (isCompact) 15.dp else 17.dp,
                         isNightMode = isNightMode
                     )
                     Text(
                         text = "DeepSeek",
-                        color = primaryText,
-                        fontSize = if (isCompact) 12.5.sp else 14.sp,
-                        fontWeight = FontWeight.Bold
+                        color = secondaryText,
+                        fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                     if (isMockMode) {
                         MockBadge(isNightMode = isNightMode)
@@ -988,46 +1013,201 @@ fun DeepSeekUnifiedSubscriptionBox(
                 }
 
                 val statusColor = if (isNightMode) TechEmerald else InkStatusGreen
-                val statusBg = if (isNightMode) statusColor.copy(alpha = 0.12f) else InkStatusTagBg
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(3.5.dp))
-                        .background(statusBg)
-                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                ) {
-                    Text(
-                        text = if (accounts.size > 1) "${accounts.size}个账号" else "正常",
-                        color = statusColor,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            // 框内遍历展示该订阅商下的各个 DeepSeek 账号
-            accounts.forEachIndexed { index, acc ->
-                if (index > 0) {
-                    HorizontalDivider(
-                        color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
-                        thickness = 0.8.dp,
-                        modifier = Modifier.padding(vertical = 1.5.dp)
-                    )
-                }
-                SingleDeepSeekAccountItem(
-                    account = acc,
-                    snapshot = snapshots[acc.id],
-                    isLoading = loadingMap[acc.id] == true,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact,
-                    showDelete = accounts.size > 1,
-                    areControlsVisible = areControlsVisible,
-                    refreshIntervalMinutes = refreshIntervalMinutes,
-                    onAccountClick = { onAccountClick(acc) },
-                    onRefreshClick = { onRefreshAccount(acc.id) },
-                    onDeleteClick = { onDeleteAccount(acc.id) }
+                Text(
+                    text = if (accounts.size > 1) "${accounts.size}个账号" else "API余额",
+                    color = statusColor,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
+
+            if (accounts.size == 1) {
+                SingleDeepSeekAccountItem(
+                    account = accounts.first(),
+                    snapshot = snapshots[accounts.first().id],
+                    isLoading = loadingMap[accounts.first().id] == true,
+                    isNightMode = isNightMode,
+                    isCompact = isCompact,
+                    showDelete = false,
+                    areControlsVisible = areControlsVisible,
+                    refreshIntervalMinutes = refreshIntervalMinutes,
+                    onAccountClick = { onAccountClick(accounts.first()) },
+                    onRefreshClick = { onRefreshAccount(accounts.first().id) },
+                    onDeleteClick = { onDeleteAccount(accounts.first().id) }
+                )
+            } else {
+                // 多账号横向双列紧凑并排，显著降低 DeepSeek 垂直占位比例
+                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)) {
+                    accounts.chunked(2).forEach { rowAccounts ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 7.dp)
+                        ) {
+                            rowAccounts.forEach { acc ->
+                                CompactDeepSeekTile(
+                                    account = acc,
+                                    snapshot = snapshots[acc.id],
+                                    isLoading = loadingMap[acc.id] == true,
+                                    isNightMode = isNightMode,
+                                    isCompact = isCompact,
+                                    areControlsVisible = areControlsVisible,
+                                    refreshIntervalMinutes = refreshIntervalMinutes,
+                                    onAccountClick = { onAccountClick(acc) },
+                                    onRefreshClick = { onRefreshAccount(acc.id) },
+                                    onDeleteClick = { onDeleteAccount(acc.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (rowAccounts.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun CompactDeepSeekTile(
+    account: CodexAccount,
+    snapshot: CodexUsageSnapshot?,
+    isLoading: Boolean,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    areControlsVisible: Boolean,
+    refreshIntervalMinutes: Int,
+    onAccountClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val tileBg = if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.6f) else InkSurfaceElevated.copy(alpha = 0.7f)
+
+    val syncStatus = snapshot?.computeStatus(
+        isConfigured = account.isConfigured,
+        isRefreshing = isLoading,
+        refreshIntervalMinutes = refreshIntervalMinutes
+    ) ?: if (account.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+
+    val dotColor = when {
+        syncStatus == QuotaSyncStatus.AUTH_EXPIRED || snapshot?.isAvailable == false ->
+            if (isNightMode) TechRose else InkWarningRed
+        syncStatus == QuotaSyncStatus.UPDATED && snapshot?.creditsBalance == 0.0 ->
+            if (isNightMode) TechAmber else InkWarningAmber
+        syncStatus == QuotaSyncStatus.UPDATED ->
+            if (isNightMode) TechEmerald else InkStatusGreen
+        else ->
+            if (isNightMode) TechAmber else InkWarningAmber
+    }
+
+    val valueText = when {
+        snapshot?.isMock == true && snapshot.errorMessage == "暂无演示数据" -> "暂无演示"
+        syncStatus == QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+        syncStatus == QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
+        syncStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE || snapshot?.isAvailable == false -> "服务不可用"
+        else -> {
+            val validMultiCount = snapshot?.balanceList?.count { it.totalBalance != null } ?: 0
+            if (validMultiCount > 1 && isCompact) {
+                "查看余额"
+            } else {
+                val raw = snapshot?.formattedBalanceText ?: "暂无余额数据"
+                if (raw.contains("CNY")) raw.replace(" CNY", "") else raw
+            }
+        }
+    }
+
+    val valueColor = when {
+        syncStatus == QuotaSyncStatus.AUTH_EXPIRED || snapshot?.isAvailable == false ->
+            if (isNightMode) TechRose else InkWarningRed
+        valueText.contains("余额为零") || syncStatus == QuotaSyncStatus.CACHED_STALE || syncStatus == QuotaSyncStatus.CACHE_EXPIRED ->
+            if (isNightMode) TechAmber else InkWarningAmber
+        syncStatus == QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+        else -> primaryText
+    }
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(tileBg)
+            .clickable { onAccountClick() }
+            .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
+        verticalArrangement = Arrangement.spacedBy(1.5.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.5.dp),
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .background(dotColor, CircleShape)
+                )
+                if (account.isPinnedMain) {
+                    Text(
+                        text = "★",
+                        color = if (isNightMode) TechAmber else InkWarningAmber,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = account.displayTitle,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (areControlsVisible) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onRefreshClick,
+                        enabled = !isLoading,
+                        modifier = Modifier.size(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "刷新 ${account.displayTitle}",
+                            tint = secondaryText,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "删除 ${account.displayTitle}",
+                            tint = mutedText,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = valueText,
+            color = valueColor,
+            fontSize = if (isCompact) 10.5.sp else 12.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1662,7 +1842,20 @@ private fun SingleAntigravityAccountItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            val verifiedTime = snapshot?.formattedVerifiedTime ?: snapshot?.formattedQueriedAt
             when {
+                isDemoMock -> {
+                    Text(
+                        text = "暂无演示数据",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = "演示模式",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
                 syncStatus == QuotaSyncStatus.NOT_CONFIGURED -> {
                     Text(
                         text = "未配置 API Key · 点击呼出配置",
@@ -1688,16 +1881,99 @@ private fun SingleAntigravityAccountItem(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                else -> {
+                syncStatus == QuotaSyncStatus.UPDATED -> {
                     Text(
                         text = "官方接口: 连接正常",
                         color = secondaryText,
                         fontSize = if (isCompact) 9.sp else 10.sp
                     )
-                    val verifiedTime = snapshot?.formattedVerifiedTime ?: snapshot?.formattedQueriedAt
-                    val timeSuffix = if (syncStatus == QuotaSyncStatus.CACHED_STALE || syncStatus == QuotaSyncStatus.CACHE_EXPIRED) " (缓存)" else ""
                     Text(
-                        text = if (verifiedTime != null) "验证于 $verifiedTime$timeSuffix" else "刚刚验证",
+                        text = if (verifiedTime != null) "验证于 $verifiedTime" else "刚刚验证",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
+                syncStatus == QuotaSyncStatus.SYNCING -> {
+                    Text(
+                        text = "正在验证官方接口...",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = "同步中",
+                        color = if (isNightMode) TechCyan else InkProgress,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                syncStatus == QuotaSyncStatus.AWAITING_SYNC -> {
+                    Text(
+                        text = "等待首次同步 · 点击刷新",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = "待同步",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
+                syncStatus == QuotaSyncStatus.CACHED_STALE -> {
+                    Text(
+                        text = "使用缓存状态 · 等待更新",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = if (verifiedTime != null) "验证于 $verifiedTime (缓存)" else "缓存",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
+                syncStatus == QuotaSyncStatus.CACHE_EXPIRED -> {
+                    Text(
+                        text = "缓存已过期 · 等待恢复连接",
+                        color = if (isNightMode) TechRose else InkWarningRed,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = if (verifiedTime != null) "验证于 $verifiedTime (过期)" else "缓存过期",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
+                syncStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE -> {
+                    Text(
+                        text = "官方接口暂不可用 · 点击重试",
+                        color = if (isNightMode) TechRose else InkWarningRed,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = if (verifiedTime != null) "上次 $verifiedTime" else "连接失败",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
+                syncStatus == QuotaSyncStatus.DATA_FORMAT_ERROR -> {
+                    Text(
+                        text = "接口返回格式异常",
+                        color = if (isNightMode) TechRose else InkWarningRed,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = "格式异常",
+                        color = mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                    )
+                }
+                else -> {
+                    Text(
+                        text = "官方接口受限 · 稍后重试",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 9.sp else 10.sp
+                    )
+                    Text(
+                        text = verifiedTime ?: "暂不可用",
                         color = mutedText,
                         fontSize = if (isCompact) 7.5.sp else 8.5.sp
                     )

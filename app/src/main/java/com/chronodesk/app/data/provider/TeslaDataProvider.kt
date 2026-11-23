@@ -79,32 +79,35 @@ class TeslaDataProvider(
             val testResp = service.queryDataSource(auth, testQuery)
             GrafanaFrameParser.parseResultToRows(testResp, "A")
 
-            // 2. 查询车辆列表 SELECT id, name, model, trim_badging FROM cars
-            val carsQuery = GrafanaQueryBody(
-                queries = listOf(
-                    GrafanaQueryEntry(
-                        refId = "A",
-                        datasource = GrafanaDatasourceRef(settings.dataSourceUid, settings.dataSourceType),
-                        rawSql = "SELECT id, name, model, trim_badging FROM cars ORDER BY id LIMIT 50"
-                    )
-                )
+            // 2. 查询车辆列表 SELECT id, name, model, trim_badging, exterior_color FROM cars（兼容精简表结构）
+            val carListSqlCandidates = listOf(
+                "SELECT id, name, model, trim_badging, exterior_color FROM cars ORDER BY id LIMIT 50",
+                "SELECT id, name, model, trim_badging FROM cars ORDER BY id LIMIT 50",
+                "SELECT id, name FROM cars ORDER BY id LIMIT 50"
             )
-            val carsResp = try {
-                service.queryDataSource(auth, carsQuery)
-            } catch (_: Exception) {
-                // 若旧版数据库无 model/trim_badging 字段，回退基础字段查询
-                service.queryDataSource(
-                    auth,
-                    GrafanaQueryBody(
-                        queries = listOf(
-                            GrafanaQueryEntry(
-                                refId = "A",
-                                datasource = GrafanaDatasourceRef(settings.dataSourceUid, settings.dataSourceType),
-                                rawSql = "SELECT id, name FROM cars ORDER BY id LIMIT 50"
+            var carsResp: com.chronodesk.app.data.network.GrafanaQueryResponse? = null
+            var lastCarsException: Exception? = null
+            for (sql in carListSqlCandidates) {
+                try {
+                    carsResp = service.queryDataSource(
+                        auth,
+                        GrafanaQueryBody(
+                            queries = listOf(
+                                GrafanaQueryEntry(
+                                    "A",
+                                    GrafanaDatasourceRef(settings.dataSourceUid, settings.dataSourceType),
+                                    sql
+                                )
                             )
                         )
                     )
-                )
+                    break
+                } catch (e: Exception) {
+                    lastCarsException = e
+                }
+            }
+            if (carsResp == null) {
+                throw (lastCarsException ?: IllegalStateException("无法读取 cars 表"))
             }
             val carRows = GrafanaFrameParser.parseResultToRows(carsResp, "A")
             val cars = carRows.mapNotNull { row ->
@@ -112,7 +115,8 @@ class TeslaDataProvider(
                 val name = row.getString("name")
                 val model = row.getString("model")
                 val trimBadging = row.getString("trim_badging")
-                TeslaVehicle(id, name, model, trimBadging)
+                val exteriorColor = row.getString("exterior_color")
+                TeslaVehicle(id, name, model, trimBadging, exteriorColor)
             }
 
             if (cars.isEmpty()) {
@@ -165,11 +169,13 @@ class TeslaDataProvider(
             monthCharge = totalCharges.monthCharge
         )
 
-        // 查询车辆型号代码与配置信息（兼容精简表结构）
+        // 查询车辆型号代码与外观颜色信息（兼容精简表结构）
         var carModel = lastSnapshot?.car?.model
         var trimBadging = lastSnapshot?.car?.trimBadging
+        var exteriorColor = lastSnapshot?.car?.exteriorColor
         var carName = settings.carName.takeIf { it.isNotBlank() } ?: lastSnapshot?.car?.name ?: "Tesla"
         val carSqlCandidates = listOf(
+            "SELECT id, name, model, trim_badging, exterior_color FROM cars WHERE id = $carId LIMIT 1",
             "SELECT id, name, model, trim_badging FROM cars WHERE id = $carId LIMIT 1",
             "SELECT id, name, model FROM cars WHERE id = $carId LIMIT 1"
         )
@@ -183,6 +189,7 @@ class TeslaDataProvider(
                     }
                     carModel = carRow.getString("model") ?: carModel
                     trimBadging = carRow.getString("trim_badging") ?: trimBadging
+                    exteriorColor = carRow.getString("exterior_color") ?: exteriorColor
                 }
                 break
             } catch (_: Exception) {}
@@ -192,7 +199,8 @@ class TeslaDataProvider(
             id = carId,
             name = carName,
             model = carModel,
-            trimBadging = trimBadging
+            trimBadging = trimBadging,
+            exteriorColor = exteriorColor
         )
 
         return TeslaFullSnapshot(

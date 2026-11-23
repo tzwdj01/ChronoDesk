@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,6 +76,7 @@ import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TeslaSettingsDialog(
     viewModel: TeslaViewModel,
@@ -98,6 +101,7 @@ fun TeslaSettingsDialog(
     var refreshIntervalSec by remember { mutableIntStateOf(currentSettings.refreshIntervalSec) }
     var timeZone by remember { mutableStateOf(currentSettings.timeZone) }
     var allowHttp by remember { mutableStateOf(currentSettings.allowHttp) }
+    var vehicleColor by remember { mutableStateOf(currentSettings.vehicleColor) }
 
     LaunchedEffect(discoveredDatasources) {
         if (dataSourceUid.isBlank() && discoveredDatasources.isNotEmpty()) {
@@ -341,7 +345,8 @@ fun TeslaSettingsDialog(
                                     carName = carName,
                                     refreshIntervalSec = refreshIntervalSec,
                                     timeZone = timeZone,
-                                    allowHttp = allowHttp
+                                    allowHttp = allowHttp,
+                                    vehicleColor = vehicleColor
                                 )
                                 viewModel.testConnection(temp, token)
                             }
@@ -389,9 +394,10 @@ fun TeslaSettingsDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 if (discoveredDatasources.isNotEmpty()) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         discoveredDatasources.forEach { ds ->
                             val isSelected = dataSourceUid == ds.uid
@@ -443,9 +449,10 @@ fun TeslaSettingsDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 if (discoveredCars.isNotEmpty()) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         discoveredCars.forEach { car ->
                             val isSelected = carId == car.id
@@ -512,6 +519,8 @@ fun TeslaSettingsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    val selectedTextColor = if (isNightMode) Color.Black else Color.White
+
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = "刷新频率", color = primaryText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         Spacer(modifier = Modifier.height(4.dp))
@@ -527,8 +536,9 @@ fun TeslaSettingsDialog(
                                 ) {
                                     Text(
                                         text = "${sec}s",
-                                        color = if (isSel) Color.White else secondaryText,
-                                        fontSize = 11.sp
+                                        color = if (isSel) selectedTextColor else secondaryText,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
                                     )
                                 }
                             }
@@ -553,7 +563,50 @@ fun TeslaSettingsDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 8.5 车辆外观模型配色选择
+                Text(
+                    text = "车辆外观模型（默认展示 3D 写实车模）",
+                    color = primaryText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                val selectedOnCyan = if (isNightMode) Color.Black else Color.White
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        "AUTO" to "自动匹配",
+                        "RED" to "烈焰红",
+                        "RED_CLASSIC" to "经典红",
+                        "WHITE" to "珍珠白",
+                        "BLACK" to "纯黑",
+                        "SILVER" to "星空灰",
+                        "BLUE" to "深海蓝"
+                    ).forEach { (key, label) ->
+                        val isSel = vehicleColor == key
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) (if (isNightMode) TechCyan else Color(0xFF0284C7)) else (if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated))
+                                .clickable { vehicleColor = key }
+                                .padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSel) selectedOnCyan else secondaryText,
+                                fontSize = 10.5.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // 9. 底部操作按钮：清除连接 + 取消 + 保存生效
                 Row(
@@ -615,7 +668,8 @@ fun TeslaSettingsDialog(
                                         carName = carName.trim(),
                                         refreshIntervalSec = refreshIntervalSec,
                                         timeZone = timeZone.trim(),
-                                        allowHttp = allowHttp
+                                        allowHttp = allowHttp,
+                                        vehicleColor = vehicleColor
                                     )
                                     val saved = viewModel.updateSettings(updated, token.takeIf { it.isNotBlank() })
                                     if (saved) {
@@ -631,13 +685,13 @@ fun TeslaSettingsDialog(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    tint = selectedOnCyan,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "保存并生效",
-                                    color = Color.White,
+                                    color = selectedOnCyan,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )

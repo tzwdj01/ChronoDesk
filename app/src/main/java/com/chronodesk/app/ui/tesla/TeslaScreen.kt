@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +68,9 @@ import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.model.VehicleLocation
 import com.chronodesk.app.data.model.VehicleState
 import com.chronodesk.app.data.utils.TeslaPhotoManager
+import com.chronodesk.app.data.utils.TeslaVehicleRenderLoader
+import androidx.compose.runtime.LaunchedEffect
+import java.util.Locale
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -112,14 +116,63 @@ fun TeslaScreen(
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
 
     val context = LocalContext.current
-    var showSilhouetteView by remember { mutableStateOf(false) } // false: 胎压图, true: 车型剪影/照片
+    var showTirePressureDetail by remember { mutableStateOf(false) } // 默认展示写实实车模型，点击切换四轮胎压俯视详情
+    var renderView by remember { mutableStateOf(TeslaVehicleRenderLoader.VIEW_STUD_3QTR) }
+    var renderReloadTrigger by remember { mutableIntStateOf(0) }
     var showLocationMapDialog by remember { mutableStateOf(false) }
     var photoReloadTrigger by remember { mutableIntStateOf(0) }
     val customPhotoBitmap = remember(settings.dataSourceUid, settings.carId, photoReloadTrigger) {
         TeslaPhotoManager.loadScaledBitmap(context, settings.dataSourceUid, settings.carId)
+    }
+
+    val resolvedModel = snapshot.car?.normalizedModel ?: "Model 3"
+    val resolvedColor = if (settings.vehicleColor == "AUTO") {
+        snapshot.car?.normalizedExteriorColor ?: "RED"
+    } else {
+        settings.vehicleColor
+    }
+    val colorDisplayLabel = when (resolvedColor) {
+        "RED" -> "烈焰红"
+        "RED_CLASSIC" -> "经典红"
+        "WHITE" -> "珍珠白"
+        "BLACK" -> "纯黑"
+        "SILVER" -> "星空灰"
+        "BLUE" -> "深海蓝"
+        else -> "烈焰红"
+    }
+    val paintDotColor = when (resolvedColor) {
+        "RED", "RED_CLASSIC" -> Color(0xFFDC2626)
+        "WHITE" -> Color(0xFFE2E8F0)
+        "BLACK" -> Color(0xFF334155)
+        "SILVER" -> Color(0xFF64748B)
+        "BLUE" -> Color(0xFF2563EB)
+        else -> Color(0xFFDC2626)
+    }
+
+    var vehicleRenderBitmap by remember(resolvedModel, resolvedColor, renderView) {
+        mutableStateOf(
+            TeslaVehicleRenderLoader.loadCachedBitmap(context, resolvedModel, resolvedColor, renderView)
+        )
+    }
+    var isLoadingRender by remember { mutableStateOf(false) }
+    var renderLoadFailed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(resolvedModel, resolvedColor, renderView, renderReloadTrigger) {
+        val cached = TeslaVehicleRenderLoader.loadCachedBitmap(context, resolvedModel, resolvedColor, renderView)
+        if (cached != null) {
+            vehicleRenderBitmap = cached
+            isLoadingRender = false
+            renderLoadFailed = false
+        } else {
+            isLoadingRender = true
+            renderLoadFailed = false
+            val fetched = TeslaVehicleRenderLoader.fetchOrLoadBitmap(context, resolvedModel, resolvedColor, renderView)
+            vehicleRenderBitmap = fetched
+            isLoadingRender = false
+            renderLoadFailed = (fetched == null)
+        }
     }
 
     if (showLocationMapDialog && snapshot.location.isValid) {
@@ -141,7 +194,7 @@ fun TeslaScreen(
                     TeslaPhotoManager.savePhoto(context, settings.dataSourceUid, settings.carId, stream)
                 }
                 photoReloadTrigger++
-                showSilhouetteView = true
+                showTirePressureDetail = false
                 Toast.makeText(context, "车辆照片已更新", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "照片保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -154,8 +207,10 @@ fun TeslaScreen(
             .fillMaxSize()
             .background(bgColor)
             .padding(
-                horizontal = if (isCompact) 14.dp else 20.dp,
-                vertical = if (isCompact) 6.dp else 10.dp
+                start = if (isCompact) 14.dp else 20.dp,
+                end = if (isCompact) 14.dp else 20.dp,
+                top = if (isCompact) 6.dp else 10.dp,
+                bottom = if (isCompact) 16.dp else 20.dp
             )
     ) {
         // ================= 顶栏：车辆名称 + 状态徽标 + 小时钟 + 同步时间与控制胶囊 =================
@@ -257,7 +312,7 @@ fun TeslaScreen(
                 )
             }
 
-            // 中列：纯自绘俯视车辆 Canvas / 车型侧面剪影 / 自定义照片 (点击可切换视角)
+            // 中列：默认写实 3D 实车模型 / 自定义照片，支持一键切换独立无遮挡的四轮胎压俯视图
             Box(
                 modifier = Modifier
                     .weight(1.25f)
@@ -265,88 +320,136 @@ fun TeslaScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 6.dp else 10.dp),
+                    .padding(if (isCompact) 7.dp else 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (showSilhouetteView) {
-                    // 展示侧面剪影或自定义照片
+                val actionBg = if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
+                val actionBorder = if (isNightMode) DarkBorder else InkBorder
+                val accentTint = if (isNightMode) TechCyan else Color(0xFF0284C7)
+
+                if (!showTirePressureDetail) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // 顶部操作小栏
+                        // 顶部独立操作行：左侧车型+车漆徽标，右侧零遮挡小胶囊
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 切换为胎压视图
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                                    .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(4.dp))
-                                    .clickable { showSilhouetteView = false }
-                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.SwapHoriz,
-                                        contentDescription = "查看四轮胎压",
-                                        tint = if (isNightMode) TechCyan else InkTextPrimary,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "胎压视图",
-                                        color = primaryText,
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(RoundedCornerShape(3.5.dp))
+                                        .background(paintDotColor)
+                                        .border(0.6.dp, cardBorder, RoundedCornerShape(3.5.dp))
+                                )
+                                Text(
+                                    text = "$resolvedModel · $colorDisplayLabel",
+                                    color = primaryText,
+                                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
 
-                            // 照片操作区
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (customPhotoBitmap != null) {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(4.dp))
-                                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                                            .background(actionBg)
+                                            .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
                                             .clickable {
                                                 TeslaPhotoManager.deletePhoto(context, settings.dataSourceUid, settings.carId)
                                                 photoReloadTrigger++
-                                                Toast.makeText(context, "已恢复车型矢量剪影", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "已恢复 3D 实车模型", Toast.LENGTH_SHORT).show()
                                             }
-                                            .padding(horizontal = 5.dp, vertical = 3.dp)
+                                            .padding(horizontal = 5.dp, vertical = 2.5.dp)
                                     ) {
-                                        Text("恢复剪影", color = TextTertiary, fontSize = 9.sp)
+                                        Text(
+                                            text = if (isCompact) "实车" else "恢复实车",
+                                            color = secondaryText,
+                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(actionBg)
+                                            .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
+                                            .clickable {
+                                                renderView = if (renderView == TeslaVehicleRenderLoader.VIEW_STUD_3QTR) {
+                                                    TeslaVehicleRenderLoader.VIEW_SIDE
+                                                } else {
+                                                    TeslaVehicleRenderLoader.VIEW_STUD_3QTR
+                                                }
+                                            }
+                                            .padding(horizontal = 5.dp, vertical = 2.5.dp)
+                                    ) {
+                                        Text(
+                                            text = if (renderView == TeslaVehicleRenderLoader.VIEW_STUD_3QTR) "侧面" else "3/4",
+                                            color = secondaryText,
+                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                 }
 
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                                        .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(4.dp))
-                                        .clickable {
-                                            photoPickerLauncher.launch("image/*")
-                                        }
-                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                        .background(actionBg)
+                                        .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
+                                        .clickable { showTirePressureDetail = true }
+                                        .padding(horizontal = 5.dp, vertical = 2.5.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.SwapHoriz,
+                                            contentDescription = "查看四轮胎压",
+                                            tint = accentTint,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Text(
+                                            text = "胎压",
+                                            color = primaryText,
+                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(actionBg)
+                                        .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
+                                        .clickable { photoPickerLauncher.launch("image/*") }
+                                        .padding(horizontal = 5.dp, vertical = 2.5.dp)
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
                                             imageVector = Icons.Default.Image,
-                                            contentDescription = "自定义照片",
-                                            tint = if (isNightMode) TechCyan else InkTextPrimary,
-                                            modifier = Modifier.size(11.dp)
+                                            contentDescription = "自定义车辆照片",
+                                            tint = accentTint,
+                                            modifier = Modifier.size(10.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(2.dp))
                                         Text(
-                                            text = if (customPhotoBitmap != null) "换照片" else "自定义照片",
+                                            text = if (isCompact) "照片" else "换照片",
                                             color = primaryText,
-                                            fontSize = 9.5.sp,
+                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
@@ -354,67 +457,173 @@ fun TeslaScreen(
                             }
                         }
 
-                        // 中央主体：有照片优先照片，无照片自绘剪影
+                        // 中央实车渲染展示区
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .clickable { showSilhouetteView = false },
+                                .padding(vertical = if (isCompact) 2.dp else 4.dp)
+                                .then(
+                                    if (isNightMode) {
+                                        Modifier.background(
+                                            brush = Brush.radialGradient(
+                                                colors = listOf(
+                                                    Color(0xFF1E3A5F).copy(alpha = 0.55f),
+                                                    Color(0xFF0F223D).copy(alpha = 0.25f),
+                                                    Color.Transparent
+                                                )
+                                            ),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (customPhotoBitmap != null) {
-                                Image(
-                                    bitmap = customPhotoBitmap,
-                                    contentDescription = "车辆自定义照片",
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                            } else {
-                                VehicleSilhouetteCanvas(
-                                    model = snapshot.car?.model,
-                                    isNightMode = isNightMode,
-                                    isCompact = isCompact
-                                )
+                            when {
+                                customPhotoBitmap != null -> {
+                                    Image(
+                                        bitmap = customPhotoBitmap,
+                                        contentDescription = "车辆自定义照片",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { showTirePressureDetail = true }
+                                    )
+                                }
+                                vehicleRenderBitmap != null -> {
+                                    Image(
+                                        bitmap = vehicleRenderBitmap!!,
+                                        contentDescription = "$resolvedModel $colorDisplayLabel 实车模型",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable {
+                                                renderView = if (renderView == TeslaVehicleRenderLoader.VIEW_STUD_3QTR) {
+                                                    TeslaVehicleRenderLoader.VIEW_SIDE
+                                                } else {
+                                                    TeslaVehicleRenderLoader.VIEW_STUD_3QTR
+                                                }
+                                            }
+                                    )
+                                }
+                                else -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        VehicleSilhouetteCanvas(
+                                            model = snapshot.car?.model,
+                                            isNightMode = isNightMode,
+                                            isCompact = isCompact,
+                                            accentBodyColor = paintDotColor
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(actionBg.copy(alpha = 0.9f))
+                                                .clickable(enabled = renderLoadFailed) { renderReloadTrigger++ }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isLoadingRender) "正在加载实车模型…" else "离线轮廓 · 点击重试加载实车",
+                                                color = if (renderLoadFailed) accentTint else secondaryText,
+                                                fontSize = 8.5.sp
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
-                } else {
-                    // 俯视四轮胎压图
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        TirePressureDiagram(
-                            snapshot = snapshot.snapshot,
+
+                        // 底部紧凑四轮胎压摘要条
+                        CompactTpmsSummaryBar(
+                            fl = snapshot.snapshot.tpmsPressureFl,
+                            fr = snapshot.snapshot.tpmsPressureFr,
+                            rl = snapshot.snapshot.tpmsPressureRl,
+                            rr = snapshot.snapshot.tpmsPressureRr,
                             isNightMode = isNightMode,
                             isCompact = isCompact,
-                            modifier = Modifier.align(Alignment.Center)
+                            onClick = { showTirePressureDetail = true }
                         )
+                    }
+                } else {
+                    // 俯视四轮胎压图：顶部独立操作条，完全消除旧版按钮遮挡右前胎压的缺陷
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(actionBg)
+                                    .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
+                                    .clickable { showTirePressureDetail = false }
+                                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwapHoriz,
+                                        contentDescription = "返回实车模型",
+                                        tint = accentTint,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = if (customPhotoBitmap != null) "返回照片" else "返回实车",
+                                        color = primaryText,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
 
-                        // 右上角提供切换到车型图的快捷小胶囊
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(actionBg)
+                                    .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
+                                    .clickable { photoPickerLauncher.launch("image/*") }
+                                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Image,
+                                        contentDescription = "自定义照片",
+                                        tint = accentTint,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = if (customPhotoBitmap != null) "换照片" else "自定义照片",
+                                        color = primaryText,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.85f) else InkSurfaceElevated.copy(alpha = 0.85f))
-                                .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(4.dp))
-                                .clickable { showSilhouetteView = true }
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.SwapHoriz,
-                                    contentDescription = "查看车型剪影",
-                                    tint = if (isNightMode) TechCyan else InkTextPrimary,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = if (customPhotoBitmap != null) "照片" else "车型",
-                                    color = primaryText,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                            TirePressureDiagram(
+                                snapshot = snapshot.snapshot,
+                                isNightMode = isNightMode,
+                                isCompact = isCompact
+                            )
                         }
                     }
                 }
@@ -1266,8 +1475,9 @@ private fun TeslaLocationCard(
             if (location.isValid) {
                 Box(
                     modifier = Modifier
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .clickable { onOpenMap() },
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onOpenMap() }
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -1275,6 +1485,78 @@ private fun TeslaLocationCard(
                         color = if (isNightMode) TechCyan else Color(0xFF0284C7),
                         fontSize = if (isCompact) 9.sp else 10.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactTpmsSummaryBar(
+    fl: Double?,
+    fr: Double?,
+    rl: Double?,
+    rr: Double?,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    onClick: () -> Unit
+) {
+    val hasAny = fl != null || fr != null || rl != null || rr != null
+    val bg = if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.72f) else InkSurfaceElevated.copy(alpha = 0.8f)
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+
+    fun fmt(v: Double?): String = if (v != null) String.format(Locale.US, "%.2f", v) else "—"
+    fun tone(v: Double?): Color = when {
+        v == null -> secondaryText
+        v < 2.4 -> if (isNightMode) TechRose else Color(0xFFDC2626)
+        v > 3.2 -> if (isNightMode) TechAmber else Color(0xFFD97706)
+        else -> if (isNightMode) TechEmerald else Color(0xFF16A34A)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(bg)
+            .clickable { onClick() }
+            .padding(horizontal = if (isCompact) 6.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!hasAny) {
+            Text(
+                text = "点击查看四轮胎压 (暂无采样)",
+                color = secondaryText,
+                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+            )
+        } else {
+            val items = listOf(
+                (if (isCompact) "前左" else "左前") to fl,
+                (if (isCompact) "前右" else "右前") to fr,
+                (if (isCompact) "后左" else "左后") to rl,
+                (if (isCompact) "后右" else "右后") to rr
+            )
+            items.forEach { (label, valP) ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = label,
+                        color = secondaryText,
+                        fontSize = if (isCompact) 8.sp else 9.sp,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Text(
+                        text = fmt(valP),
+                        color = tone(valP),
+                        fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

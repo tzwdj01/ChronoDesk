@@ -47,6 +47,7 @@ fun VehicleSilhouetteCanvas(
     model: String?,
     isNightMode: Boolean,
     isCompact: Boolean = false,
+    accentBodyColor: Color? = null,
     modifier: Modifier = Modifier
 ) {
     val normalized = when (model?.uppercase()?.trim()) {
@@ -56,8 +57,9 @@ fun VehicleSilhouetteCanvas(
         else -> "Model 3"
     }
 
-    val carStroke = if (isNightMode) TechCyan.copy(alpha = 0.85f) else Color(0xFF334155)
-    val carFill = if (isNightMode) Color(0xFF0F172A).copy(alpha = 0.85f) else Color(0xFFE2E8F0)
+    val carStroke = accentBodyColor ?: if (isNightMode) TechCyan.copy(alpha = 0.85f) else Color(0xFF334155)
+    val carFill = accentBodyColor?.copy(alpha = if (isNightMode) 0.42f else 0.78f)
+        ?: if (isNightMode) Color(0xFF0F172A).copy(alpha = 0.85f) else Color(0xFFE2E8F0)
     val glassColor = if (isNightMode) TechCyan.copy(alpha = 0.25f) else Color(0xFF94A3B8).copy(alpha = 0.45f)
     val wheelTire = if (isNightMode) Color(0xFF1E293B) else Color(0xFF1E293B)
     val wheelRim = if (isNightMode) TechCyan.copy(alpha = 0.7f) else Color(0xFF64748B)

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -66,7 +68,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -79,6 +80,7 @@ import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.ui.settings.AccountManagerDialog
 import com.chronodesk.app.ui.settings.DeviceAuthDialog
 import com.chronodesk.app.ui.settings.SettingsDialog
+import com.chronodesk.app.ui.settings.SettingsTab
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkColon
@@ -101,7 +103,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class
+)
 @Composable
 fun ClockScreen(
     viewModel: ClockViewModel,
@@ -114,7 +119,6 @@ fun ClockScreen(
 
     val timeState by viewModel.timeState.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    val weather by viewModel.weather.collectAsState()
     val weatherList by viewModel.weatherList.collectAsState()
 
     val accounts by viewModel.accounts.collectAsState()
@@ -171,13 +175,35 @@ fun ClockScreen(
     }
 
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var settingsInitialTab by remember { mutableStateOf(SettingsTab.DISPLAY) }
     var showTeslaSettingsDialog by remember { mutableStateOf(false) }
     var selectedAccountToManage by remember { mutableStateOf<CodexAccount?>(null) }
     var showDeviceAuthDialogForAccount by remember { mutableStateOf<CodexAccount?>(null) }
 
+    // 首页已开启 Tesla 时，若冷启动尚无缓存快照则单次补拉一次，让首页续航胶囊即时展示（不改变后台/熄屏轮询规则）
+    LaunchedEffect(teslaSettings.enabled, teslaSettings.isConfigured) {
+        if (teslaSettings.enabled && teslaSettings.isConfigured && !teslaSnapshot.isAvailable && !teslaSnapshot.connectionState.isLoading) {
+            teslaViewModel.refreshNow()
+        }
+    }
+
+    val teslaSummaryText = when {
+        !teslaSettings.enabled -> "未启用车辆监控"
+        !teslaSettings.isConfigured -> "已启用但尚未完成 Grafana / 数据源配置"
+        else -> {
+            val name = teslaSnapshot.car?.displayName ?: teslaSettings.carName.ifBlank { "Tesla #${teslaSettings.carId}" }
+            val soc = teslaSnapshot.snapshot.batteryLevel?.let { "$it%" } ?: "待同步"
+            val range = teslaSnapshot.snapshot.ratedBatteryRangeKm?.let { "${it.toInt()}km" } ?: ""
+            listOf(name, soc, range).filter { it.isNotBlank() }.joinToString(" · ")
+        }
+    }
+
     if (showSettingsDialog) {
         SettingsDialog(
             currentSettings = settings,
+            isNightMode = isNightMode,
+            initialTab = settingsInitialTab,
+            teslaStatusSummary = teslaSummaryText,
             onDismiss = { showSettingsDialog = false },
             onSave = { updated -> viewModel.updateSettings(updated) },
             onOpenTeslaSettings = {
@@ -332,6 +358,8 @@ fun ClockScreen(
     ) {
         val screenHeight = maxHeight
         val isCompactHeight = screenHeight < 380.dp
+        val containerWidthDp = maxWidth.value
+        val containerHeightDp = maxHeight.value
 
         // 背景绘制：日间水墨写意山水 / 夜间赛博深空微光流线
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -375,51 +403,44 @@ fun ClockScreen(
             }
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
-            // ================= 顶部公共导航栏 (页面 0 与 页面 1 显示，页面 2 为 Tesla 专属顶栏) =================
-            if (pagerState.currentPage != 2) {
-                ClockTopBar(
-                    isNightMode = isNightMode,
-                    accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
-                    nightModeOption = settings.nightModeOption,
-                    isCompact = isCompactHeight,
-                    onAddAccount = {
-                        selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
-                    },
-                    onRefreshAll = {
-                        viewModel.refreshAll()
-                        Toast.makeText(context, "已触发全量额度刷新", Toast.LENGTH_SHORT).show()
-                    },
-                    onToggleNightMode = {
-                        val next = viewModel.toggleNightMode()
-                        val msg = if (next == "FORCE_NIGHT") "已切换为：深色科技模式" else "已切换为：水墨墨水屏模式"
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    },
-                    onOpenSettings = { showSettingsDialog = true }
-                )
-            }
-
-            // ================= 中间区域：HorizontalPager 双页滑屏 =================
+        Box(modifier = Modifier.fillMaxSize()) {
+            // ================= 底层主体：HorizontalPager 多页滑屏铺满画布，最大化空间利用率 =================
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = Modifier.fillMaxSize()
             ) { page ->
                 if (page == 0) {
-                    // 第一页：主页面 (大时钟 + 日期/星期/农历 + 气象 + AI 额度看板)
+                    // 第一页：主页面 (大时钟 + 日期/星期/农历 + 气象/车辆续航 + AI 额度看板)
+                    val showHomeTesla = settings.showTeslaOnHome && teslaSettings.enabled && teslaSettings.isConfigured
+                    val teslaDisplayLabel = teslaSnapshot.car?.normalizedModel
+                        ?: teslaSettings.carName.takeIf { it.isNotBlank() && it.length <= 12 }
+                        ?: "Tesla"
+
                     if (isLandscape) {
                         val quotaFraction = (settings.quotaWidthPercent / 100f).coerceIn(0.28f, 0.52f)
                         val clockFraction = 1f - quotaFraction
+                        val outerHPadDp = if (isCompactHeight) 14f else 22f
+                        val rowGapDp = if (isCompactHeight) 14f else 24f
+                        val leftColWidthDp = ((containerWidthDp - outerHPadDp * 2f - rowGapDp) * clockFraction).coerceAtLeast(160f)
+                        val reservedHeightDp = (if (isCompactHeight) 22f else 28f) +
+                            (if (isCompactHeight) 48f else 62f) +
+                            (if (showHomeTesla && isCompactHeight) 74f else if (showHomeTesla || weatherList.size > 1) 46f else 36f) +
+                            (if (areControlsVisible && (settings.clockScale != 1.0f || settings.clockOffsetX != 0f || settings.clockOffsetY != 0f)) 26f else 0f)
+                        val maxClockHeightDp = (containerHeightDp - reservedHeightDp).coerceAtLeast(80f)
 
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = if (isCompactHeight) 14.dp else 22.dp),
+                                .padding(
+                                    start = if (isCompactHeight) 14.dp else 22.dp,
+                                    end = if (isCompactHeight) 14.dp else 22.dp,
+                                    top = if (isCompactHeight) 8.dp else 10.dp,
+                                    bottom = if (isCompactHeight) 14.dp else 18.dp
+                                ),
                             horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 14.dp else 24.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // 左侧：视觉中心 —— 大尺寸翻牌时钟 + 公历农历 + 气象胶囊
+                            // 左侧：视觉中心 —— 大尺寸翻牌时钟 + 公历农历 + 气象/车辆胶囊
                             Column(
                                 modifier = Modifier
                                     .weight(clockFraction)
@@ -427,7 +448,7 @@ fun ClockScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                // 翻牌数字时钟（支持缩放与平移手势及设置）
+                                // 翻牌数字时钟：由组件按真实布局尺寸缩放，永不挤压或覆盖下方日期行
                                 Box(
                                     modifier = Modifier
                                         .offset {
@@ -435,10 +456,6 @@ fun ClockScreen(
                                                 settings.clockOffsetX.roundToInt(),
                                                 settings.clockOffsetY.roundToInt()
                                             )
-                                        }
-                                        .graphicsLayer {
-                                            scaleX = settings.clockScale
-                                            scaleY = settings.clockScale
                                         }
                                         .then(
                                             if (areControlsVisible) {
@@ -465,6 +482,9 @@ fun ClockScreen(
                                         second = if (settings.showSeconds) timeState.second else null,
                                         isNightMode = isNightMode,
                                         isCompact = isCompactHeight,
+                                        scale = settings.clockScale,
+                                        maxWidthDp = leftColWidthDp - 4f,
+                                        maxHeightDp = maxClockHeightDp,
                                         onClick = { areControlsVisible = !areControlsVisible },
                                         onToggleSeconds = {
                                             val newState = viewModel.toggleShowSeconds()
@@ -475,7 +495,7 @@ fun ClockScreen(
                                 }
 
                                 if (areControlsVisible && (settings.clockScale != 1.0f || settings.clockOffsetX != 0f || settings.clockOffsetY != 0f)) {
-                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Spacer(modifier = Modifier.height(5.dp))
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(10.dp))
@@ -501,18 +521,17 @@ fun ClockScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(if (isCompactHeight) 6.dp else 15.dp))
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 10.dp else 16.dp))
 
                                 // 公历日期 + 星期 + 农历完整呈现
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 5.dp else 7.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(if (isCompactHeight) 5.dp else 8.dp)
                                 ) {
-                                    // 公历日期 (如: 11月19日)
                                     Text(
                                         text = timeState.dateString,
                                         color = if (isNightMode) TextPrimary else InkTextPrimary,
-                                        fontSize = if (isCompactHeight) 13.sp else 16.5.sp,
+                                        fontSize = if (isCompactHeight) 13.5.sp else 16.5.sp,
                                         fontWeight = FontWeight.Medium
                                     )
 
@@ -522,11 +541,10 @@ fun ClockScreen(
                                         fontSize = if (isCompactHeight) 12.sp else 14.sp
                                     )
 
-                                    // 星期 (如: 星期四)
                                     Text(
                                         text = timeState.dayOfWeek,
                                         color = if (isNightMode) TechCyan else InkTextPrimary,
-                                        fontSize = if (isCompactHeight) 13.sp else 16.5.sp,
+                                        fontSize = if (isCompactHeight) 13.5.sp else 16.5.sp,
                                         fontWeight = FontWeight.Medium
                                     )
 
@@ -536,33 +554,94 @@ fun ClockScreen(
                                         fontSize = if (isCompactHeight) 12.sp else 14.sp
                                     )
 
-                                    // 农历 (如: 农历十月初十)
                                     Text(
                                         text = timeState.lunarDateString,
                                         color = if (isNightMode) TextSecondary else InkTextSecondary,
-                                        fontSize = if (isCompactHeight) 12.5.sp else 15.5.sp,
+                                        fontSize = if (isCompactHeight) 13.sp else 15.5.sp,
                                         fontWeight = FontWeight.Normal
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(if (isCompactHeight) 6.dp else 14.dp))
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 8.dp else 13.dp))
 
-                                // 天气胶囊卡片（支持单地区或多地区多行并列呈现，点击直达城市与定位设置）
-                                MultiCityWeatherCapsule(
-                                    weatherList = weatherList,
-                                    isNightMode = isNightMode,
-                                    isCompact = isCompactHeight,
-                                    onCardClick = {
-                                        showSettingsDialog = true
+                                // 天气与车辆电量/续航胶囊区
+                                if (!showHomeTesla) {
+                                    MultiCityWeatherCapsule(
+                                        weatherList = weatherList,
+                                        isNightMode = isNightMode,
+                                        isCompact = isCompactHeight,
+                                        onCardClick = {
+                                            settingsInitialTab = SettingsTab.WEATHER
+                                            showSettingsDialog = true
+                                        }
+                                    )
+                                } else if (!isCompactHeight && weatherList.size <= 1) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        MultiCityWeatherCapsule(
+                                            weatherList = weatherList,
+                                            isNightMode = isNightMode,
+                                            isCompact = false,
+                                            onCardClick = {
+                                                settingsInitialTab = SettingsTab.WEATHER
+                                                showSettingsDialog = true
+                                            }
+                                        )
+                                        HomeTeslaCapsule(
+                                            vehicleLabel = teslaDisplayLabel,
+                                            batteryLevel = teslaSnapshot.snapshot.batteryLevel,
+                                            ratedRangeKm = teslaSnapshot.snapshot.ratedBatteryRangeKm,
+                                            isCharging = teslaSnapshot.state.isCharging,
+                                            chargerPowerKw = teslaSnapshot.charging.chargerPower,
+                                            isNightMode = isNightMode,
+                                            isCompact = false,
+                                            onClick = {
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(2)
+                                                }
+                                            }
+                                        )
                                     }
-                                )
+                                } else {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 6.dp else 8.dp)
+                                    ) {
+                                        MultiCityWeatherCapsule(
+                                            weatherList = weatherList,
+                                            isNightMode = isNightMode,
+                                            isCompact = isCompactHeight,
+                                            onCardClick = {
+                                                settingsInitialTab = SettingsTab.WEATHER
+                                                showSettingsDialog = true
+                                            }
+                                        )
+                                        HomeTeslaCapsule(
+                                            vehicleLabel = teslaDisplayLabel,
+                                            batteryLevel = teslaSnapshot.snapshot.batteryLevel,
+                                            ratedRangeKm = teslaSnapshot.snapshot.ratedBatteryRangeKm,
+                                            isCharging = teslaSnapshot.state.isCharging,
+                                            chargerPowerKw = teslaSnapshot.charging.chargerPower,
+                                            isNightMode = isNightMode,
+                                            isCompact = isCompactHeight,
+                                            onClick = {
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(2)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
 
-                            // 右侧：多模型/多账号 AI 额度监控看板 (ChatGPT, DeepSeek)
+                            // 右侧：多模型/多账号 AI 额度监控看板（顶部避让悬浮控制条）
                             Column(
                                 modifier = Modifier
                                     .weight(quotaFraction)
-                                    .fillMaxHeight(),
+                                    .fillMaxHeight()
+                                    .padding(top = if (isCompactHeight) 40.dp else 46.dp),
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 MultiAccountQuotaSection(
@@ -598,7 +677,10 @@ fun ClockScreen(
                                     },
                                     onRefreshAll = { viewModel.refreshAll() },
                                     onToggleNightMode = { viewModel.toggleNightMode() },
-                                    onSettingsClick = { showSettingsDialog = true },
+                                    onSettingsClick = {
+                                        settingsInitialTab = SettingsTab.DISPLAY
+                                        showSettingsDialog = true
+                                    },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -609,16 +691,18 @@ fun ClockScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
-                                .padding(16.dp),
+                                .padding(start = 16.dp, end = 16.dp, top = 52.dp, bottom = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             LargeFlipClockDisplay(
                                 hour = timeState.hour,
                                 minute = timeState.minute,
                                 second = if (settings.showSeconds) timeState.second else null,
                                 isNightMode = isNightMode,
-                                isCompact = false
+                                isCompact = false,
+                                scale = settings.clockScale,
+                                maxWidthDp = (containerWidthDp - 32f).coerceAtLeast(160f)
                             )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -631,8 +715,28 @@ fun ClockScreen(
                             MultiCityWeatherCapsule(
                                 weatherList = weatherList,
                                 isNightMode = isNightMode,
-                                onCardClick = { viewModel.refreshAll() }
+                                onCardClick = {
+                                    settingsInitialTab = SettingsTab.WEATHER
+                                    showSettingsDialog = true
+                                }
                             )
+
+                            if (showHomeTesla) {
+                                HomeTeslaCapsule(
+                                    vehicleLabel = teslaDisplayLabel,
+                                    batteryLevel = teslaSnapshot.snapshot.batteryLevel,
+                                    ratedRangeKm = teslaSnapshot.snapshot.ratedBatteryRangeKm,
+                                    isCharging = teslaSnapshot.state.isCharging,
+                                    chargerPowerKw = teslaSnapshot.charging.chargerPower,
+                                    isNightMode = isNightMode,
+                                    isCompact = false,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(2)
+                                        }
+                                    }
+                                )
+                            }
 
                             MultiAccountQuotaSection(
                                 accounts = accounts,
@@ -651,19 +755,34 @@ fun ClockScreen(
                         }
                     }
                 } else if (page == 1) {
-                    // 第二页：扩展页面 (AI 模型 Token 监控、官方接口遥测与系统运行状态)
+                    // 第二页：扩展页面 (大字 AI 额度监控与接口状态)
                     ClockExtensionPage(
                         accounts = accounts,
                         snapshots = snapshots,
+                        loadingMap = loadingMap,
                         settings = settings,
                         isNightMode = isNightMode,
+                        isCompact = isCompactHeight,
                         onRefreshAll = {
                             viewModel.refreshAll()
+                            if (teslaSettings.enabled && teslaSettings.isConfigured) {
+                                teslaViewModel.refreshNow()
+                            }
                             Toast.makeText(context, "已触发全量网关同步", Toast.LENGTH_SHORT).show()
                         },
-                        onOpenSettings = { showSettingsDialog = true },
+                        onOpenSettings = {
+                            settingsInitialTab = SettingsTab.DISPLAY
+                            showSettingsDialog = true
+                        },
                         onManageAccount = {
                             selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                        },
+                        onAccountClick = { acc ->
+                            if (!acc.isConfigured && acc.modelProvider == "CHATGPT") {
+                                showDeviceAuthDialogForAccount = acc
+                            } else {
+                                selectedAccountToManage = acc
+                            }
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -688,13 +807,45 @@ fun ClockScreen(
                 }
             }
 
-            // ================= 底部：多页面指示器小圆点 [ ● ○ ] 或 [ ● ○ ○ ] =================
+            // ================= 顶部悬浮导航控制栏 (页面 0 与 页面 1 右上角，不压低左侧时钟空间) =================
+            if (pagerState.currentPage != 2) {
+                ClockTopBar(
+                    isNightMode = isNightMode,
+                    accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
+                    nightModeOption = settings.nightModeOption,
+                    isCompact = isCompactHeight,
+                    onAddAccount = {
+                        selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                    },
+                    onRefreshAll = {
+                        viewModel.refreshAll()
+                        if (teslaSettings.enabled && teslaSettings.isConfigured) {
+                            teslaViewModel.refreshNow()
+                        }
+                        Toast.makeText(context, "已触发全量数据刷新", Toast.LENGTH_SHORT).show()
+                    },
+                    onToggleNightMode = {
+                        val next = viewModel.toggleNightMode()
+                        val msg = if (next == "FORCE_NIGHT") "已切换为：深色科技模式" else "已切换为：水墨墨水屏模式"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenSettings = {
+                        settingsInitialTab = SettingsTab.DISPLAY
+                        showSettingsDialog = true
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 2.dp)
+                )
+            }
+
+            // ================= 底部悬浮多页面指示器小圆点 [ ● ○ ] 或 [ ● ○ ○ ] (48dp 触控热区) =================
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = if (isCompactHeight) 3.dp else 6.dp),
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (isCompactHeight) 1.dp else 3.dp),
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Bottom
             ) {
                 val pageNames = listOf("时钟", "详情", "车辆")
                 for (i in 0 until pageCount) {
@@ -713,13 +864,14 @@ fun ClockScreen(
                             }
                             .semantics {
                                 contentDescription = pageName
-                            },
-                        contentAlignment = Alignment.Center
+                            }
+                            .padding(bottom = if (isCompactHeight) 4.dp else 6.dp),
+                        contentAlignment = Alignment.BottomCenter
                     ) {
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
-                                .height(5.dp)
+                                .height(4.5.dp)
                                 .width(if (isSelected) 16.dp else 5.dp)
                                 .clip(RoundedCornerShape(2.5.dp))
                                 .background(
@@ -758,8 +910,7 @@ private fun ClockTopBar(
 
     Row(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = if (isCompact) 14.dp else 20.dp, vertical = if (isCompact) 2.dp else 4.dp),
+            .padding(end = if (isCompact) 12.dp else 18.dp),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -917,30 +1068,40 @@ fun LargeFlipClockDisplay(
     second: Int?,
     isNightMode: Boolean,
     isCompact: Boolean = false,
+    scale: Float = 1.0f,
+    maxWidthDp: Float? = null,
+    maxHeightDp: Float? = null,
     onClick: () -> Unit = {},
     onToggleSeconds: () -> Unit = {}
 ) {
     val hasSeconds = second != null
-    // 动态黄金比例：当秒钟隐藏时，时分牌面适度放大，更加雄伟突出
-    val digitWidth = if (hasSeconds) {
-        if (isCompact) 56.dp else 74.dp
-    } else {
-        if (isCompact) 64.dp else 84.dp
-    }
-    val digitHeight = if (hasSeconds) {
-        if (isCompact) 106.dp else 142.dp
-    } else {
-        if (isCompact) 118.dp else 156.dp
-    }
-    val fontSize = if (hasSeconds) {
-        if (isCompact) 68.sp else 92.sp
-    } else {
-        if (isCompact) 76.sp else 102.sp
-    }
+    val baseWidthDp = if (hasSeconds) (if (isCompact) 308f else 414f) else (if (isCompact) 298f else 390f)
+    val baseHeightDp = if (hasSeconds) (if (isCompact) 110f else 146f) else (if (isCompact) 128f else 166f)
+    val maxScaleByW = if (maxWidthDp != null && maxWidthDp > 0f) maxWidthDp / baseWidthDp else 1.8f
+    val maxScaleByH = if (maxHeightDp != null && maxHeightDp > 0f) maxHeightDp / baseHeightDp else 1.8f
+    val effectiveScale = minOf(scale.coerceIn(0.6f, 1.8f), maxScaleByW, maxScaleByH).coerceIn(0.55f, 1.8f)
 
-    val secDigitWidth = if (isCompact) 20.dp else 28.dp
-    val secDigitHeight = if (isCompact) 34.dp else 46.dp
-    val secFontSize = if (isCompact) 17.sp else 22.sp
+    // 动态黄金比例并参与真实排版尺寸计算，彻底消除缩放时覆盖下方日期的行距失衡问题
+    val digitWidth = (if (hasSeconds) {
+        if (isCompact) 58f else 76f
+    } else {
+        if (isCompact) 68f else 88f
+    } * effectiveScale).dp
+    val digitHeight = (if (hasSeconds) {
+        if (isCompact) 110f else 146f
+    } else {
+        if (isCompact) 128f else 166f
+    } * effectiveScale).dp
+    val fontSize = (if (hasSeconds) {
+        if (isCompact) 70f else 94f
+    } else {
+        if (isCompact) 82f else 108f
+    } * effectiveScale).sp
+    val digitSpacing = (4.5f * effectiveScale).dp
+
+    val secDigitWidth = ((if (isCompact) 20f else 28f) * effectiveScale).dp
+    val secDigitHeight = ((if (isCompact) 34f else 46f) * effectiveScale).dp
+    val secFontSize = ((if (isCompact) 17f else 22f) * effectiveScale).sp
 
     Row(
         modifier = Modifier.clickable(
@@ -956,11 +1117,12 @@ fun LargeFlipClockDisplay(
             digitWidth = digitWidth,
             digitHeight = digitHeight,
             fontSize = fontSize,
+            digitSpacing = digitSpacing,
             isNightMode = isNightMode
         )
 
         // 冒号
-        BlinkingColon(isNightMode = isNightMode, isCompact = isCompact)
+        BlinkingColon(isNightMode = isNightMode, isCompact = isCompact, scale = effectiveScale)
 
         // 分钟翻牌
         FlipDigitPair(
@@ -968,15 +1130,16 @@ fun LargeFlipClockDisplay(
             digitWidth = digitWidth,
             digitHeight = digitHeight,
             fontSize = fontSize,
+            digitSpacing = digitSpacing,
             isNightMode = isNightMode
         )
 
-        // 秒钟翻牌：水平双位并排翻牌，完美对应参考图设计；点击秒钟可快速隐藏/切换
+        // 秒钟翻牌：水平双位并排翻牌；点击秒钟可快速隐藏/切换
         if (second != null) {
-            Spacer(modifier = Modifier.width(if (isCompact) 8.dp else 12.dp))
+            Spacer(modifier = Modifier.width(((if (isCompact) 8f else 12f) * effectiveScale).dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy((3f * effectiveScale).dp),
                 modifier = Modifier.clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -1006,7 +1169,7 @@ fun LargeFlipClockDisplay(
 }
 
 @Composable
-fun BlinkingColon(isNightMode: Boolean, isCompact: Boolean = false) {
+fun BlinkingColon(isNightMode: Boolean, isCompact: Boolean = false, scale: Float = 1.0f) {
     val alphaAnim = remember { Animatable(1f) }
 
     LaunchedEffect(Unit) {
@@ -1019,11 +1182,12 @@ fun BlinkingColon(isNightMode: Boolean, isCompact: Boolean = false) {
         )
     }
 
+    val effectiveScale = scale.coerceIn(0.55f, 1.8f)
     val colonColor = if (isNightMode) DarkColon else InkColon
-    val dotSize = if (isCompact) 4.5.dp else 6.5.dp
-    val dotSpacing = if (isCompact) 10.dp else 16.dp
-    val colonHeight = if (isCompact) 58.dp else 84.dp
-    val hPadding = if (isCompact) 4.dp else 10.dp
+    val dotSize = ((if (isCompact) 4.5f else 6.5f) * effectiveScale).dp
+    val dotSpacing = ((if (isCompact) 10f else 16f) * effectiveScale).dp
+    val colonHeight = ((if (isCompact) 58f else 84f) * effectiveScale).dp
+    val hPadding = ((if (isCompact) 4.5f else 10f) * effectiveScale).dp
 
     Box(
         modifier = Modifier

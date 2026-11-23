@@ -78,7 +78,8 @@ class ClockSettingsRepository(context: Context) {
             quotaCardDensity = prefs.getString("quota_card_density", "NORMAL") ?: "NORMAL",
             clockScale = prefs.getFloat("clock_scale", 1.0f),
             clockOffsetX = prefs.getFloat("clock_offset_x", 0f),
-            clockOffsetY = prefs.getFloat("clock_offset_y", 0f)
+            clockOffsetY = prefs.getFloat("clock_offset_y", 0f),
+            showTeslaOnHome = prefs.getBoolean("show_tesla_on_home", true)
         )
     }
 
@@ -106,6 +107,7 @@ class ClockSettingsRepository(context: Context) {
             .putFloat("clock_scale", newSettings.clockScale)
             .putFloat("clock_offset_x", newSettings.clockOffsetX)
             .putFloat("clock_offset_y", newSettings.clockOffsetY)
+            .putBoolean("show_tesla_on_home", newSettings.showTeslaOnHome)
             .apply()
         _settingsFlow.value = newSettings
     }

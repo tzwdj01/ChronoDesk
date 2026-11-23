@@ -8,23 +8,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,12 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
-import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.model.CodexUsageWindow
 import com.chronodesk.app.data.model.QuotaSyncStatus
 import com.chronodesk.app.data.model.SyncErrorType
 import com.chronodesk.app.ui.theme.DarkBorder
@@ -46,11 +41,9 @@ import com.chronodesk.app.ui.theme.DarkProgressTrack
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkBorder
-import com.chronodesk.app.ui.theme.InkBorderSubtle
 import com.chronodesk.app.ui.theme.InkProgress
 import com.chronodesk.app.ui.theme.InkProgressTrack
 import com.chronodesk.app.ui.theme.InkStatusGreen
-import com.chronodesk.app.ui.theme.InkStatusTagBg
 import com.chronodesk.app.ui.theme.InkSurface
 import com.chronodesk.app.ui.theme.InkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkTextPrimary
@@ -67,17 +60,21 @@ import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
 
 /**
- * 第二页（扩展页面）：AI 模型 Token 用量监控、官方接口遥测与系统运行状态
+ * 第二页（扩展页面）：大字远距优先的 AI 额度监控面板。
+ * 视觉重心聚焦 ChatGPT 多账号窗口残余额度，DeepSeek 与 Gemini 收敛为底部精简状态条。
  */
 @Composable
 fun ClockExtensionPage(
     accounts: List<CodexAccount> = emptyList(),
     snapshots: Map<String, CodexUsageSnapshot> = emptyMap(),
+    loadingMap: Map<String, Boolean> = emptyMap(),
     settings: ClockSettings,
     isNightMode: Boolean,
-    onRefreshAll: () -> Unit,
-    onOpenSettings: () -> Unit,
+    isCompact: Boolean = false,
+    onRefreshAll: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onManageAccount: () -> Unit = {},
+    onAccountClick: (CodexAccount) -> Unit = { onManageAccount() },
     modifier: Modifier = Modifier
 ) {
     val cardBg = if (isNightMode) DarkSurface else InkSurface
@@ -93,156 +90,173 @@ fun ClockExtensionPage(
     val antigravityAccounts = accounts.filter { it.modelProvider == "ANTIGRAVITY" && it.isVisibleOnSecond }
         .sortedByDescending { it.isPinnedMain }
 
+    val nowUnix = System.currentTimeMillis() / 1000L
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(11.dp)
+            .padding(
+                start = if (isCompact) 14.dp else 20.dp,
+                end = if (isCompact) 14.dp else 20.dp,
+                top = if (isCompact) 10.dp else 14.dp,
+                bottom = if (isCompact) 18.dp else 22.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 10.dp)
     ) {
-        // 第一行：页面标题与控制胶囊
+        // 顶栏左侧标题区：右侧留白供全局悬浮 ClockTopBar 使用，不再重复绘制操作按钮
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (isCompact) 32.dp else 36.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Text(
+                text = "AI 额度监控",
+                color = primaryText,
+                fontSize = if (isCompact) 15.sp else 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                    .clickable { onRefreshAll() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "AI 额度监控与接口状态",
-                    color = primaryText,
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "详情页 · 点击同步",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.sp else 10.sp
                 )
+            }
+            if (settings.useMockData) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                        .background(if (isNightMode) TechAmber.copy(alpha = 0.2f) else InkWarningAmber.copy(alpha = 0.15f))
+                        .border(0.8.dp, if (isNightMode) TechAmber else InkWarningAmber, RoundedCornerShape(4.dp))
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "扩展页 · 滑动返回主页",
-                        color = secondaryText,
-                        fontSize = 10.sp
+                        text = "演示数据",
+                        color = if (isNightMode) TechAmber else InkWarningAmber,
+                        fontSize = if (isCompact) 9.sp else 10.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                if (settings.useMockData) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (isNightMode) TechAmber.copy(alpha = 0.2f) else InkWarningAmber.copy(alpha = 0.15f))
-                            .border(0.8.dp, if (isNightMode) TechAmber else InkWarningAmber, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+            }
+        }
+
+        // ================= 主体 Hero 区 (~72%-76%): ChatGPT 高对比大字监控 =================
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            if (chatGptAccounts.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(cardBg)
+                        .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                        .clickable { onManageAccount() }
+                        .padding(20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "演示数据",
-                            color = if (isNightMode) TechAmber else InkWarningAmber,
-                            fontSize = 10.sp,
+                            text = "尚未在扩展页显示 ChatGPT 账号",
+                            color = primaryText,
+                            fontSize = if (isCompact) 14.sp else 16.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "点击管理或授权账号，在此以超大字号实时关注 5 小时额度与周额度",
+                            color = secondaryText,
+                            fontSize = if (isCompact) 11.sp else 12.5.sp
                         )
                     }
                 }
-            }
-
-            // 快速工具条 (触控区域 >= 48dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(
-                    modifier = Modifier
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .clickable { onRefreshAll() },
-                    contentAlignment = Alignment.Center
+            } else if (chatGptAccounts.size <= 2) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(cardBg)
-                            .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.5.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "全量同步",
-                                tint = if (isNightMode) TechCyan else primaryText,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "全量同步", color = primaryText, fontSize = 11.sp)
-                        }
+                    chatGptAccounts.forEach { acc ->
+                        ChatGptHeroCard(
+                            account = acc,
+                            snapshot = snapshots[acc.id],
+                            isRefreshing = loadingMap[acc.id] == true,
+                            refreshIntervalMinutes = settings.autoRefreshIntervalMinutes,
+                            nowUnix = nowUnix,
+                            isNightMode = isNightMode,
+                            isCompact = isCompact,
+                            onClick = { onAccountClick(acc) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
                     }
                 }
-
-                Box(
+            } else {
+                Column(
                     modifier = Modifier
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .clickable { onManageAccount() },
-                    contentAlignment = Alignment.Center
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 10.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(cardBg)
-                            .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.5.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Key,
-                                contentDescription = "接口配置",
-                                tint = if (isNightMode) TechCyan else primaryText,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "接口配置", color = primaryText, fontSize = 11.sp)
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .clickable { onOpenSettings() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(cardBg)
-                            .border(1.dp, cardBorder, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.5.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "高级设置",
-                                tint = primaryText,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "高级设置", color = primaryText, fontSize = 11.sp)
+                    chatGptAccounts.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp)
+                        ) {
+                            pair.forEach { acc ->
+                                ChatGptHeroCard(
+                                    account = acc,
+                                    snapshot = snapshots[acc.id],
+                                    isRefreshing = loadingMap[acc.id] == true,
+                                    refreshIntervalMinutes = settings.autoRefreshIntervalMinutes,
+                                    nowUnix = nowUnix,
+                                    isNightMode = isNightMode,
+                                    isCompact = isCompact,
+                                    onClick = { onAccountClick(acc) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 第二部分：ChatGPT 多账号 Token 监控卡片 与 DeepSeek 官方 API 计费卡片 并列
+        // ================= 底部精简状态条 (~22%-26%): DeepSeek + Gemini + 运行摘要 =================
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // 左列：ChatGPT 多账号 Token 消耗统计
+            // 左侧：DeepSeek 精简余额栏
             Box(
                 modifier = Modifier
-                    .weight(1.15f)
-                    .clip(RoundedCornerShape(12.dp))
+                    .weight(if (antigravityAccounts.isEmpty()) 1.75f else 1.45f)
+                    .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
                     .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(13.dp)
+                    .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+                    .clickable {
+                        val firstDs = deepSeekAccounts.firstOrNull()
+                        if (firstDs != null) onAccountClick(firstDs) else onManageAccount()
+                    }
+                    .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -250,243 +264,96 @@ fun ClockExtensionPage(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            ModelProviderLogo(provider = AiModelProvider.CHATGPT, size = 22.dp, isNightMode = isNightMode)
-                            Text(
-                                text = "OpenAI / ChatGPT 额度与窗口详情",
-                                color = primaryText,
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold
+                            ModelProviderLogo(
+                                provider = AiModelProvider.DEEPSEEK,
+                                size = if (isCompact) 15.dp else 18.dp,
+                                isNightMode = isNightMode
                             )
-                        }
-                        Text(text = "Codex Wham API", color = mutedText, fontSize = 9.sp)
-                    }
-
-                    chatGptAccounts.forEachIndexed { idx, acc ->
-                        if (idx > 0) {
-                            HorizontalDivider(
-                                color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
-                                thickness = 0.8.dp
-                            )
-                        }
-                        val snap = snapshots[acc.id]
-                        val pw = snap?.primaryWindow
-                        val sw = snap?.secondaryWindow
-                        val syncStatus = snap?.computeStatus(
-                            isConfigured = acc.isConfigured,
-                            isRefreshing = false,
-                            refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
-                        ) ?: if (acc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
-
-                        val statusDesc = when (syncStatus) {
-                            QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
-                            QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
-                            QuotaSyncStatus.SYNCING -> "同步中"
-                            QuotaSyncStatus.UPDATED -> "已更新 · ${snap?.formattedSuccessTime ?: snap?.formattedQueriedAt ?: "刚刚"}"
-                            QuotaSyncStatus.CACHED_STALE -> if (snap?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else "缓存 · ${snap?.errorMessage?.take(6) ?: "异常"}"
-                            QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
-                            QuotaSyncStatus.AUTH_EXPIRED -> "授权失效"
-                            QuotaSyncStatus.SERVICE_UNAVAILABLE -> "服务暂不可用"
-                            QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
-                        }
-                        val statusColor = when (syncStatus) {
-                            QuotaSyncStatus.NOT_CONFIGURED -> mutedText
-                            QuotaSyncStatus.AWAITING_SYNC -> if (isNightMode) TechAmber else InkWarningAmber
-                            QuotaSyncStatus.SYNCING -> if (isNightMode) TechCyan else InkProgress
-                            QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
-                            QuotaSyncStatus.CACHED_STALE -> if (isNightMode) TechAmber else InkWarningAmber
-                            QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
-                            QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> if (isNightMode) TechAmber else InkWarningAmber
-                        }
-
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(4.dp)
-                                            .background(if (isNightMode) (if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose else TechCyan) else (if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed else InkStatusGreen), CircleShape)
-                                    )
-                                    Text(
-                                        text = acc.displayTitle,
-                                        color = primaryText,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                Text(
-                                    text = statusDesc,
-                                    color = statusColor,
-                                    fontSize = 8.5.sp
-                                )
-                            }
-
-                            if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) {
-                                Text(
-                                    text = "登录凭据已失效，请重新授权",
-                                    color = if (isNightMode) TechRose else InkWarningRed,
-                                    fontSize = 9.5.sp
-                                )
-                            } else if (syncStatus == QuotaSyncStatus.NOT_CONFIGURED) {
-                                Text(
-                                    text = "未配置账号 · 点击主页卡片进行连接",
-                                    color = mutedText,
-                                    fontSize = 9.5.sp
-                                )
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    val pwLabel = pw?.windowLabel ?: "额度窗口"
-                                    val pwRemaining = pw?.formattedRemaining() ?: "—"
-                                    val pwReset = pw?.formattedResetTime() ?: "重置时间未知"
-                                    Text(
-                                        text = "$pwLabel: 剩余 $pwRemaining · $pwReset",
-                                        color = secondaryText,
-                                        fontSize = 9.5.sp
-                                    )
-                                    if (sw != null) {
-                                        val swLabel = sw.windowLabel ?: "额度窗口"
-                                        val swRemaining = sw.formattedRemaining()
-                                        val swReset = sw.formattedResetTime()
-                                        Text(
-                                            text = "$swLabel: 剩余 $swRemaining · $swReset",
-                                            color = mutedText,
-                                            fontSize = 9.5.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 右列：DeepSeek 官方 API 真实余额与计费 (支持多账号)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(13.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            ModelProviderLogo(provider = AiModelProvider.DEEPSEEK, size = 22.dp, isNightMode = isNightMode)
                             Text(
-                                text = "DeepSeek 官方 API",
-                                color = primaryText,
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold
+                                text = "DeepSeek API",
+                                color = secondaryText,
+                                fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                         Text(
-                            text = if (deepSeekAccounts.size > 1) "${deepSeekAccounts.size}个账号" else "直连 /user/balance",
+                            text = if (deepSeekAccounts.isEmpty()) "未配置" else "${deepSeekAccounts.size}个账号",
                             color = mutedText,
-                            fontSize = 9.sp
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
                         )
                     }
 
                     if (deepSeekAccounts.isEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(text = "尚未绑定 DeepSeek API Key", color = secondaryText, fontSize = 11.sp)
-                            Text(text = "在账号设置中填入 API Key 即可直连官方查询真实余额与明细", color = mutedText, fontSize = 9.sp)
-                        }
+                        Text(
+                            text = "点击接入 DeepSeek Key 查看真实余额",
+                            color = mutedText,
+                            fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     } else {
-                        deepSeekAccounts.forEachIndexed { index, dsAcc ->
-                            if (index > 0) {
-                                HorizontalDivider(
-                                    color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
-                                    thickness = 0.8.dp,
-                                    modifier = Modifier.padding(vertical = 2.dp)
-                                )
-                            }
-                            val dsSnap = snapshots[dsAcc.id]
-                            val dsSyncStatus = dsSnap?.computeStatus(
-                                isConfigured = dsAcc.isConfigured,
-                                isRefreshing = false,
-                                refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
-                            ) ?: if (dsAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                        ) {
+                            deepSeekAccounts.take(3).forEach { dsAcc ->
+                                val dsSnap = snapshots[dsAcc.id]
+                                val dsStatus = dsSnap?.computeStatus(
+                                    isConfigured = dsAcc.isConfigured,
+                                    isRefreshing = loadingMap[dsAcc.id] == true,
+                                    refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+                                ) ?: if (dsAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
 
-                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = dsAcc.displayTitle,
-                                        color = primaryText,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    val isDsDemo = dsSnap?.isMock == true && dsSnap.errorMessage == "暂无演示数据"
-                                    val dsStatusText = if (isDsDemo) "暂无演示数据" else when (dsSyncStatus) {
-                                        QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
-                                        QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
-                                        QuotaSyncStatus.SYNCING -> "同步中"
-                                        QuotaSyncStatus.UPDATED -> if (dsSnap?.isAvailable == false) "服务不可用" else if (dsSnap?.creditsBalance != null && dsSnap.creditsBalance <= 0.0) "余额为零" else "正常可用"
-                                        QuotaSyncStatus.CACHED_STALE -> "缓存 · ${dsSnap?.errorMessage?.take(6) ?: "异常"}"
-                                        QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
-                                        QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
-                                        QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
-                                        QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
-                                    }
-                                    val dsStatusColor = when (dsSyncStatus) {
-                                        QuotaSyncStatus.NOT_CONFIGURED -> mutedText
-                                        QuotaSyncStatus.AWAITING_SYNC -> if (isNightMode) TechAmber else InkWarningAmber
-                                        QuotaSyncStatus.SYNCING -> if (isNightMode) TechCyan else InkProgress
-                                        QuotaSyncStatus.UPDATED -> if (dsSnap?.isAvailable == false) (if (isNightMode) TechRose else InkWarningRed) else if (dsSnap?.creditsBalance != null && dsSnap.creditsBalance <= 0.0) (if (isNightMode) TechAmber else InkWarningAmber) else (if (isNightMode) TechEmerald else InkStatusGreen)
-                                        QuotaSyncStatus.CACHED_STALE -> if (isNightMode) TechAmber else InkWarningAmber
-                                        QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
-                                        QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> if (isNightMode) TechAmber else InkWarningAmber
-                                    }
-                                    Text(
-                                        text = dsStatusText,
-                                        color = dsStatusColor,
-                                        fontSize = 9.sp
-                                    )
+                                val isDsDemo = dsSnap?.isMock == true && dsSnap.errorMessage == "暂无演示数据"
+                                val valueText = when {
+                                    isDsDemo -> "暂无演示数据"
+                                    dsStatus == QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+                                    dsStatus == QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
+                                    dsStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE || dsSnap?.isAvailable == false -> "服务不可用"
+                                    else -> dsSnap?.formattedBalanceText ?: "暂无余额数据"
                                 }
-
-                                if (dsSyncStatus == QuotaSyncStatus.NOT_CONFIGURED) {
-                                    Text(text = "未配置 API Key · 点击主页卡片进行配置", color = mutedText, fontSize = 9.5.sp)
-                                } else if (dsSyncStatus == QuotaSyncStatus.AUTH_EXPIRED) {
-                                    Text(text = "API Key 鉴权失败 · 点击主页卡片重新授权", color = if (isNightMode) TechRose else InkWarningRed, fontSize = 9.5.sp)
-                                } else {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
+                                val valueColor = when {
+                                    dsStatus == QuotaSyncStatus.AUTH_EXPIRED || dsSnap?.isAvailable == false ->
+                                        if (isNightMode) TechRose else InkWarningRed
+                                    valueText.contains("余额为零") || dsStatus == QuotaSyncStatus.CACHED_STALE || dsStatus == QuotaSyncStatus.CACHE_EXPIRED ->
+                                        if (isNightMode) TechAmber else InkWarningAmber
+                                    else -> primaryText
+                                }
+                                val timeStr = dsSnap?.formattedSuccessTime ?: dsSnap?.formattedQueriedAt
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.6f) else InkSurfaceElevated.copy(alpha = 0.65f))
+                                        .padding(horizontal = 7.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f, fill = false)) {
                                         Text(
-                                            text = dsSnap?.formattedBalanceText ?: "暂无余额数据",
-                                            color = primaryText,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
+                                            text = dsAcc.displayTitle,
+                                            color = secondaryText,
+                                            fontSize = if (isCompact) 9.sp else 10.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
-                                        val timeStr = dsSnap?.formattedSuccessTime ?: dsSnap?.formattedQueriedAt ?: "刚刚"
-                                        val timeSuffix = if (dsSyncStatus == QuotaSyncStatus.CACHED_STALE || dsSyncStatus == QuotaSyncStatus.CACHE_EXPIRED) " (缓存)" else ""
                                         Text(
-                                            text = "更新: $timeStr$timeSuffix",
+                                            text = valueText,
+                                            color = valueColor,
+                                            fontSize = if (isCompact) 10.5.sp else 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (!isCompact && timeStr != null && dsStatus != QuotaSyncStatus.NOT_CONFIGURED && dsStatus != QuotaSyncStatus.AUTH_EXPIRED) {
+                                        Text(
+                                            text = timeStr,
                                             color = mutedText,
-                                            fontSize = 9.sp
+                                            fontSize = 8.5.sp
                                         )
                                     }
                                 }
@@ -495,194 +362,436 @@ fun ClockExtensionPage(
                     }
                 }
             }
-        }
 
-        // 第三部分：Gemini API 官方接口状态卡片
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(cardBg)
-                .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                .padding(13.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+            // 右侧：Gemini API 精简状态 + 系统简要状态
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+                    .background(cardBg)
+                    .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+                    .clickable {
+                        val agAcc = antigravityAccounts.firstOrNull()
+                        if (agAcc != null) onAccountClick(agAcc) else onOpenSettings()
+                    }
+                    .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        ModelProviderLogo(provider = AiModelProvider.ANTIGRAVITY, size = 22.dp, isNightMode = isNightMode)
-                        Text(
-                            text = "Gemini API 连接状态",
-                            color = primaryText,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        text = if (antigravityAccounts.size > 1) "${antigravityAccounts.size}个账号" else "Google Generative Language API",
-                        color = mutedText,
-                        fontSize = 9.sp
-                    )
-                }
-
-                if (antigravityAccounts.isEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(text = "尚未绑定 Gemini API Key", color = secondaryText, fontSize = 11.sp)
-                        Text(text = "在账号管理中填入 API Key 即可直连官方验证接口连接状态", color = mutedText, fontSize = 9.sp)
-                    }
-                } else {
-                    antigravityAccounts.forEachIndexed { index, agAcc ->
-                        if (index > 0) {
-                            HorizontalDivider(
-                                color = if (isNightMode) DarkBorder.copy(alpha = 0.5f) else InkBorderSubtle,
-                                thickness = 0.8.dp,
-                                modifier = Modifier.padding(vertical = 2.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            ModelProviderLogo(
+                                provider = AiModelProvider.ANTIGRAVITY,
+                                size = if (isCompact) 15.dp else 18.dp,
+                                isNightMode = isNightMode
+                            )
+                            Text(
+                                text = "Gemini API",
+                                color = secondaryText,
+                                fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
+                        Text(
+                            text = "${settings.autoRefreshIntervalMinutes}分钟同步",
+                            color = mutedText,
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                        )
+                    }
+
+                    if (antigravityAccounts.isEmpty()) {
+                        Text(
+                            text = "尚未绑定 Key · 常亮与自动夜间已就绪",
+                            color = mutedText,
+                            fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else {
+                        val agAcc = antigravityAccounts.first()
                         val agSnap = snapshots[agAcc.id]
-                        val agSyncStatus = agSnap?.computeStatus(
+                        val agStatus = agSnap?.computeStatus(
                             isConfigured = agAcc.isConfigured,
-                            isRefreshing = false,
+                            isRefreshing = loadingMap[agAcc.id] == true,
                             refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
                         ) ?: if (agAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+                        val isAgDemo = agSnap?.isMock == true && agSnap.errorMessage == "暂无演示数据"
+                        val agStatusText = if (isAgDemo) "暂无演示数据" else when (agStatus) {
+                            QuotaSyncStatus.NOT_CONFIGURED -> "待配置 Key"
+                            QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
+                            QuotaSyncStatus.SYNCING -> "同步中"
+                            QuotaSyncStatus.UPDATED -> "连接正常"
+                            QuotaSyncStatus.CACHED_STALE -> "缓存 · 连接异常"
+                            QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
+                            QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
+                            QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
+                            QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
+                        }
+                        val agColor = when (agStatus) {
+                            QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
+                            QuotaSyncStatus.AUTH_EXPIRED, QuotaSyncStatus.CACHE_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
+                            QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+                            else -> if (isNightMode) TechAmber else InkWarningAmber
+                        }
+                        val verifiedTime = agSnap?.formattedVerifiedTime ?: agSnap?.formattedQueriedAt
+                        val detailSuffix = if (agStatus != QuotaSyncStatus.NOT_CONFIGURED && agStatus != QuotaSyncStatus.AUTH_EXPIRED && verifiedTime != null) {
+                            " · 验证于 $verifiedTime"
+                        } else ""
 
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(4.dp)
-                                            .background(
-                                                if (isNightMode) {
-                                                    if (agSyncStatus == QuotaSyncStatus.UPDATED) TechCyan else if (agSyncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose else TechAmber
-                                                } else {
-                                                    if (agSyncStatus == QuotaSyncStatus.UPDATED) InkStatusGreen else if (agSyncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed else InkWarningAmber
-                                                },
-                                                CircleShape
-                                            )
-                                    )
-                                    Text(
-                                        text = agAcc.displayTitle,
-                                        color = primaryText,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                val isAgDemo = agSnap?.isMock == true && agSnap.errorMessage == "暂无演示数据"
-                                val agStatusText = if (isAgDemo) "暂无演示数据" else when (agSyncStatus) {
-                                    QuotaSyncStatus.NOT_CONFIGURED -> "待配置 API Key"
-                                    QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
-                                    QuotaSyncStatus.SYNCING -> "同步中"
-                                    QuotaSyncStatus.UPDATED -> "连接正常"
-                                    QuotaSyncStatus.CACHED_STALE -> "缓存 · 连接异常"
-                                    QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
-                                    QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
-                                    QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
-                                    QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
-                                }
-                                val agStatusColor = when (agSyncStatus) {
-                                    QuotaSyncStatus.NOT_CONFIGURED -> mutedText
-                                    QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
-                                    QuotaSyncStatus.AUTH_EXPIRED, QuotaSyncStatus.CACHE_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
-                                    else -> if (isNightMode) TechAmber else InkWarningAmber
-                                }
-                                Text(
-                                    text = agStatusText,
-                                    color = agStatusColor,
-                                    fontSize = 8.5.sp
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                val desc = when (agSyncStatus) {
-                                    QuotaSyncStatus.NOT_CONFIGURED -> "未配置 API Key · 点击主页卡片进行配置"
-                                    QuotaSyncStatus.AUTH_EXPIRED -> "API Key 鉴权失败 · 点击主页卡片重新授权"
-                                    else -> "模型接口调用就绪"
-                                }
-                                Text(
-                                    text = desc,
-                                    color = secondaryText,
-                                    fontSize = 9.5.sp
-                                )
-                                if (agSyncStatus != QuotaSyncStatus.NOT_CONFIGURED && agSyncStatus != QuotaSyncStatus.AUTH_EXPIRED) {
-                                    val verifiedTime = agSnap?.formattedVerifiedTime ?: agSnap?.formattedQueriedAt ?: "刚刚"
-                                    val timeSuffix = if (agSyncStatus == QuotaSyncStatus.CACHED_STALE || agSyncStatus == QuotaSyncStatus.CACHE_EXPIRED) " (缓存)" else ""
-                                    Text(
-                                        text = "验证于 $verifiedTime$timeSuffix",
-                                        color = mutedText,
-                                        fontSize = 9.5.sp
-                                    )
-                                }
-                            }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.6f) else InkSurfaceElevated.copy(alpha = 0.65f))
+                                .padding(horizontal = 7.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = agAcc.displayTitle,
+                                color = secondaryText,
+                                fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Text(
+                                text = "$agStatusText$detailSuffix",
+                                color = agColor,
+                                fontSize = if (isCompact) 9.5.sp else 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
-            }
-        }
-
-        // 第四部分：系统与桌面 Dock 状态遥测
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(cardBg)
-                .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = 9.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TelemetryItem("屏幕保活", "常亮已启用 (OLED 防烧屏)", isNightMode)
-                Text(text = "·", color = mutedText)
-                TelemetryItem("夜间模式", "自适应时间 (22:00-07:00)", isNightMode)
-                Text(text = "·", color = mutedText)
-                TelemetryItem("刷新周期", "${settings.autoRefreshIntervalMinutes} 分钟自动同步", isNightMode)
-                Text(text = "·", color = mutedText)
-                TelemetryItem("当前城市", "${settings.cityName} (自动定位)", isNightMode)
             }
         }
     }
 }
 
 @Composable
-private fun TelemetryItem(
-    title: String,
-    value: String,
-    isNightMode: Boolean
+private fun ChatGptHeroCard(
+    account: CodexAccount,
+    snapshot: CodexUsageSnapshot?,
+    isRefreshing: Boolean = false,
+    refreshIntervalMinutes: Int,
+    nowUnix: Long,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cardBg = if (isNightMode) DarkSurface else InkSurface
+    val cardBorder = if (isNightMode) DarkBorder else InkBorder
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+
+    val syncStatus = snapshot?.computeStatus(
+        isConfigured = account.isConfigured,
+        isRefreshing = isRefreshing,
+        refreshIntervalMinutes = refreshIntervalMinutes
+    ) ?: if (account.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+
+    val cachedSuffix = snapshot?.formattedSuccessTime ?: snapshot?.formattedQueriedAt
+    val statusDesc = when (syncStatus) {
+        QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+        QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
+        QuotaSyncStatus.SYNCING -> "同步中"
+        QuotaSyncStatus.UPDATED -> "更新于 ${cachedSuffix ?: "刚刚"}"
+        QuotaSyncStatus.CACHED_STALE -> {
+            val reason = if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else snapshot?.errorMessage?.take(6) ?: "异常"
+            if (cachedSuffix != null) "缓存($cachedSuffix) · $reason" else "缓存 · $reason"
+        }
+        QuotaSyncStatus.CACHE_EXPIRED -> if (cachedSuffix != null) "缓存已过期 · $cachedSuffix" else "缓存已过期"
+        QuotaSyncStatus.AUTH_EXPIRED -> "授权失效"
+        QuotaSyncStatus.SERVICE_UNAVAILABLE -> "服务暂不可用"
+        QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
+    }
+    val statusColor = when (syncStatus) {
+        QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+        QuotaSyncStatus.AWAITING_SYNC -> if (isNightMode) TechAmber else InkWarningAmber
+        QuotaSyncStatus.SYNCING -> if (isNightMode) TechCyan else InkProgress
+        QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
+        QuotaSyncStatus.CACHED_STALE -> if (isNightMode) TechAmber else InkWarningAmber
+        QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
+        QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> if (isNightMode) TechAmber else InkWarningAmber
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 11.dp else 14.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 11.dp else 14.dp))
+            .clickable { onClick() }
+            .padding(horizontal = if (isCompact) 11.dp else 16.dp, vertical = if (isCompact) 9.dp else 13.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(if (isCompact) 7.dp else 10.dp)
+        ) {
+            // 账号标题栏
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    ModelProviderLogo(
+                        provider = AiModelProvider.CHATGPT,
+                        size = if (isCompact) 20.dp else 24.dp,
+                        isNightMode = isNightMode
+                    )
+                    if (account.isPinnedMain) {
+                        Text(
+                            text = "★",
+                            color = if (isNightMode) TechAmber else InkWarningAmber,
+                            fontSize = if (isCompact) 12.sp else 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = account.displayTitle,
+                        color = primaryText,
+                        fontSize = if (isCompact) 14.sp else 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    val plan = snapshot?.planName?.ifBlank { "Plus" } ?: "Plus"
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(
+                            text = plan,
+                            color = secondaryText,
+                            fontSize = if (isCompact) 9.sp else 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    val resetCredits = snapshot?.resetCreditsCount
+                    if (resetCredits != null && resetCredits > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isNightMode) TechCyan.copy(alpha = 0.14f) else InkProgressTrack)
+                                .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                        ) {
+                            Text(
+                                text = "重置:${resetCredits}次",
+                                color = if (isNightMode) TechCyan else InkProgress,
+                                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(statusColor.copy(alpha = 0.13f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = statusDesc,
+                        color = statusColor,
+                        fontSize = if (isCompact) 9.sp else 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            // 账号窗口主体（5 小时 & 周额度并列放大呈现）
+            if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isNightMode) TechRose.copy(alpha = 0.08f) else InkWarningRed.copy(alpha = 0.06f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "登录凭据已失效 · 点击重新授权",
+                        color = if (isNightMode) TechRose else InkWarningRed,
+                        fontSize = if (isCompact) 13.sp else 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else if (syncStatus == QuotaSyncStatus.NOT_CONFIGURED) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "未配置账号 · 点击进行连接授权",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 12.sp else 14.sp
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                ) {
+                    HeroQuotaWindowBlock(
+                        window = snapshot?.primaryWindow,
+                        fallbackLabel = "额度窗口",
+                        nowUnix = nowUnix,
+                        isPrimary = true,
+                        isNightMode = isNightMode,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                    HeroQuotaWindowBlock(
+                        window = snapshot?.secondaryWindow,
+                        fallbackLabel = "额度窗口",
+                        nowUnix = nowUnix,
+                        isPrimary = false,
+                        isNightMode = isNightMode,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroQuotaWindowBlock(
+    window: CodexUsageWindow?,
+    fallbackLabel: String,
+    nowUnix: Long,
+    isPrimary: Boolean,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextTertiary else InkTextSecondary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
+    val panelBg = if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.72f) else InkSurfaceElevated.copy(alpha = 0.75f)
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = title,
-            color = secondaryText,
-            fontSize = 9.5.sp
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = value,
-            color = primaryText,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium
-        )
+    val remaining = window?.remainingPercent
+    val isExhausted = remaining != null && remaining <= 0.0
+    val isLow = remaining != null && remaining in 0.01..15.0
+
+    val barColor = if (isNightMode) {
+        when {
+            isExhausted -> TechRose
+            isLow -> TechAmber
+            else -> TechEmerald
+        }
+    } else {
+        when {
+            isExhausted -> InkWarningRed
+            isLow -> InkWarningAmber
+            else -> InkProgress
+        }
+    }
+
+    val percentColor = when {
+        isExhausted -> if (isNightMode) TechRose else InkWarningRed
+        isLow -> if (isNightMode) TechAmber else InkWarningAmber
+        remaining == null -> mutedText
+        else -> primaryText
+    }
+
+    val labelText = window?.windowLabel ?: fallbackLabel
+    val remainingText = window?.formattedRemaining() ?: "—"
+    val resetDesc = when {
+        window == null -> "待同步"
+        window.resetAtUnix == null -> "重置时间未知"
+        nowUnix >= window.resetAtUnix -> "等待更新"
+        isPrimary -> "${window.formattedResetTime(nowUnix)} 重置 · ${window.formattedCountdown(nowUnix)}"
+        else -> "${window.formattedFullDateTime(nowUnix)} · ${window.formattedCountdown(nowUnix)}"
+    }
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 8.dp else 10.dp))
+            .background(panelBg)
+            .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 6.dp else 9.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = labelText,
+                color = secondaryText,
+                fontSize = if (isCompact) 11.sp else 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false
+            )
+            Text(
+                text = resetDesc,
+                color = mutedText,
+                fontSize = if (isCompact) 9.5.sp else 11.5.sp,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 10.dp else 14.dp)
+        ) {
+            LinearProgressIndicator(
+                progress = { if (remaining != null && remaining.isFinite()) (remaining / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(if (isCompact) 7.dp else 9.5.dp)
+                    .clip(RoundedCornerShape(if (isCompact) 3.5.dp else 5.dp)),
+                color = barColor,
+                trackColor = trackColor
+            )
+            Text(
+                text = remainingText,
+                color = percentColor,
+                fontSize = if (isCompact) 21.sp else 28.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.chronodesk.app.data
 
 import android.content.Context
+import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.TeslaFullSnapshot
 import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.model.TeslaVehicle
@@ -12,6 +13,7 @@ import com.chronodesk.app.data.provider.TeslaDataProvider
 import com.chronodesk.app.data.security.CredentialStorage
 import com.chronodesk.app.data.repository.TeslaRepository
 import com.chronodesk.app.data.utils.TeslaPhotoManager
+import com.chronodesk.app.data.utils.TeslaVehicleRenderLoader
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -273,5 +275,35 @@ class TeslaVehicleAndLocationTest {
         } finally {
             server.shutdown()
         }
+    }
+
+    @Test
+    fun testVehicleExteriorColorNormalizationAndCompositorUrls() {
+        val ultraRed = TeslaVehicle(1, "Model 3", "3", exteriorColor = "UltraRed")
+        val redMulti = TeslaVehicle(2, "Model 3", "3", exteriorColor = "RedMulticoat")
+        val whiteCar = TeslaVehicle(3, "Model Y", "Y", exteriorColor = "PearlWhite")
+        val defaultCar = TeslaVehicle(4, "Model 3", null, exteriorColor = null)
+
+        assertEquals("RED", ultraRed.normalizedExteriorColor)
+        assertEquals("RED_CLASSIC", redMulti.normalizedExteriorColor)
+        assertEquals("WHITE", whiteCar.normalizedExteriorColor)
+        assertEquals("RED", defaultCar.normalizedExteriorColor)
+
+        val urls = TeslaVehicleRenderLoader.buildCompositorUrls("Model 3", "RED", TeslaVehicleRenderLoader.VIEW_STUD_3QTR)
+        assertEquals(2, urls.size)
+        assertTrue("主渲染链接必须仅使用 HTTPS 并指向国内 CDN", urls[0].startsWith("https://static-assets.tesla.cn/"))
+        assertTrue("备用渲染链接必须仅使用 HTTPS", urls[1].startsWith("https://static-assets.tesla.com/"))
+        assertTrue("Model 3 烈焰红参数应包含 model=m3、PR01 与透明开关", urls[0].contains("model=m3") && urls[0].contains("PR01") && urls[0].contains("bkba_opt=1"))
+
+        val myUrls = TeslaVehicleRenderLoader.buildCompositorUrls("Model Y", "WHITE", TeslaVehicleRenderLoader.VIEW_SIDE)
+        assertTrue("Model Y 侧面渲染链接应包含 model=my、PPSW 与 view=SIDE", myUrls[0].contains("model=my") && myUrls[0].contains("PPSW") && myUrls[0].contains("view=SIDE"))
+    }
+
+    @Test
+    fun testClockSettings_showTeslaOnHomeDefaultsTrue() {
+        val defaults = ClockSettings()
+        assertTrue("默认应在首页启用 Tesla 电量续航胶囊展示（随总开关按需显现）", defaults.showTeslaOnHome)
+        val teslaDefaults = TeslaSettings()
+        assertEquals("AUTO", teslaDefaults.vehicleColor)
     }
 }

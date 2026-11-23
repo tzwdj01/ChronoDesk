@@ -17,6 +17,12 @@ import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Thunderstorm
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
 import androidx.compose.material.icons.filled.WbSunny
@@ -29,19 +35,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.WeatherInfo
 import com.chronodesk.app.ui.theme.DarkBorder
+import com.chronodesk.app.ui.theme.DarkProgressTrack
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.InkBorder
+import com.chronodesk.app.ui.theme.InkProgressTrack
 import com.chronodesk.app.ui.theme.InkSurface
 import com.chronodesk.app.ui.theme.InkTextPrimary
 import com.chronodesk.app.ui.theme.InkTextSecondary
 import com.chronodesk.app.ui.theme.InkTextTertiary
+import com.chronodesk.app.ui.theme.InkWarningAmber
+import com.chronodesk.app.ui.theme.InkWarningRed
+import com.chronodesk.app.ui.theme.InkStatusGreen
 import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
+import com.chronodesk.app.ui.theme.TechEmerald
+import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
@@ -122,7 +140,11 @@ fun WeatherRowContent(
                 text = weather.cityName,
                 color = primaryText,
                 fontSize = if (isCompact) 11.sp else 12.5.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = if (isCompact) 108.dp else 160.dp)
             )
         }
 
@@ -325,4 +347,153 @@ fun WeatherCard(
         isNightMode = isNightMode,
         onCardClick = onCardClick
     )
+}
+
+/**
+ * 首页车辆剩余电量与续航状态胶囊卡片，点击可直达 Tesla 车辆详情页。
+ */
+@Composable
+fun HomeTeslaCapsule(
+    vehicleLabel: String,
+    batteryLevel: Int?,
+    ratedRangeKm: Double?,
+    isCharging: Boolean,
+    chargerPowerKw: Double?,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
+) {
+    val cardBg = if (isNightMode) DarkSurface.copy(alpha = 0.9f) else InkSurface
+    val cardBorder = if (isNightMode) DarkBorder else InkBorder
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val dividerColor = if (isNightMode) TextTertiary.copy(alpha = 0.5f) else InkTextTertiary.copy(alpha = 0.6f)
+    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
+
+    val accentColor = when {
+        batteryLevel == null -> if (isNightMode) TechCyan else Color(0xFF0284C7)
+        batteryLevel <= 15 -> if (isNightMode) TechRose else InkWarningRed
+        batteryLevel <= 30 -> if (isNightMode) TechAmber else InkWarningAmber
+        else -> if (isNightMode) TechEmerald else InkStatusGreen
+    }
+
+    val shape = RoundedCornerShape(if (isCompact) 16.dp else 22.dp)
+    val accessibilityDesc = if (batteryLevel != null) {
+        val rangeText = ratedRangeKm?.let { "续航 ${it.toInt()} 公里" } ?: "续航未知"
+        "$vehicleLabel 剩余电量 $batteryLevel%，$rangeText，点击查看车辆详情"
+    } else {
+        "$vehicleLabel 车辆数据待同步，点击查看车辆详情"
+    }
+
+    Box(
+        modifier = modifier
+            .sizeIn(minWidth = 48.dp, minHeight = 36.dp)
+            .clip(shape)
+            .background(cardBg)
+            .border(1.dp, cardBorder, shape)
+            .semantics { contentDescription = accessibilityDesc }
+            .clickable(role = Role.Button, onClickLabel = "查看车辆状态") { onClick() }
+            .padding(
+                horizontal = if (isCompact) 10.dp else 15.dp,
+                vertical = if (isCompact) 4.5.dp else 7.dp
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.DirectionsCar,
+                contentDescription = null,
+                tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                modifier = Modifier.size(if (isCompact) 13.dp else 15.dp)
+            )
+            Text(
+                text = vehicleLabel,
+                color = secondaryText,
+                fontSize = if (isCompact) 10.sp else 11.5.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false
+            )
+
+            if (batteryLevel != null) {
+                Text(text = "｜", color = dividerColor, fontSize = if (isCompact) 9.5.sp else 11.sp)
+
+                // 迷你水平电池指示条
+                Box(
+                    modifier = Modifier
+                        .width(if (isCompact) 18.dp else 24.dp)
+                        .height(if (isCompact) 6.dp else 7.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(trackColor)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((batteryLevel / 100f).coerceIn(0.05f, 1f))
+                            .height(if (isCompact) 6.dp else 7.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(accentColor)
+                    )
+                }
+
+                if (isCharging) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "充电中",
+                        tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                        modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
+                    )
+                }
+
+                Text(
+                    text = "$batteryLevel%",
+                    color = accentColor,
+                    fontSize = if (isCompact) 11.5.sp else 13.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false
+                )
+
+                Text(text = "·", color = dividerColor, fontSize = if (isCompact) 10.sp else 12.sp)
+
+                val rangeDisplay = when {
+                    ratedRangeKm != null -> "${ratedRangeKm.toInt()} km"
+                    else -> "— km"
+                }
+                Text(
+                    text = rangeDisplay,
+                    color = primaryText,
+                    fontSize = if (isCompact) 11.sp else 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false
+                )
+
+                if (isCharging && chargerPowerKw != null && chargerPowerKw > 0.0) {
+                    Text(
+                        text = "${chargerPowerKw.toInt()}kW",
+                        color = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                        fontSize = if (isCompact) 9.5.sp else 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            } else {
+                Text(text = "｜", color = dividerColor, fontSize = if (isCompact) 9.5.sp else 11.sp)
+                Text(
+                    text = "车辆待同步",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 10.sp else 11.5.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+    }
 }

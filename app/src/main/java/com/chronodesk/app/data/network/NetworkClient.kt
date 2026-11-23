@@ -86,6 +86,18 @@ object NetworkClient {
             .create(GeocodingApi::class.java)
     }
 
+    /**
+     * 用于天气备用接口与 Nominatim 地理编码的快速直连客户端（8 秒超时，仅 HTTPS）
+     */
+    val weatherFallbackHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .proxySelector(ProxySelector.getDefault())
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .writeTimeout(8, TimeUnit.SECONDS)
+            .build()
+    }
+
     const val CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     const val DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback"
     const val DEVICE_VERIFY_URL = "https://auth.openai.com/codex/device"

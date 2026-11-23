@@ -29,11 +29,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -661,7 +661,7 @@ private fun MapActionButton(
         }
         Spacer(modifier = Modifier.width(6.dp))
         Icon(
-            imageVector = Icons.Default.OpenInNew,
+            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
             contentDescription = null,
             tint = accent,
             modifier = Modifier.size(15.dp)

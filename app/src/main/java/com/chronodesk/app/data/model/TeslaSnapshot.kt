@@ -11,7 +11,8 @@ data class TeslaVehicle(
     val id: Int,
     val name: String?,
     val model: String? = null,
-    val trimBadging: String? = null
+    val trimBadging: String? = null,
+    val exteriorColor: String? = null
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: "Tesla #$id"
@@ -24,6 +25,21 @@ data class TeslaVehicle(
             "X", "MODEL X", "MODELX" -> "Model X"
             null -> "Model 3"
             else -> if (model.startsWith("Model", ignoreCase = true)) model else "Model $model"
+        }
+
+    val normalizedExteriorColor: String
+        get() {
+            val raw = exteriorColor?.lowercase()?.trim() ?: return "RED"
+            return when {
+                raw.contains("ultra") || raw.contains("pr01") -> "RED"
+                raw.contains("multicoat") || raw.contains("ppmr") -> "RED_CLASSIC"
+                raw.contains("red") -> "RED"
+                raw.contains("white") || raw.contains("ppsw") -> "WHITE"
+                raw.contains("black") || raw.contains("pbsb") -> "BLACK"
+                raw.contains("silver") || raw.contains("grey") || raw.contains("gray") || raw.contains("pmng") || raw.contains("pn00") -> "SILVER"
+                raw.contains("blue") || raw.contains("ppsb") -> "BLUE"
+                else -> "RED"
+            }
         }
 }
 
@@ -234,7 +250,8 @@ data class TeslaSettings(
     val carName: String = "",                   // 选定的车辆名称
     val refreshIntervalSec: Int = 60,           // 默认刷新间隔 60s
     val timeZone: String = "Asia/Shanghai",     // 统计时区
-    val allowHttp: Boolean = false              // 是否允许可信内网 HTTP
+    val allowHttp: Boolean = false,             // 是否允许可信内网 HTTP
+    val vehicleColor: String = "AUTO"           // 车辆外观配色模型: AUTO, RED, RED_CLASSIC, WHITE, BLACK, SILVER, BLUE
 ) {
     val isConfigured: Boolean
         get() = baseUrl.isNotBlank() && dataSourceUid.isNotBlank() && carId > 0
