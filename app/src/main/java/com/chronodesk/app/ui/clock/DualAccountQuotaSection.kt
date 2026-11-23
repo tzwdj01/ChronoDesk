@@ -590,7 +590,7 @@ private fun SingleAccountQuotaItem(
             Triple(label, color, color.copy(alpha = 0.14f))
         }
         QuotaSyncStatus.CACHED_STALE -> Triple(
-            if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else "缓存 · ${snapshot?.errorMessage?.take(6) ?: "异常"}",
+            if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else "缓存 · ${snapshot?.errorMessage?.take(if (isCompact) 4 else 6) ?: "异常"}",
             if (isNightMode) TechAmber else InkWarningAmber,
             (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.14f)
         )
@@ -642,7 +642,7 @@ private fun SingleAccountQuotaItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 5.dp),
                 modifier = Modifier.weight(1f, fill = false)
             ) {
                 Box(
@@ -675,7 +675,8 @@ private fun SingleAccountQuotaItem(
                     fontSize = if (isCompact) 10.5.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 val plan = snapshot?.planName?.ifBlank { "Plus" } ?: "Plus"
                 Box(
@@ -691,7 +692,8 @@ private fun SingleAccountQuotaItem(
                         fontSize = if (isCompact) 7.5.sp else 8.sp,
                         fontWeight = FontWeight.Medium,
                         fontFamily = FontFamily.Monospace,
-                        maxLines = 1
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
                 val resetCredits = snapshot?.resetCreditsCount
@@ -706,7 +708,9 @@ private fun SingleAccountQuotaItem(
                             text = "重置:${resetCredits}次",
                             color = if (isNightMode) TechCyan else InkProgress,
                             fontSize = 8.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -726,7 +730,9 @@ private fun SingleAccountQuotaItem(
                         text = statusText,
                         color = statusColor,
                         fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -818,7 +824,7 @@ private fun SingleAccountQuotaItem(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)
                 ) {
                     val primaryLabel = if (isCompact) {
                         if (primaryWindow?.limitWindowSeconds == 18000L) "5小时" else (primaryWindow?.label ?: "额度")
@@ -829,13 +835,15 @@ private fun SingleAccountQuotaItem(
                         text = primaryLabel,
                         color = secondaryText,
                         fontSize = if (isCompact) 8.5.sp else 10.sp,
-                        modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.width(if (isCompact) 34.dp else 56.dp)
                     )
                     val pPercent = primaryWindow?.remainingPercent
                     LinearProgressIndicator(
                         progress = { if (pPercent != null && pPercent.isFinite()) (pPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
                         modifier = Modifier
-                            .width(if (isCompact) 62.dp else 88.dp)
+                            .width(if (isCompact) 48.dp else 88.dp)
                             .height(if (isCompact) 3.5.dp else 4.5.dp)
                             .clip(RoundedCornerShape(2.dp)),
                         color = primaryProgressColor,
@@ -852,7 +860,12 @@ private fun SingleAccountQuotaItem(
                     text = "剩余 $primaryRemainingStr · $primaryResetDesc",
                     color = if (isPrimaryExhausted) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
                     fontSize = if (isCompact) 7.5.sp else 9.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(start = 4.dp)
                 )
             }
 
@@ -864,7 +877,7 @@ private fun SingleAccountQuotaItem(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)
                 ) {
                     val secondaryLabel = if (isCompact) {
                         if (secondaryWindow?.limitWindowSeconds == 604800L) "周额度" else (secondaryWindow?.label ?: "额度")
@@ -875,13 +888,15 @@ private fun SingleAccountQuotaItem(
                         text = secondaryLabel,
                         color = secondaryText,
                         fontSize = if (isCompact) 8.5.sp else 10.sp,
-                        modifier = Modifier.width(if (isCompact) 36.dp else 56.dp)
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.width(if (isCompact) 34.dp else 56.dp)
                     )
                     val sPercent = secondaryWindow?.remainingPercent
                     LinearProgressIndicator(
                         progress = { if (sPercent != null && sPercent.isFinite()) (sPercent / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
                         modifier = Modifier
-                            .width(if (isCompact) 62.dp else 88.dp)
+                            .width(if (isCompact) 48.dp else 88.dp)
                             .height(if (isCompact) 3.5.dp else 4.5.dp)
                             .clip(RoundedCornerShape(2.dp)),
                         color = secondaryProgressColor,
@@ -896,13 +911,20 @@ private fun SingleAccountQuotaItem(
                 }
                 val cachedTimeSuffix = if (syncStatus == QuotaSyncStatus.CACHED_STALE || syncStatus == QuotaSyncStatus.CACHE_EXPIRED) {
                     val timeStr = snapshot?.formattedSuccessTime ?: snapshot?.formattedQueriedAt
-                    if (timeStr != null) " (更新于 $timeStr)" else ""
+                    if (timeStr != null) {
+                        if (isCompact) " ($timeStr)" else " (更新于 $timeStr)"
+                    } else ""
                 } else ""
                 Text(
                     text = "剩余 $secondaryRemainingStr · $secondaryResetDesc$cachedTimeSuffix",
                     color = if (isSecondaryExhausted) (if (isNightMode) TechRose else InkWarningRed) else mutedText,
                     fontSize = if (isCompact) 7.5.sp else 9.sp,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(start = 4.dp)
                 )
             }
         }

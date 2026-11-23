@@ -772,11 +772,11 @@ private fun ClockTopBar(
             Box(
                 modifier = Modifier
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = "添加账号与管理" }
                     .clickable(
                         role = Role.Button,
                         onClickLabel = "添加与管理账号"
-                    ) { onAddAccount() }
-                    .semantics { contentDescription = "添加账号与管理" },
+                    ) { onAddAccount() },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -808,11 +808,11 @@ private fun ClockTopBar(
             Box(
                 modifier = Modifier
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = "刷新全部数据" }
                     .clickable(
                         role = Role.Button,
                         onClickLabel = "刷新全部数据"
-                    ) { onRefreshAll() }
-                    .semantics { contentDescription = "刷新全部数据" },
+                    ) { onRefreshAll() },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -845,11 +845,11 @@ private fun ClockTopBar(
             Box(
                 modifier = Modifier
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = "日夜主题切换" }
                     .clickable(
                         role = Role.Button,
                         onClickLabel = "日夜主题切换"
-                    ) { onToggleNightMode() }
-                    .semantics { contentDescription = "日夜主题切换" },
+                    ) { onToggleNightMode() },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -872,11 +872,11 @@ private fun ClockTopBar(
             Box(
                 modifier = Modifier
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = "系统设置" }
                     .clickable(
                         role = Role.Button,
                         onClickLabel = "系统设置"
-                    ) { onOpenSettings() }
-                    .semantics { contentDescription = "系统设置" },
+                    ) { onOpenSettings() },
                 contentAlignment = Alignment.Center
             ) {
                 Box(
