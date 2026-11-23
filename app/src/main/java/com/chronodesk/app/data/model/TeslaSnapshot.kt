@@ -75,41 +75,44 @@ data class VehicleSnapshot(
     val speed: Double? = null                 // 速度 (km/h)
 ) {
     val formattedSampledTime: String?
-        get() {
-            if (sampledAt.isNullOrBlank()) return null
-            return try {
-                if (sampledAt.toLongOrNull() != null) {
-                    val ms = sampledAt.toLong()
-                    val actualMs = if (ms < 100000000000L) ms * 1000L else ms
-                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(actualMs))
-                } else {
-                    val isoFormats = listOf(
-                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                    )
-                    var parsedDate: Date? = null
-                    for (format in isoFormats) {
-                        try {
-                            parsedDate = format.parse(sampledAt)
-                            if (parsedDate != null) break
-                        } catch (_: Exception) {}
-                    }
-                    if (parsedDate != null) {
-                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(parsedDate)
-                    } else if (sampledAt.contains("T")) {
-                        sampledAt.substringAfter("T").take(5)
-                    } else if (sampledAt.contains(" ")) {
-                        sampledAt.substringAfter(" ").take(5)
-                    } else {
-                        sampledAt
-                    }
-                }
-            } catch (_: Exception) {
-                null
+        get() = formatSampledTime(sampledAt)
+}
+
+/**
+ * 统一格式化车辆与位置采样时间，兼容整型/科学计数法纪元时间戳与 ISO 字符串
+ */
+private fun formatSampledTime(sampledAt: String?): String? {
+    val trimmed = sampledAt?.trim()
+    if (trimmed.isNullOrBlank()) return null
+    return try {
+        val numMs = trimmed.toLongOrNull() ?: trimmed.toDoubleOrNull()?.takeIf { it.isFinite() }?.toLong()
+        if (numMs != null) {
+            val actualMs = if (numMs < 100000000000L) numMs * 1000L else numMs
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(actualMs))
+        } else {
+            val isoFormats = listOf(
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.getDefault()),
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.getDefault()),
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            )
+            var parsedDate: Date? = null
+            for (format in isoFormats) {
+                try {
+                    parsedDate = format.parse(trimmed)
+                    if (parsedDate != null) break
+                } catch (_: Exception) {}
+            }
+            when {
+                parsedDate != null -> SimpleDateFormat("HH:mm", Locale.getDefault()).format(parsedDate)
+                trimmed.contains("T") -> trimmed.substringAfter("T").take(5)
+                trimmed.contains(" ") -> trimmed.substringAfter(" ").take(5)
+                else -> trimmed
             }
         }
+    } catch (_: Exception) {
+        null
+    }
 }
 
 /**
@@ -159,39 +162,7 @@ data class VehicleLocation(
         get() = latitude != null && longitude != null && (latitude != 0.0 || longitude != 0.0)
 
     val formattedSampledTime: String?
-        get() {
-            if (sampledAt.isNullOrBlank()) return null
-            return try {
-                if (sampledAt.toLongOrNull() != null) {
-                    val ms = sampledAt.toLong()
-                    val actualMs = if (ms < 100000000000L) ms * 1000L else ms
-                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(actualMs))
-                } else {
-                    val isoFormats = listOf(
-                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
-                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                    )
-                    var parsedDate: Date? = null
-                    for (format in isoFormats) {
-                        try {
-                            parsedDate = format.parse(sampledAt)
-                            if (parsedDate != null) break
-                        } catch (_: Exception) {}
-                    }
-                    if (parsedDate != null) {
-                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(parsedDate)
-                    } else if (sampledAt.contains("T")) {
-                        sampledAt.substringAfter("T").take(5)
-                    } else {
-                        sampledAt
-                    }
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
+        get() = formatSampledTime(sampledAt)
 }
 
 /**

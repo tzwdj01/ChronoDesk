@@ -48,11 +48,24 @@ fun isPrivateAddress(address: InetAddress): Boolean {
         return true
     }
     val bytes = address.address
-    if (bytes != null && bytes.size == 16) {
-        // IPv6 Unique Local Address (ULA) fc00::/7
-        val firstByte = bytes[0].toInt() and 0xFF
-        if ((firstByte and 0xFE) == 0xFC) {
-            return true
+    if (bytes != null) {
+        if (bytes.size == 4) {
+            val b0 = bytes[0].toInt() and 0xFF
+            val b1 = bytes[1].toInt() and 0xFF
+            // RFC 6598 CGNAT / Tailscale / 内网穿透: 100.64.0.0/10
+            if (b0 == 100 && b1 in 64..127) {
+                return true
+            }
+            // RFC 2544 / 代理 TUN Fake-IP 虚拟内网池: 198.18.0.0/15
+            if (b0 == 198 && (b1 == 18 || b1 == 19)) {
+                return true
+            }
+        } else if (bytes.size == 16) {
+            // IPv6 Unique Local Address (ULA) fc00::/7
+            val firstByte = bytes[0].toInt() and 0xFF
+            if ((firstByte and 0xFE) == 0xFC) {
+                return true
+            }
         }
     }
     return false

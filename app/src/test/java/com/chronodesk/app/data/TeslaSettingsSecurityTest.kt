@@ -41,7 +41,10 @@ class TeslaSettingsSecurityTest {
 
     @Test
     fun testAllowVariousPrivateIps() {
-        listOf("10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.1", "127.0.0.1", "169.254.1.1").forEach { ip ->
+        listOf(
+            "10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.1", "127.0.0.1", "169.254.1.1",
+            "100.64.0.1", "100.127.255.254", "198.18.1.44", "198.19.255.254"
+        ).forEach { ip ->
             val sanitized = client.sanitizeAndValidateUrl("http://$ip:3000", allowHttp = true)
             assertEquals("http://$ip:3000/", sanitized)
         }
@@ -49,7 +52,7 @@ class TeslaSettingsSecurityTest {
 
     @Test
     fun testRejectPublicIpHttpEvenWhenEnabled() {
-        listOf("8.8.8.8", "1.1.1.1", "114.114.114.114").forEach { publicIp ->
+        listOf("8.8.8.8", "1.1.1.1", "114.114.114.114", "100.128.0.1", "198.20.0.1").forEach { publicIp ->
             val ex = assertThrows(IllegalArgumentException::class.java) {
                 client.sanitizeAndValidateUrl("http://$publicIp:3000", allowHttp = true)
             }
