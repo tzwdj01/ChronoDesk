@@ -237,10 +237,25 @@ class TeslaDataProvider(
                 } else {
                     null
                 }
+                val resolvedAddress = if (lat != null && lng != null && lat.isFinite() && lng.isFinite()) {
+                    val prevAddr = previousLocation?.resolvedAddress?.takeIf { it.isNotBlank() && !it.endsWith("附近") }
+                    val prevLat = previousLocation?.latitude
+                    val prevLng = previousLocation?.longitude
+                    if (prevAddr != null && prevLat != null && prevLng != null &&
+                        haversineMeters(lat, lng, prevLat, prevLng) < 50.0
+                    ) {
+                        prevAddr
+                    } else {
+                        resolveNearestTeslaMateAddress(service, auth, dsRef, lat, lng)
+                    }
+                } else {
+                    null
+                }
                 com.chronodesk.app.data.model.VehicleLocation(
                     latitude = lat,
                     longitude = lng,
                     geofenceName = geofenceName,
+                    resolvedAddress = resolvedAddress,
                     sampledAt = sampledAt
                 )
             } else {
@@ -282,6 +297,80 @@ class TeslaDataProvider(
             matchedName
         } catch (e: Exception) {
             Log.d(tag, "Optional geofence match skipped: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * 第一层地名解析：查询 TeslaMate addresses 表近邻记录，500m 内返回精确地名，3km 内返回「xx附近」
+     */
+    private suspend fun resolveNearestTeslaMateAddress(
+        service: com.chronodesk.app.data.network.GrafanaRetrofitService,
+        auth: String,
+        dsRef: GrafanaDatasourceRef,
+        lat: Double,
+        lng: Double
+    ): String? {
+        if (!lat.isFinite() || !lng.isFinite()) return null
+        return try {
+            val latStr = String.format(java.util.Locale.US, "%.6f", lat)
+            val lngStr = String.format(java.util.Locale.US, "%.6f", lng)
+            val sqlAddr = """
+                SELECT name, road, neighbourhood, city, county, state, display_name, latitude, longitude
+                FROM addresses
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                ORDER BY ((latitude - $latStr) * (latitude - $latStr) + (longitude - $lngStr) * (longitude - $lngStr)) ASC
+                LIMIT 5
+            """.trimIndent()
+            val addrResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, sqlAddr))))
+            val rows = GrafanaFrameParser.parseResultToRows(addrResp, "A")
+            var bestRow: Map<String, Any?>? = null
+            var bestDist = Double.MAX_VALUE
+            for (r in rows) {
+                val aLat = r.getDouble("latitude") ?: continue
+                val aLng = r.getDouble("longitude") ?: continue
+                val dist = haversineMeters(lat, lng, aLat, aLng)
+                if (dist < bestDist) {
+                    bestDist = dist
+                    bestRow = r
+                }
+            }
+            val row = bestRow ?: return null
+            if (bestDist <= 500.0) {
+                val cityPart = row.getString("city")?.takeIf { it.isNotBlank() }
+                    ?: row.getString("state")?.takeIf { it.isNotBlank() }
+                val districtPart = row.getString("county")?.takeIf { it.isNotBlank() }
+                    ?: row.getString("neighbourhood")?.takeIf { it.isNotBlank() }
+                val streetPart = row.getString("road")?.takeIf { it.isNotBlank() }
+                    ?: row.getString("name")?.takeIf { it.isNotBlank() }
+                val parts = listOfNotNull(cityPart, districtPart, streetPart)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                if (parts.isNotEmpty()) {
+                    parts.joinToString(" · ")
+                } else {
+                    row.getString("display_name")
+                        ?.split(",", "，")
+                        ?.map { it.trim() }
+                        ?.filter { it.isNotBlank() }
+                        ?.take(2)
+                        ?.distinct()
+                        ?.joinToString(" · ")
+                        ?.takeIf { it.isNotBlank() }
+                }
+            } else if (bestDist <= 3000.0) {
+                val areaParts = listOfNotNull(
+                    row.getString("city")?.takeIf { it.isNotBlank() },
+                    row.getString("county")?.takeIf { it.isNotBlank() }
+                        ?: row.getString("neighbourhood")?.takeIf { it.isNotBlank() }
+                ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+                if (areaParts.isNotEmpty()) "${areaParts.joinToString(" · ")}附近" else null
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.d(tag, "Optional addresses lookup skipped: ${e.message}")
             null
         }
     }

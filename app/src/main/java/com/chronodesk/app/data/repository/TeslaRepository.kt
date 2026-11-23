@@ -8,6 +8,7 @@ import com.chronodesk.app.data.model.TeslaFullSnapshot
 import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.model.TeslaVehicle
 import com.chronodesk.app.data.provider.TeslaDataProvider
+import com.chronodesk.app.data.provider.VehicleLocationResolver
 import com.chronodesk.app.data.security.CredentialStorage
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +27,8 @@ class TeslaRepository(
     private val context: Context,
     private val provider: TeslaDataProvider = TeslaDataProvider(),
     private val credentialStorage: CredentialStorage = CredentialStorage(context),
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+    private val locationResolver: VehicleLocationResolver? = VehicleLocationResolver(context)
 ) {
 
     private val tag = "TeslaRepository"
@@ -161,15 +163,45 @@ class TeslaRepository(
                     connectionState = _snapshotFlow.value.connectionState.copy(isLoading = true, errorMessage = null)
                 )
 
-                val newSnapshot = provider.fetchVehicleSnapshot(
+                var finalSnapshot = provider.fetchVehicleSnapshot(
                     settings = currentSettings,
                     token = token,
                     lastSnapshot = _snapshotFlow.value
                 )
 
-                _snapshotFlow.value = newSnapshot
+                val loc = finalSnapshot.location
+                val lat = loc.latitude
+                val lng = loc.longitude
+                val needsGeoLookup = loc.isValid && lat != null && lng != null &&
+                    (loc.resolvedAddress.isNullOrBlank() || loc.resolvedAddress.endsWith("附近"))
+                if (needsGeoLookup && lat != null && lng != null) {
+                    val cachedAddr = locationResolver?.getCachedAddress(lat, lng)
+                    if (!cachedAddr.isNullOrBlank()) {
+                        finalSnapshot = finalSnapshot.copy(
+                            location = loc.copy(resolvedAddress = cachedAddr)
+                        )
+                    } else {
+                        val gridKey = loc.coordinateGridKey
+                        val fallbackAddr = loc.resolvedAddress
+                        scope.launch {
+                            val resolved = locationResolver?.resolveAddress(lat, lng, fallbackAddr)
+                            if (!resolved.isNullOrBlank() && resolved != fallbackAddr) {
+                                val current = _snapshotFlow.value
+                                if (current.location.coordinateGridKey == gridKey) {
+                                    val updated = current.copy(
+                                        location = current.location.copy(resolvedAddress = resolved)
+                                    )
+                                    _snapshotFlow.value = updated
+                                    saveCachedSnapshot(updated)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _snapshotFlow.value = finalSnapshot
                 lastSuccessFetchTime = System.currentTimeMillis()
-                saveCachedSnapshot(newSnapshot)
+                saveCachedSnapshot(finalSnapshot)
                 true
             } catch (e: Exception) {
                 Log.w(tag, "Tesla snapshot refresh failed: ${e.message}")

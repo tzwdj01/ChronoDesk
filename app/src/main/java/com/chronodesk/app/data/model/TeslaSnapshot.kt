@@ -156,10 +156,32 @@ data class VehicleLocation(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val geofenceName: String? = null,
+    val resolvedAddress: String? = null,
     val sampledAt: String? = null
 ) {
     val isValid: Boolean
         get() = latitude != null && longitude != null && (latitude != 0.0 || longitude != 0.0)
+
+    val coordinateGridKey: String?
+        get() = if (isValid) String.format(Locale.US, "%.3f_%.3f", latitude, longitude) else null
+
+    val primaryPlaceName: String
+        get() {
+            val cleanGeofence = geofenceName?.takeIf { it.isNotBlank() }
+            val cleanAddress = resolvedAddress?.takeIf { it.isNotBlank() }
+            return cleanGeofence ?: cleanAddress ?: if (isValid) "已记录停车点" else "位置未记录"
+        }
+
+    val secondaryPlaceDetail: String
+        get() {
+            val cleanGeofence = geofenceName?.takeIf { it.isNotBlank() }
+            val cleanAddress = resolvedAddress?.takeIf { it.isNotBlank() }
+            return when {
+                cleanGeofence != null && cleanAddress != null -> cleanAddress
+                isValid -> String.format(Locale.US, "%.4f, %.4f", latitude, longitude)
+                else -> "—"
+            }
+        }
 
     val formattedSampledTime: String?
         get() = formatSampledTime(sampledAt)

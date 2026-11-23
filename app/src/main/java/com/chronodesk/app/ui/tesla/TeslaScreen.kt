@@ -1,6 +1,5 @@
 package com.chronodesk.app.ui.tesla
 
-import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -59,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.DailyDriveItem
@@ -67,7 +67,6 @@ import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.model.VehicleLocation
 import com.chronodesk.app.data.model.VehicleState
 import com.chronodesk.app.data.utils.TeslaPhotoManager
-import java.util.Locale
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -117,9 +116,20 @@ fun TeslaScreen(
 
     val context = LocalContext.current
     var showSilhouetteView by remember { mutableStateOf(false) } // false: 胎压图, true: 车型剪影/照片
+    var showLocationMapDialog by remember { mutableStateOf(false) }
     var photoReloadTrigger by remember { mutableIntStateOf(0) }
     val customPhotoBitmap = remember(settings.dataSourceUid, settings.carId, photoReloadTrigger) {
         TeslaPhotoManager.loadScaledBitmap(context, settings.dataSourceUid, settings.carId)
+    }
+
+    if (showLocationMapDialog && snapshot.location.isValid) {
+        VehicleLocationMapDialog(
+            location = snapshot.location,
+            vehicleName = snapshot.car?.displayName ?: settings.carName.takeIf { it.isNotBlank() } ?: "Tesla",
+            vehicleState = snapshot.state,
+            isNightMode = isNightMode,
+            onDismiss = { showLocationMapDialog = false }
+        )
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -499,13 +509,17 @@ fun TeslaScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                    .clickable(enabled = snapshot.location.isValid) {
+                        showLocationMapDialog = true
+                    }
                     .padding(if (isCompact) 7.dp else 10.dp)
             ) {
                 TeslaLocationCard(
                     location = snapshot.location,
                     vehicleState = snapshot.state,
                     isNightMode = isNightMode,
-                    isCompact = isCompact
+                    isCompact = isCompact,
+                    onOpenMap = { showLocationMapDialog = true }
                 )
             }
         }
@@ -1161,9 +1175,9 @@ private fun TeslaLocationCard(
     location: VehicleLocation,
     vehicleState: VehicleState,
     isNightMode: Boolean,
-    isCompact: Boolean
+    isCompact: Boolean,
+    onOpenMap: () -> Unit
 ) {
-    val context = LocalContext.current
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
 
@@ -1216,28 +1230,28 @@ private fun TeslaLocationCard(
             }
         }
 
-        // 围栏名称或坐标
+        // 围栏名称 / 匹配地名与坐标副标题
         Column {
             Text(
-                text = location.geofenceName ?: if (location.isValid) "已记录停车点" else "位置未记录",
+                text = location.primaryPlaceName,
                 color = primaryText,
-                fontSize = if (isCompact) 12.sp else 13.5.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = if (isCompact) 11.5.sp else 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(1.dp))
             Text(
-                text = if (location.isValid) {
-                    String.format(Locale.US, "%.4f, %.4f", location.latitude, location.longitude)
-                } else {
-                    "—"
-                },
+                text = location.secondaryPlaceDetail,
                 color = secondaryText,
-                fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                fontFamily = FontFamily.Monospace
+                fontSize = if (isCompact) 9.sp else 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
-        // 采样时间与在地图中打开按钮
+        // 采样时间与查看地图预览弹窗入口
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1253,27 +1267,11 @@ private fun TeslaLocationCard(
                 Box(
                     modifier = Modifier
                         .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .clickable {
-                            val lat = location.latitude!!
-                            val lng = location.longitude!!
-                            val label = location.geofenceName ?: "车辆位置"
-                            val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng(${Uri.encode(label)})")
-                            val intent = Intent(Intent.ACTION_VIEW, uri)
-                            try {
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
-                                try {
-                                    val browserUri = Uri.parse("https://maps.google.com/?q=$lat,$lng")
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, browserUri))
-                                } catch (_: Exception) {
-                                    Toast.makeText(context, "未找到可用的地图或浏览器应用", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
+                        .clickable { onOpenMap() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "在地图中打开 >",
+                        text = "查看地图 >",
                         color = if (isNightMode) TechCyan else Color(0xFF0284C7),
                         fontSize = if (isCompact) 9.sp else 10.sp,
                         fontWeight = FontWeight.Bold
