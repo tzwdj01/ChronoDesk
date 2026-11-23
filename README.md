@@ -45,9 +45,9 @@
 ### 3. 扩展遥测页与经典老机型实测 (Page 1 & Xiaomi 6)
 支持左右横向滑屏自由穿梭，第二页展示各模型 API 的 Token 用量深度遥测与往返延时；同时原生深度适配 16:9 紧凑型经典机型（如小米 6），自适应字体与卡片间距，不遮挡、不截断，让闲置设备焕发桌面新生。
 
-| AI 接口延迟与 Token 遥测扩展页 (Page 1) | 小米 6 (16:9 紧凑屏实测运行) |
+| AI 额度与账号详情页 (多模型额度/余额/重置监控) | 小米 6 (16:9 紧凑屏实测运行) |
 | :---: | :---: |
-| <img src="docs/images/preview_token_telemetry.png" width="100%" alt="Token Telemetry" /> | <img src="docs/images/preview_mi6.png" width="100%" alt="Xiaomi 6 Showcase" /> |
+| <img src="docs/images/preview_token_telemetry.png" width="100%" alt="AI Quota & Status Details" /> | <img src="docs/images/preview_mi6.png" width="100%" alt="Xiaomi 6 Showcase" /> |
 
 ---
 

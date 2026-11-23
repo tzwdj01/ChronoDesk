@@ -45,7 +45,7 @@ fun DirectTokenDialog(
     slot: Int,
     currentAccount: CodexAccount?,
     onDismiss: () -> Unit,
-    onSave: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit
+    onSave: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean
 ) {
     var alias by remember { mutableStateOf(currentAccount?.email ?: currentAccount?.alias ?: "") }
     var accessToken by remember { mutableStateOf("") }
@@ -159,8 +159,12 @@ fun DirectTokenDialog(
                                 authenticatedAt = System.currentTimeMillis(),
                                 providerType = "DIRECT_TOKEN"
                             )
-                            onSave(acc, refreshToken.trim(), accessToken.trim().takeIf { it.isNotEmpty() })
-                            onDismiss()
+                            val saved = onSave(acc, refreshToken.trim(), accessToken.trim().takeIf { it.isNotEmpty() })
+                            if (saved) {
+                                onDismiss()
+                            } else {
+                                errorMessage = "设备安全存储不可用，凭据未保存"
+                            }
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),

@@ -80,19 +80,19 @@ fun AccountManagerDialog(
     antigravityAccounts: List<CodexAccount> = emptyList(),
     getAntigravityApiKey: (accountId: String) -> String? = { null },
     onDismiss: () -> Unit,
-    onSaveAccount: (slot: Int, account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit,
+    onSaveAccount: (slot: Int, account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean,
     onRemoveAccount: (slot: Int) -> Unit,
     onUpdateAlias: (slot: Int, newAlias: String) -> Unit,
-    onSaveDeepSeekAccount: (accountId: String, apiKey: String, alias: String) -> Unit = { _, _, _ -> },
+    onSaveDeepSeekAccount: (accountId: String, apiKey: String, alias: String) -> Boolean = { _, _, _ -> true },
     onAddDeepSeekAccount: () -> CodexAccount? = { null },
     onRemoveDeepSeekAccount: (accountId: String) -> Unit = {},
     currentDeepSeekApiKey: String? = null,
-    onSaveDeepSeekApiKey: (String) -> Unit = {},
-    onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Unit = { _, _, _ -> },
+    onSaveDeepSeekApiKey: (String) -> Boolean = { true },
+    onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Boolean = { _, _, _ -> true },
     onAddAntigravityAccount: () -> CodexAccount? = { null },
     onRemoveAntigravityAccount: (accountId: String) -> Unit = {},
     currentAntigravityApiKey: String? = null,
-    onSaveAntigravityApiKey: (String) -> Unit = {},
+    onSaveAntigravityApiKey: (String) -> Boolean = { true },
     onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
@@ -159,8 +159,11 @@ fun AccountManagerDialog(
             slot = selectedTab,
             onDismiss = { showDeviceAuthDialog = false },
             onSuccess = { account, refresh, access ->
-                onSaveAccount(selectedTab, account, refresh, access)
-                showDeviceAuthDialog = false
+                val saved = onSaveAccount(selectedTab, account, refresh, access)
+                if (saved) {
+                    showDeviceAuthDialog = false
+                }
+                saved
             }
         )
         return
@@ -172,8 +175,11 @@ fun AccountManagerDialog(
             currentAccount = currentAccount,
             onDismiss = { showDirectTokenDialog = false },
             onSave = { account, refresh, access ->
-                onSaveAccount(selectedTab, account, refresh, access)
-                showDirectTokenDialog = false
+                val saved = onSaveAccount(selectedTab, account, refresh, access)
+                if (saved) {
+                    showDirectTokenDialog = false
+                }
+                saved
             }
         )
         return
@@ -596,10 +602,14 @@ fun AccountManagerDialog(
                             Button(
                                 onClick = {
                                     val aliasToSave = curDsAliasInput.trim()
-                                    onSaveDeepSeekAccount(curDsAcc.id, curDsKeyInput.trim(), aliasToSave)
-                                    val label = aliasToSave.ifBlank { "DeepSeek" }
-                                    Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
-                                    onDismiss()
+                                    val saved = onSaveDeepSeekAccount(curDsAcc.id, curDsKeyInput.trim(), aliasToSave)
+                                    if (saved) {
+                                        val label = aliasToSave.ifBlank { "DeepSeek" }
+                                        Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    } else {
+                                        Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
+                                    }
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),
@@ -739,10 +749,14 @@ fun AccountManagerDialog(
                             Button(
                                 onClick = {
                                     val aliasToSave = curAgAliasInput.trim()
-                                    onSaveAntigravityAccount(curAgAcc.id, curAgKeyInput.trim(), aliasToSave)
-                                    val label = aliasToSave.ifBlank { "Gemini API" }
-                                    Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
-                                    onDismiss()
+                                    val saved = onSaveAntigravityAccount(curAgAcc.id, curAgKeyInput.trim(), aliasToSave)
+                                    if (saved) {
+                                        val label = aliasToSave.ifBlank { "Gemini API" }
+                                        Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    } else {
+                                        Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
+                                    }
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),

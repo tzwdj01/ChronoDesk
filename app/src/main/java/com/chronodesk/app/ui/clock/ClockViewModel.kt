@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.CodexAccount
+import com.chronodesk.app.data.model.CredentialStatus
 import com.chronodesk.app.data.model.WeatherInfo
 import com.chronodesk.app.data.repository.ClockSettingsRepository
 import com.chronodesk.app.data.repository.CodexAccountRepository
@@ -228,10 +229,14 @@ class ClockViewModel @JvmOverloads constructor(
         account: CodexAccount,
         refreshToken: String,
         accessToken: String?,
-        expiresInSeconds: Long = 3600L
-    ) {
-        accountRepo.saveAccount(slot, account, refreshToken, accessToken, expiresInSeconds)
-        refreshSlot(slot)
+        expiresInSeconds: Long = 3600L,
+        idToken: String? = null
+    ): Boolean {
+        val saved = accountRepo.saveAccount(slot, account, refreshToken, accessToken, expiresInSeconds, idToken)
+        if (saved) {
+            refreshSlot(slot)
+        }
+        return saved
     }
 
     fun removeAccount(slot: Int) {
@@ -252,22 +257,28 @@ class ClockViewModel @JvmOverloads constructor(
         return newShow
     }
 
-    fun saveDeepSeekApiKey(apiKey: String) {
-        accountRepo.saveDeepSeekApiKey(apiKey)
-        val deepSeekAcc = accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }
-        if (deepSeekAcc != null) {
-            refreshAccount(deepSeekAcc.id)
+    fun saveDeepSeekApiKey(apiKey: String): Boolean {
+        val saved = accountRepo.saveDeepSeekApiKey(apiKey)
+        if (saved) {
+            val deepSeekAcc = accounts.value.firstOrNull { it.modelProvider == "DEEPSEEK" }
+            if (deepSeekAcc != null) {
+                refreshAccount(deepSeekAcc.id)
+            }
         }
+        return saved
     }
 
-    fun saveDeepSeekAccount(accountId: String, apiKey: String, alias: String) {
-        accountRepo.saveDeepSeekApiKey(accountId, apiKey, alias)
-        refreshAccount(accountId)
+    fun saveDeepSeekAccount(accountId: String, apiKey: String, alias: String): Boolean {
+        val saved = accountRepo.saveDeepSeekApiKey(accountId, apiKey, alias)
+        if (saved) {
+            refreshAccount(accountId)
+        }
+        return saved
     }
 
     fun addDeepSeekAccount(alias: String = "", apiKey: String = ""): CodexAccount {
         val acc = accountRepo.addDeepSeekAccount(alias, apiKey)
-        if (apiKey.isNotBlank()) {
+        if (apiKey.isNotBlank() && acc.credentialStatus == CredentialStatus.VALID) {
             refreshAccount(acc.id)
         }
         return acc
@@ -285,14 +296,17 @@ class ClockViewModel @JvmOverloads constructor(
         return accountRepo.getDeepSeekApiKey()
     }
 
-    fun saveAntigravityAccount(accountId: String, apiKey: String, alias: String) {
-        accountRepo.saveAntigravityApiKey(accountId, apiKey, alias)
-        refreshAccount(accountId)
+    fun saveAntigravityAccount(accountId: String, apiKey: String, alias: String): Boolean {
+        val saved = accountRepo.saveAntigravityApiKey(accountId, apiKey, alias)
+        if (saved) {
+            refreshAccount(accountId)
+        }
+        return saved
     }
 
     fun addAntigravityAccount(alias: String = "", apiKey: String = ""): CodexAccount {
         val acc = accountRepo.addAntigravityAccount(alias, apiKey)
-        if (apiKey.isNotBlank()) {
+        if (apiKey.isNotBlank() && acc.credentialStatus == CredentialStatus.VALID) {
             refreshAccount(acc.id)
         }
         return acc

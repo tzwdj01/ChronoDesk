@@ -380,24 +380,29 @@ class CodexAccountRepository(
         account: CodexAccount,
         refreshToken: String,
         accessToken: String?,
-        expiresInSeconds: Long = 3600L
+        expiresInSeconds: Long = 3600L,
+        idToken: String? = null
     ): Boolean {
         if (!credentialStorage.isStorageAvailable) {
             Log.e(TAG, "设备安全存储不可用，凭据未保存")
             return false
         }
-        val savedRefresh = credentialStorage.saveRefreshToken(account.id, refreshToken)
-        if (!savedRefresh) {
+        val expiresAtMs = if (!accessToken.isNullOrBlank()) System.currentTimeMillis() + (expiresInSeconds * 1000) else 0L
+        val saved = credentialStorage.saveCodexCredentials(
+            accountId = account.id,
+            refreshToken = refreshToken,
+            accessToken = accessToken,
+            expiresAtMs = expiresAtMs,
+            idToken = idToken
+        )
+        if (!saved) {
             Log.e(TAG, "设备安全存储不可用，凭据未保存")
             return false
-        }
-        if (!accessToken.isNullOrBlank()) {
-            val expiresAtMs = System.currentTimeMillis() + (expiresInSeconds * 1000)
-            credentialStorage.saveAccessToken(account.id, accessToken, expiresAtMs)
         }
 
         // 自动发现邮箱绑定
         val detectedEmail = account.email
+            ?: JwtUtils.extractEmail(idToken)
             ?: JwtUtils.extractEmail(accessToken)
             ?: JwtUtils.extractEmail(refreshToken)
         val finalAccount = if (detectedEmail != null) {
@@ -429,9 +434,10 @@ class CodexAccountRepository(
         account: CodexAccount,
         refreshToken: String,
         accessToken: String?,
-        expiresInSeconds: Long = 3600L
+        expiresInSeconds: Long = 3600L,
+        idToken: String? = null
     ): Boolean {
-        return saveAccountAtSlot(slot, account, refreshToken, accessToken, expiresInSeconds)
+        return saveAccountAtSlot(slot, account, refreshToken, accessToken, expiresInSeconds, idToken)
     }
 
     fun saveDeepSeekApiKey(accountId: String, apiKey: String, alias: String? = null): Boolean {
@@ -494,7 +500,13 @@ class CodexAccountRepository(
             modelProvider = "DEEPSEEK"
         )
         if (clean.isNotBlank()) {
-            credentialStorage.saveAccessToken(newId, clean, Long.MAX_VALUE)
+            val saved = credentialStorage.saveAccessToken(newId, clean, Long.MAX_VALUE)
+            if (!saved) {
+                Log.e(TAG, "设备安全存储不可用，凭据未保存")
+                val unauthed = newAccount.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN)
+                addAccount(unauthed)
+                return unauthed
+            }
         }
         addAccount(newAccount)
         return newAccount
@@ -578,7 +590,13 @@ class CodexAccountRepository(
             modelProvider = "ANTIGRAVITY"
         )
         if (clean.isNotBlank()) {
-            credentialStorage.saveAccessToken(newId, clean, Long.MAX_VALUE)
+            val saved = credentialStorage.saveAccessToken(newId, clean, Long.MAX_VALUE)
+            if (!saved) {
+                Log.e(TAG, "设备安全存储不可用，凭据未保存")
+                val unauthed = newAccount.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN)
+                addAccount(unauthed)
+                return unauthed
+            }
         }
         addAccount(newAccount)
         return newAccount

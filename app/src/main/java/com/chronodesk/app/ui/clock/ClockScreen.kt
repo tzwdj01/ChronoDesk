@@ -192,8 +192,11 @@ fun ClockScreen(
             getAntigravityApiKey = { id -> viewModel.getAntigravityApiKey(id) },
             onDismiss = { selectedAccountToManage = null },
             onSaveAccount = { slot, acc, ref, accTok ->
-                viewModel.saveAccount(slot, acc, ref, accTok)
-                selectedAccountToManage = null
+                val saved = viewModel.saveAccount(slot, acc, ref, accTok)
+                if (saved) {
+                    selectedAccountToManage = null
+                }
+                saved
             },
             onRemoveAccount = { slot ->
                 viewModel.removeAccount(slot)
@@ -208,8 +211,11 @@ fun ClockScreen(
                 }
             },
             onSaveDeepSeekAccount = { accId, key, alias ->
-                viewModel.saveDeepSeekAccount(accId, key, alias)
-                selectedAccountToManage = null
+                val saved = viewModel.saveDeepSeekAccount(accId, key, alias)
+                if (saved) {
+                    selectedAccountToManage = null
+                }
+                saved
             },
             onAddDeepSeekAccount = {
                 viewModel.addDeepSeekAccount()
@@ -220,13 +226,21 @@ fun ClockScreen(
             },
             currentDeepSeekApiKey = viewModel.getDeepSeekApiKey(),
             onSaveDeepSeekApiKey = { key ->
-                viewModel.saveDeepSeekApiKey(key)
-                selectedAccountToManage = null
-                Toast.makeText(context, "DeepSeek API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
+                val saved = viewModel.saveDeepSeekApiKey(key)
+                if (saved) {
+                    selectedAccountToManage = null
+                    Toast.makeText(context, "DeepSeek API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_SHORT).show()
+                }
+                saved
             },
             onSaveAntigravityAccount = { accId, key, alias ->
-                viewModel.saveAntigravityAccount(accId, key, alias)
-                selectedAccountToManage = null
+                val saved = viewModel.saveAntigravityAccount(accId, key, alias)
+                if (saved) {
+                    selectedAccountToManage = null
+                }
+                saved
             },
             onAddAntigravityAccount = {
                 viewModel.addAntigravityAccount()
@@ -237,9 +251,14 @@ fun ClockScreen(
             },
             currentAntigravityApiKey = viewModel.getAntigravityApiKey(),
             onSaveAntigravityApiKey = { key ->
-                viewModel.saveAntigravityAccount("acc_antigravity", key, "Google Antigravity")
-                selectedAccountToManage = null
-                Toast.makeText(context, "Google Antigravity API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
+                val saved = viewModel.saveAntigravityAccount("acc_antigravity", key, "Google Antigravity")
+                if (saved) {
+                    selectedAccountToManage = null
+                    Toast.makeText(context, "Google Antigravity API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_SHORT).show()
+                }
+                saved
             },
             onUpdateAccountVisibility = { accId, showMain, showSecond ->
                 viewModel.updateAccountVisibility(accId, showMain, showSecond)
@@ -253,9 +272,14 @@ fun ClockScreen(
             slot = slotIndex,
             onDismiss = { showDeviceAuthDialogForAccount = null },
             onSuccess = { updatedAcc, refreshToken, accessToken ->
-                viewModel.saveAccount(slotIndex, updatedAcc.copy(id = account.id), refreshToken, accessToken)
-                showDeviceAuthDialogForAccount = null
-                Toast.makeText(context, "账号授权成功！", Toast.LENGTH_SHORT).show()
+                val saved = viewModel.saveAccount(slotIndex, updatedAcc.copy(id = account.id), refreshToken, accessToken)
+                if (saved) {
+                    showDeviceAuthDialogForAccount = null
+                    Toast.makeText(context, "账号授权成功！", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_SHORT).show()
+                }
+                saved
             }
         )
     }

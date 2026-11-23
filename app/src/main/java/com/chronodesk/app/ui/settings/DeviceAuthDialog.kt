@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 fun DeviceAuthDialog(
     slot: Int,
     onDismiss: () -> Unit,
-    onSuccess: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Unit
+    onSuccess: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean
 ) {
     val context = LocalContext.current
     val provider = remember { RealCodexUsageProvider() }
@@ -115,9 +115,15 @@ fun DeviceAuthDialog(
                                         authenticatedAt = System.currentTimeMillis(),
                                         providerType = "OAUTH_DEVICE"
                                     )
-                                    onSuccess(acc, tokenRes.refreshToken ?: "", tokenRes.accessToken)
-                                    onDismiss()
-                                    return@LaunchedEffect
+                                    val saved = onSuccess(acc, tokenRes.refreshToken ?: "", tokenRes.accessToken)
+                                    if (saved) {
+                                        onDismiss()
+                                        return@LaunchedEffect
+                                    } else {
+                                        errorMessage = "设备安全存储不可用，凭据未保存"
+                                        statusText = "保存失败"
+                                        return@LaunchedEffect
+                                    }
                                 }
                                 is TokenResult.ExpiredOrInvalid -> {
                                     errorMessage = tokenRes.message

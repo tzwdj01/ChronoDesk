@@ -45,6 +45,26 @@ class CredentialStorage @JvmOverloads constructor(
         }
     }
 
+    fun saveCodexCredentials(
+        accountId: String,
+        refreshToken: String,
+        accessToken: String? = null,
+        expiresAtMs: Long = 0L,
+        idToken: String? = null
+    ): Boolean {
+        val p = prefs ?: return false
+        val editor = p.edit()
+            .putString(keyRefresh(accountId), refreshToken)
+        if (!accessToken.isNullOrBlank()) {
+            editor.putString(keyAccess(accountId), accessToken)
+            editor.putLong(keyAccessExpires(accountId), expiresAtMs)
+        }
+        if (!idToken.isNullOrBlank()) {
+            editor.putString(keyIdToken(accountId), idToken)
+        }
+        return editor.commit()
+    }
+
     fun saveRefreshToken(accountId: String, token: String): Boolean {
         val p = prefs ?: return false
         return p.edit().putString(keyRefresh(accountId), token).commit()

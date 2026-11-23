@@ -56,6 +56,72 @@ class CredentialStorageSecurityTest {
     }
 
     @Test
+    fun testSaveCodexCredentialsAtomic() {
+        val storageFail = CredentialStorage(mockContext, forceStorageUnavailable = true)
+        assertFalse("存储不可用时原子保存凭据必须返回 false",
+            storageFail.saveCodexCredentials("acc_1", "rt_123", "at_123", 1000L, "id_123"))
+
+        val mockPrefs = mock(SharedPreferences::class.java)
+        val mockEditor = mock(SharedPreferences.Editor::class.java)
+        `when`(mockPrefs.edit()).thenReturn(mockEditor)
+        `when`(mockEditor.putString(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenReturn(mockEditor)
+        `when`(mockEditor.putLong(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong())).thenReturn(mockEditor)
+        `when`(mockEditor.commit()).thenReturn(true)
+
+        val storageOk = CredentialStorage(mockContext, testPrefs = mockPrefs)
+        assertTrue("存储可用时原子保存凭据必须返回 true",
+            storageOk.saveCodexCredentials("acc_1", "rt_123", "at_123", 1000L, "id_123"))
+    }
+
+    @Test
+    fun testFivePathsFailureWhenStorageUnavailable() {
+        val storageFail = CredentialStorage(mockContext, forceStorageUnavailable = true)
+        val fakePrefs = mock(SharedPreferences::class.java)
+        val fakeEditor = mock(SharedPreferences.Editor::class.java)
+        `when`(fakePrefs.edit()).thenReturn(fakeEditor)
+        `when`(fakeEditor.putString(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenReturn(fakeEditor)
+        `when`(fakeEditor.putBoolean(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(fakeEditor)
+        `when`(fakeEditor.putInt(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(fakeEditor)
+        `when`(fakeEditor.clear()).thenReturn(fakeEditor)
+        `when`(fakeEditor.commit()).thenReturn(true)
+        `when`(fakePrefs.getString(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(null)
+        `when`(mockContext.getSharedPreferences(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(fakePrefs)
+
+        val codexRepo = com.chronodesk.app.data.repository.CodexAccountRepository(
+            context = mockContext,
+            credentialStorage = storageFail
+        )
+        val testAccount = com.chronodesk.app.data.model.CodexAccount(id = "acc_test", alias = "Test")
+
+        // 1. Codex 设备码
+        val r1 = codexRepo.saveAccountAtSlot(0, testAccount, "rt_123", "at_123")
+        assertFalse("路径 1: 存储不可用时 Codex 设备码保存必须返回 false", r1)
+
+        // 2. Codex 直接凭据导入
+        val r2 = codexRepo.saveAccount(0, testAccount, "rt_123", "at_123")
+        assertFalse("路径 2: 存储不可用时 Codex 直接凭据导入必须返回 false", r2)
+
+        // 3. DeepSeek Key
+        val r3 = codexRepo.saveDeepSeekApiKey("acc_deepseek", "sk-test")
+        assertFalse("路径 3: 存储不可用时 DeepSeek Key 保存必须返回 false", r3)
+
+        // 4. Gemini Key
+        val r4 = codexRepo.saveAntigravityApiKey("acc_antigravity", "ai-test")
+        assertFalse("路径 4: 存储不可用时 Gemini Key 保存必须返回 false", r4)
+
+        // 5. Grafana Token
+        val teslaRepo = com.chronodesk.app.data.repository.TeslaRepository(
+            context = mockContext,
+            credentialStorage = storageFail
+        )
+        val r5 = teslaRepo.updateSettings(
+            com.chronodesk.app.data.model.TeslaSettings(enabled = true, baseUrl = "http://192.168.1.100:3000", allowHttp = true),
+            newToken = "glsa_test"
+        )
+        assertFalse("路径 5: 存储不可用时 Grafana Token 保存必须返回 false", r5)
+    }
+
+    @Test
     fun testCleanupLegacyPlaintextFiles() {
         // 创建遗留明文文件
         val legacyPayload = File(filesDir, "migration_payload.json")
