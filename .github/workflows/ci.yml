@@ -19,7 +19,32 @@ jobs:
           cache: gradle
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
-      - name: Assemble debug and release APK
-        run: ./gradlew assembleDebug assembleRelease
       - name: Run lint
         run: ./gradlew lintDebug
+      - name: Assemble debug and release APK
+        run: ./gradlew assembleDebug assembleRelease
+      - name: Generate APK SHA-256 Checksums
+        run: |
+          mkdir -p app/build/outputs/apk/checksums
+          find app/build/outputs/apk -type f -name "*.apk" -exec sha256sum {} + > app/build/outputs/apk/checksums/apk_checksums.sha256
+          cat app/build/outputs/apk/checksums/apk_checksums.sha256
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: app/build/reports/tests/testDebugUnitTest/
+      - name: Upload Lint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+      - name: Upload Debug APK and Checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/checksums/apk_checksums.sha256

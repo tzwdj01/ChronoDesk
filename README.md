@@ -152,19 +152,27 @@ app/src/main/java/com/chronodesk/app/
 ```bash
 ./gradlew testDebugUnitTest
 ```
-> 目前包含 **74 项单元测试**，全面覆盖 AI 额度状态机、窗口百分比截断、Token 脱敏与安全日志、加密凭据隔离、常亮与夜间生命周期、Tesla 能耗与网络安全配置等关键路径，全部通过。
+> 目前包含 **85 项单元测试**，全面覆盖 AI 额度状态机、窗口百分比截断、Token 脱敏与安全日志、加密凭据隔离、常亮与夜间生命周期、Tesla 能耗与网络安全配置等关键路径，全部通过。
 
 ### 2. 构建 Release / Debug APK
 ```bash
-# 构建 Debug 版本 (包含内网 HTTP 联调白名单与测试辅助配置)
+# 构建 Debug 版本 (包含测试辅助配置与调试签名)
 ./gradlew assembleDebug
 
-# 构建 Release 正式发布包 (支持受信内网 HTTP 与 HTTPS，支持从环境变量注入正式签名)
+# 构建 Release 正式发布包 (支持从环境变量注入正式签名；未配置时输出 unsigned APK)
+# 可选环境变量：KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
 ./gradlew assembleRelease
 ```
 产物位置：
 - Debug: `app/build/outputs/apk/debug/app-debug.apk`
-- Release: `app/build/outputs/apk/release/app-release.apk`
+- Release (未签名): `app/build/outputs/apk/release/app-release-unsigned.apk`
+- Release (正式签名): `app/build/outputs/apk/release/app-release.apk`
+
+验证签名证书与校验和：
+```bash
+apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+sha256sum app/build/outputs/apk/release/*.apk
+```
 
 ### 3. 安装与运行
 ```bash

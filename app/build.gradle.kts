@@ -21,33 +21,50 @@ android {
         }
     }
 
-    signingConfigs {
-        create("release") {
-            val keystorePath = System.getenv("KEYSTORE_PATH")
-            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-            val keyAlias = System.getenv("KEY_ALIAS")
-            val keyPassword = System.getenv("KEY_PASSWORD")
+    val keystorePath = System.getenv("KEYSTORE_PATH")
+    val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+    val keyAlias = System.getenv("KEY_ALIAS")
+    val keyPassword = System.getenv("KEY_PASSWORD")
 
-            if (!keystorePath.isNullOrBlank() && file(keystorePath).exists()) {
-                storeFile = file(keystorePath)
+    val anySigningVarPresent = !keystorePath.isNullOrBlank() ||
+            !keystorePassword.isNullOrBlank() ||
+            !keyAlias.isNullOrBlank() ||
+            !keyPassword.isNullOrBlank()
+
+    var hasValidReleaseSigning = false
+
+    signingConfigs {
+        if (anySigningVarPresent) {
+            val missing = mutableListOf<String>()
+            if (keystorePath.isNullOrBlank()) missing.add("KEYSTORE_PATH")
+            if (keystorePassword.isNullOrBlank()) missing.add("KEYSTORE_PASSWORD")
+            if (keyAlias.isNullOrBlank()) missing.add("KEY_ALIAS")
+            if (keyPassword.isNullOrBlank()) missing.add("KEY_PASSWORD")
+            if (missing.isNotEmpty()) {
+                throw GradleException("Release 签名配置不完整，缺少环境变量: ${missing.joinToString(", ")}")
+            }
+            val keyFile = file(keystorePath!!)
+            if (!keyFile.exists()) {
+                throw GradleException("Release 签名密钥库文件不存在: $keystorePath")
+            }
+            create("release") {
+                storeFile = keyFile
                 storePassword = keystorePassword
                 this.keyAlias = keyAlias
                 this.keyPassword = keyPassword
-            } else {
-                // 未配置环境变量时回退到调试签名，保证工程在本地和 CI 环境无门槛独立构建
-                val debugSigning = getByName("debug")
-                storeFile = debugSigning.storeFile
-                storePassword = debugSigning.storePassword
-                this.keyAlias = debugSigning.keyAlias
-                this.keyPassword = debugSigning.keyPassword
             }
+            hasValidReleaseSigning = true
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            if (hasValidReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = null
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
