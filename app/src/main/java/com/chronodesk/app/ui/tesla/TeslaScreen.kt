@@ -1,11 +1,17 @@
 package com.chronodesk.app.ui.tesla
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,17 +23,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -36,11 +45,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +64,10 @@ import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.DailyDriveItem
 import com.chronodesk.app.data.model.TeslaFullSnapshot
 import com.chronodesk.app.data.model.TeslaSettings
+import com.chronodesk.app.data.model.VehicleLocation
+import com.chronodesk.app.data.model.VehicleState
+import com.chronodesk.app.data.utils.TeslaPhotoManager
+import java.util.Locale
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -95,6 +114,30 @@ fun TeslaScreen(
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+
+    val context = LocalContext.current
+    var showSilhouetteView by remember { mutableStateOf(false) } // false: 胎压图, true: 车型剪影/照片
+    var photoReloadTrigger by remember { mutableIntStateOf(0) }
+    val customPhotoBitmap = remember(settings.dataSourceUid, settings.carId, photoReloadTrigger) {
+        TeslaPhotoManager.loadScaledBitmap(context, settings.dataSourceUid, settings.carId)
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    TeslaPhotoManager.savePhoto(context, settings.dataSourceUid, settings.carId, stream)
+                }
+                photoReloadTrigger++
+                showSilhouetteView = true
+                Toast.makeText(context, "车辆照片已更新", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "照片保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -204,7 +247,7 @@ fun TeslaScreen(
                 )
             }
 
-            // 中列：纯自绘俯视车辆 Canvas + 四轮胎压环绕监测
+            // 中列：纯自绘俯视车辆 Canvas / 车型侧面剪影 / 自定义照片 (点击可切换视角)
             Box(
                 modifier = Modifier
                     .weight(1.25f)
@@ -215,11 +258,156 @@ fun TeslaScreen(
                     .padding(if (isCompact) 6.dp else 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                TirePressureDiagram(
-                    snapshot = snapshot.snapshot,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact
-                )
+                if (showSilhouetteView) {
+                    // 展示侧面剪影或自定义照片
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // 顶部操作小栏
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 切换为胎压视图
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                                    .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(4.dp))
+                                    .clickable { showSilhouetteView = false }
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwapHoriz,
+                                        contentDescription = "查看四轮胎压",
+                                        tint = if (isNightMode) TechCyan else InkTextPrimary,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "胎压视图",
+                                        color = primaryText,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            // 照片操作区
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (customPhotoBitmap != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                                            .clickable {
+                                                TeslaPhotoManager.deletePhoto(context, settings.dataSourceUid, settings.carId)
+                                                photoReloadTrigger++
+                                                Toast.makeText(context, "已恢复车型矢量剪影", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 5.dp, vertical = 3.dp)
+                                    ) {
+                                        Text("恢复剪影", color = TextTertiary, fontSize = 9.sp)
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                                        .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            photoPickerLauncher.launch("image/*")
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Image,
+                                            contentDescription = "自定义照片",
+                                            tint = if (isNightMode) TechCyan else InkTextPrimary,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = if (customPhotoBitmap != null) "换照片" else "自定义照片",
+                                            color = primaryText,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 中央主体：有照片优先照片，无照片自绘剪影
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clickable { showSilhouetteView = false },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (customPhotoBitmap != null) {
+                                Image(
+                                    bitmap = customPhotoBitmap,
+                                    contentDescription = "车辆自定义照片",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            } else {
+                                VehicleSilhouetteCanvas(
+                                    model = snapshot.car?.model,
+                                    isNightMode = isNightMode,
+                                    isCompact = isCompact
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // 俯视四轮胎压图
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        TirePressureDiagram(
+                            snapshot = snapshot.snapshot,
+                            isNightMode = isNightMode,
+                            isCompact = isCompact,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+
+                        // 右上角提供切换到车型图的快捷小胶囊
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.85f) else InkSurfaceElevated.copy(alpha = 0.85f))
+                                .border(1.dp, if (isNightMode) DarkBorder else InkBorder, RoundedCornerShape(4.dp))
+                                .clickable { showSilhouetteView = true }
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = "查看车型剪影",
+                                    tint = if (isNightMode) TechCyan else InkTextPrimary,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = if (customPhotoBitmap != null) "照片" else "车型",
+                                    color = primaryText,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // 右列：总里程 + 今日行驶 + 今日平均能耗 + 今日行程数
@@ -242,22 +430,22 @@ fun TeslaScreen(
 
         Spacer(modifier = Modifier.height(if (isCompact) 6.dp else 9.dp))
 
-        // ================= 底部辅助区域：3 块数据统计卡片 (~40% 高度) =================
+        // ================= 底部辅助区域：4 块数据统计与位置卡片 (~40% 高度) =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(0.9f),
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
         ) {
             // 底部 1：近 7 天能耗趋势
             Box(
                 modifier = Modifier
-                    .weight(1.2f)
+                    .weight(1.05f)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 8.dp else 11.dp)
+                    .padding(if (isCompact) 7.dp else 10.dp)
             ) {
                 Recent7DaysEnergyCard(
                     items = snapshot.drives.recent7DaysDrives,
@@ -269,12 +457,12 @@ fun TeslaScreen(
             // 底部 2：本月行驶与充入电量
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.95f)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 8.dp else 11.dp)
+                    .padding(if (isCompact) 7.dp else 10.dp)
             ) {
                 MonthlySummaryCard(
                     monthDistance = snapshot.drives.monthDistanceKm,
@@ -293,11 +481,29 @@ fun TeslaScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 8.dp else 11.dp)
+                    .padding(if (isCompact) 7.dp else 10.dp)
             ) {
                 ClimateSummaryCard(
                     insideTemp = snapshot.snapshot.insideTemp,
                     outsideTemp = snapshot.snapshot.outsideTemp,
+                    isNightMode = isNightMode,
+                    isCompact = isCompact
+                )
+            }
+
+            // 底部 4：最后有效位置与地图导航
+            Box(
+                modifier = Modifier
+                    .weight(1.05f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cardBg)
+                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                    .padding(if (isCompact) 7.dp else 10.dp)
+            ) {
+                TeslaLocationCard(
+                    location = snapshot.location,
+                    vehicleState = snapshot.state,
                     isNightMode = isNightMode,
                     isCompact = isCompact
                 )
@@ -944,5 +1150,136 @@ private fun ClimateSummaryCard(
             color = secondaryText,
             fontSize = if (isCompact) 8.5.sp else 9.5.sp
         )
+    }
+}
+
+/**
+ * 底部卡片 4：最后有效位置与地图导航
+ */
+@Composable
+private fun TeslaLocationCard(
+    location: VehicleLocation,
+    vehicleState: VehicleState,
+    isNightMode: Boolean,
+    isCompact: Boolean
+) {
+    val context = LocalContext.current
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+
+    val (statusLabel, statusColor) = when {
+        vehicleState.isDriving -> "行驶中" to (if (isNightMode) TechEmerald else Color(0xFF16A34A))
+        vehicleState.isAsleep -> "休眠停靠" to (if (isNightMode) TextTertiary else InkTextTertiary)
+        vehicleState.isCharging -> "充电中" to (if (isNightMode) TechCyan else Color(0xFF0284C7))
+        else -> "停泊点" to secondaryText
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = "最后上报位置",
+                    color = primaryText,
+                    fontSize = if (isCompact) 10.5.sp else 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(statusColor.copy(alpha = 0.18f))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = statusLabel,
+                    color = statusColor,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        // 围栏名称或坐标
+        Column {
+            Text(
+                text = location.geofenceName ?: if (location.isValid) "已记录停车点" else "位置未记录",
+                color = primaryText,
+                fontSize = if (isCompact) 12.sp else 13.5.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(1.dp))
+            Text(
+                text = if (location.isValid) {
+                    String.format(Locale.US, "%.4f, %.4f", location.latitude, location.longitude)
+                } else {
+                    "—"
+                },
+                color = secondaryText,
+                fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        // 采样时间与在地图中打开按钮
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (location.formattedSampledTime != null) "采样于 ${location.formattedSampledTime}" else "时间未知",
+                color = secondaryText,
+                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+            )
+
+            if (location.isValid) {
+                Box(
+                    modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable {
+                            val lat = location.latitude!!
+                            val lng = location.longitude!!
+                            val label = location.geofenceName ?: "车辆位置"
+                            val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng(${Uri.encode(label)})")
+                            val intent = Intent(Intent.ACTION_VIEW, uri)
+                            try {
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                try {
+                                    val browserUri = Uri.parse("https://maps.google.com/?q=$lat,$lng")
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, browserUri))
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, "未找到可用的地图或浏览器应用", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "在地图中打开 >",
+                        color = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                        fontSize = if (isCompact) 9.sp else 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
     }
 }

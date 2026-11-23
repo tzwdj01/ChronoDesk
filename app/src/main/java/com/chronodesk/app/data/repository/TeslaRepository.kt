@@ -77,9 +77,15 @@ class TeslaRepository(
             }
         }
         val oldSettings = _settingsFlow.value
-        // 切换服务器或车辆时，清除旧缓存
+        // 切换服务器或车辆时，清除旧缓存并立即重置在存快照为加载中，避免串车展示
         if (oldSettings.baseUrl != newSettings.baseUrl || oldSettings.carId != newSettings.carId || oldSettings.dataSourceUid != newSettings.dataSourceUid) {
             clearCachedSnapshot()
+            _snapshotFlow.value = TeslaFullSnapshot(
+                connectionState = TeslaConnectionState(
+                    isConfigured = newSettings.isConfigured,
+                    isLoading = true
+                )
+            )
         }
 
         prefs.edit()

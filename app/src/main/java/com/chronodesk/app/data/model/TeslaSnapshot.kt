@@ -9,10 +9,22 @@ import java.util.Locale
  */
 data class TeslaVehicle(
     val id: Int,
-    val name: String?
+    val name: String?,
+    val model: String? = null,
+    val trimBadging: String? = null
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() } ?: "Tesla #$id"
+
+    val normalizedModel: String
+        get() = when (model?.uppercase()?.trim()) {
+            "3", "MODEL 3", "MODEL3" -> "Model 3"
+            "Y", "MODEL Y", "MODELY" -> "Model Y"
+            "S", "MODEL S", "MODELS" -> "Model S"
+            "X", "MODEL X", "MODELX" -> "Model X"
+            null -> "Model 3"
+            else -> if (model.startsWith("Model", ignoreCase = true)) model else "Model $model"
+        }
 }
 
 /**
@@ -135,6 +147,54 @@ data class DriveSummary(
 )
 
 /**
+ * 车辆最后有效位置与围栏信息
+ */
+data class VehicleLocation(
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val geofenceName: String? = null,
+    val sampledAt: String? = null
+) {
+    val isValid: Boolean
+        get() = latitude != null && longitude != null && (latitude != 0.0 || longitude != 0.0)
+
+    val formattedSampledTime: String?
+        get() {
+            if (sampledAt.isNullOrBlank()) return null
+            return try {
+                if (sampledAt.toLongOrNull() != null) {
+                    val ms = sampledAt.toLong()
+                    val actualMs = if (ms < 100000000000L) ms * 1000L else ms
+                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(actualMs))
+                } else {
+                    val isoFormats = listOf(
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                    )
+                    var parsedDate: Date? = null
+                    for (format in isoFormats) {
+                        try {
+                            parsedDate = format.parse(sampledAt)
+                            if (parsedDate != null) break
+                        } catch (_: Exception) {}
+                    }
+                    if (parsedDate != null) {
+                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(parsedDate)
+                    } else if (sampledAt.contains("T")) {
+                        sampledAt.substringAfter("T").take(5)
+                    } else {
+                        sampledAt
+                    }
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+}
+
+/**
  * 连接与同步状态
  */
 data class TeslaConnectionState(
@@ -161,6 +221,7 @@ data class TeslaFullSnapshot(
     val snapshot: VehicleSnapshot = VehicleSnapshot(),
     val charging: ChargingSnapshot = ChargingSnapshot(),
     val drives: DriveSummary = DriveSummary(),
+    val location: VehicleLocation = VehicleLocation(),
     val connectionState: TeslaConnectionState = TeslaConnectionState(),
     val queriedAt: Long = System.currentTimeMillis()
 ) {

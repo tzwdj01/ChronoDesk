@@ -8,6 +8,7 @@ import com.chronodesk.app.data.model.TeslaConnectionState
 import com.chronodesk.app.data.model.TeslaFullSnapshot
 import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.model.TeslaVehicle
+import com.chronodesk.app.data.model.VehicleLocation
 import com.chronodesk.app.data.model.VehicleSnapshot
 import com.chronodesk.app.data.model.VehicleState
 import com.chronodesk.app.data.network.GrafanaApiClient
@@ -78,22 +79,40 @@ class TeslaDataProvider(
             val testResp = service.queryDataSource(auth, testQuery)
             GrafanaFrameParser.parseResultToRows(testResp, "A")
 
-            // 2. 查询车辆列表 SELECT id, name FROM cars
+            // 2. 查询车辆列表 SELECT id, name, model, trim_badging FROM cars
             val carsQuery = GrafanaQueryBody(
                 queries = listOf(
                     GrafanaQueryEntry(
                         refId = "A",
                         datasource = GrafanaDatasourceRef(settings.dataSourceUid, settings.dataSourceType),
-                        rawSql = "SELECT id, name FROM cars ORDER BY id LIMIT 50"
+                        rawSql = "SELECT id, name, model, trim_badging FROM cars ORDER BY id LIMIT 50"
                     )
                 )
             )
-            val carsResp = service.queryDataSource(auth, carsQuery)
+            val carsResp = try {
+                service.queryDataSource(auth, carsQuery)
+            } catch (_: Exception) {
+                // 若旧版数据库无 model/trim_badging 字段，回退基础字段查询
+                service.queryDataSource(
+                    auth,
+                    GrafanaQueryBody(
+                        queries = listOf(
+                            GrafanaQueryEntry(
+                                refId = "A",
+                                datasource = GrafanaDatasourceRef(settings.dataSourceUid, settings.dataSourceType),
+                                rawSql = "SELECT id, name FROM cars ORDER BY id LIMIT 50"
+                            )
+                        )
+                    )
+                )
+            }
             val carRows = GrafanaFrameParser.parseResultToRows(carsResp, "A")
             val cars = carRows.mapNotNull { row ->
                 val id = row.getInt("id") ?: return@mapNotNull null
                 val name = row.getString("name")
-                TeslaVehicle(id, name)
+                val model = row.getString("model")
+                val trimBadging = row.getString("trim_badging")
+                TeslaVehicle(id, name, model, trimBadging)
             }
 
             if (cars.isEmpty()) {
@@ -137,15 +156,37 @@ class TeslaDataProvider(
         // 3. 查询 C：行程与能耗统计 (drives, charging_processes)
         val (drivesSummary, totalCharges) = fetchDriveAndChargeSummaries(service, auth, dsRef, carId, settings.timeZone)
 
+        // 4. 查询 D：车辆最后有效位置与围栏 (positions, geofences)
+        val vehicleLocation = fetchLatestLocation(service, auth, dsRef, carId, lastSnapshot?.location)
+
         // 合并充电快照
         val finalCharging = activeCharging.copy(
             todayCharge = totalCharges.todayCharge,
             monthCharge = totalCharges.monthCharge
         )
 
+        // 查询车辆型号代码与配置信息
+        var carModel = lastSnapshot?.car?.model
+        var trimBadging = lastSnapshot?.car?.trimBadging
+        var carName = settings.carName.takeIf { it.isNotBlank() } ?: lastSnapshot?.car?.name ?: "Tesla"
+        try {
+            val carSql = "SELECT id, name, model, trim_badging FROM cars WHERE id = $carId LIMIT 1"
+            val carResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, carSql))))
+            val carRow = GrafanaFrameParser.parseResultToRows(carResp, "A").firstOrNull()
+            if (carRow != null) {
+                if (settings.carName.isBlank()) {
+                    carName = carRow.getString("name") ?: carName
+                }
+                carModel = carRow.getString("model") ?: carModel
+                trimBadging = carRow.getString("trim_badging") ?: trimBadging
+            }
+        } catch (_: Exception) {}
+
         val carObj = TeslaVehicle(
             id = carId,
-            name = settings.carName.takeIf { it.isNotBlank() } ?: "Tesla"
+            name = carName,
+            model = carModel,
+            trimBadging = trimBadging
         )
 
         return TeslaFullSnapshot(
@@ -154,6 +195,7 @@ class TeslaDataProvider(
             snapshot = vehicleSnap,
             charging = finalCharging,
             drives = drivesSummary,
+            location = vehicleLocation,
             connectionState = TeslaConnectionState(
                 isConfigured = true,
                 isLoading = false,
@@ -162,6 +204,43 @@ class TeslaDataProvider(
             ),
             queriedAt = System.currentTimeMillis()
         )
+    }
+
+    private suspend fun fetchLatestLocation(
+        service: com.chronodesk.app.data.network.GrafanaRetrofitService,
+        auth: String,
+        dsRef: GrafanaDatasourceRef,
+        carId: Int,
+        previousLocation: VehicleLocation?
+    ): com.chronodesk.app.data.model.VehicleLocation {
+        val sqlLoc = """
+            SELECT p.date, p.latitude, p.longitude, g.name AS geofence_name
+            FROM positions p
+            LEFT JOIN geofences g ON p.geofence_id = g.id
+            WHERE p.car_id = $carId AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL
+            ORDER BY p.date DESC LIMIT 1
+        """.trimIndent()
+        return try {
+            val resp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, sqlLoc))))
+            val row = GrafanaFrameParser.parseResultToRows(resp, "A").firstOrNull()
+            if (row != null) {
+                val lat = row.getDouble("latitude")
+                val lng = row.getDouble("longitude")
+                val geofence = row.getString("geofence_name")
+                val sampledAt = row.getString("date")
+                com.chronodesk.app.data.model.VehicleLocation(
+                    latitude = lat,
+                    longitude = lng,
+                    geofenceName = geofence,
+                    sampledAt = sampledAt
+                )
+            } else {
+                previousLocation ?: com.chronodesk.app.data.model.VehicleLocation()
+            }
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to fetch vehicle location: ${e.message}")
+            previousLocation ?: com.chronodesk.app.data.model.VehicleLocation()
+        }
     }
 
     private suspend fun fetchLatestPositions(
