@@ -282,6 +282,38 @@ fun TeslaSettingsDialog(
                     )
                 }
 
+                if (allowHttp) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val targetDisplayHost = try {
+                        val parsed = java.net.URI.create(baseUrl.trim())
+                        parsed.host ?: baseUrl.trim()
+                    } catch (_: Exception) {
+                        baseUrl.trim()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isNightMode) TechAmber.copy(alpha = 0.12f) else Color(0xFFFEF3C7))
+                            .border(1.dp, if (isNightMode) TechAmber.copy(alpha = 0.35f) else Color(0xFFF59E0B), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Column {
+                            Text(
+                                text = "目标内网地址: ${if (targetDisplayHost.isNotBlank()) targetDisplayHost else "未指定"}",
+                                color = if (isNightMode) TechAmber else Color(0xFF92400E),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "安全提示：Grafana Token 会在该内网 HTTP 连接中明文传输。仅允许配置私有局域网 IP 或已解析到内网的主机名，禁止公网地址。",
+                                color = if (isNightMode) TechAmber.copy(alpha = 0.85f) else Color(0xFFB45309),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // 5. 测试连接与车辆发现按钮

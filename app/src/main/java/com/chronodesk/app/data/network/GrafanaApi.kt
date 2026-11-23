@@ -1,6 +1,7 @@
 package com.chronodesk.app.data.network
 
 import com.google.gson.annotations.SerializedName
+import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -11,9 +12,51 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.io.IOException
+import java.net.InetAddress
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+
+/**
+ * 内网 DNS 解析锁定器：确保主机名地址校验与 OkHttp 实际连接使用同一组解析结果
+ */
+object IntranetDns : Dns {
+    private val pinnedAddresses = ConcurrentHashMap<String, List<InetAddress>>()
+
+    fun pin(host: String, addresses: List<InetAddress>) {
+        pinnedAddresses[host.lowercase()] = addresses
+    }
+
+    fun clearPin(host: String) {
+        pinnedAddresses.remove(host.lowercase())
+    }
+
+    fun clearAll() {
+        pinnedAddresses.clear()
+    }
+
+    override fun lookup(hostname: String): List<InetAddress> {
+        return pinnedAddresses[hostname.lowercase()] ?: Dns.SYSTEM.lookup(hostname)
+    }
+}
+
+/**
+ * 校验 IP 地址是否属于私有局域网/回环/链路本地范围
+ */
+fun isPrivateAddress(address: InetAddress): Boolean {
+    if (address.isLoopbackAddress || address.isSiteLocalAddress || address.isLinkLocalAddress) {
+        return true
+    }
+    val bytes = address.address
+    if (bytes != null && bytes.size == 16) {
+        // IPv6 Unique Local Address (ULA) fc00::/7
+        val firstByte = bytes[0].toInt() and 0xFF
+        if ((firstByte and 0xFE) == 0xFC) {
+            return true
+        }
+    }
+    return false
+}
 
 data class GrafanaDatasourceItem(
     @SerializedName("id") val id: Long? = null,
@@ -66,35 +109,21 @@ interface GrafanaRetrofitService {
  * 2. 禁止跨域或跨协议重定向携带 Authorization 凭据；
  * 3. 严格校验 URL 规范（无 query、无 userinfo，https 优先）。
  */
-class GrafanaApiClient {
+class GrafanaApiClient(
+    val dns: Dns = IntranetDns
+) {
 
     private val serviceCache = ConcurrentHashMap<String, GrafanaRetrofitService>()
 
     /**
-     * 重定向安全拦截器：若发生重定向且目标主机或协议与原请求不符，严禁转发凭据
+     * 重定向安全拦截器：保持自动重定向关闭，任何重定向均拦截并终止，以防凭据跨协议/跨域泄露
      */
     private val redirectProtectionInterceptor = Interceptor { chain ->
         val originalRequest = chain.request()
-        val originalHost = originalRequest.url.host
-        val originalScheme = originalRequest.url.scheme
-
         val response = chain.proceed(originalRequest)
         if (response.isRedirect) {
             val location = response.header("Location")
-            if (!location.isNullOrBlank()) {
-                val targetUri = try { URI.create(location) } catch (_: Exception) { null }
-                if (targetUri != null) {
-                    val targetHost = targetUri.host
-                    val targetScheme = targetUri.scheme
-                    if (targetHost != null && !targetHost.equals(originalHost, ignoreCase = true)) {
-                        // 目标主机不一致，抛出异常阻断携带凭据泄漏
-                        throw IOException("禁止跨主机重定向以保护安全凭证 ($originalHost -> $targetHost)")
-                    }
-                    if (originalScheme == "https" && targetScheme == "http") {
-                        throw IOException("禁止从 HTTPS 重定向至不安全的 HTTP 协议")
-                    }
-                }
-            }
+            throw IOException("自动重定向已禁用以保护凭据安全 (HTTP ${response.code} -> $location)")
         }
         response
     }
@@ -104,8 +133,9 @@ class GrafanaApiClient {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
-            .followRedirects(true) // 允许同源重定向，由 redirectProtectionInterceptor 阻断跨主机/跨协议泄密
-            .followSslRedirects(true)
+            .followRedirects(false) // 保持自动重定向关闭
+            .followSslRedirects(false)
+            .dns(dns)
             .addInterceptor(redirectProtectionInterceptor)
             .build()
     }
@@ -145,11 +175,8 @@ class GrafanaApiClient {
             throw IllegalArgumentException("Grafana 地址协议必须为 http 或 https")
         }
 
-        if (scheme == "http" && !allowHttp) {
-            throw IllegalArgumentException("HTTP 协议会明文传递 Token；仅可信内网环境允许勾选开启 HTTP")
-        }
-
-        if (uri.host.isNullOrBlank()) {
+        val host = uri.host
+        if (host.isNullOrBlank()) {
             throw IllegalArgumentException("Grafana 地址缺少有效的主机名")
         }
 
@@ -159,6 +186,27 @@ class GrafanaApiClient {
 
         if (!uri.query.isNullOrBlank() || !uri.fragment.isNullOrBlank()) {
             throw IllegalArgumentException("Grafana 根地址不可包含查询参数或片段标识 (#)")
+        }
+
+        if (scheme == "http") {
+            if (!allowHttp) {
+                throw IllegalArgumentException("HTTP 协议会明文传递 Token；仅可信内网环境允许勾选开启 HTTP")
+            }
+            // 解析主机名，验证是否为内网地址，并锁定解析结果以防 DNS 重绑定
+            val addresses = try {
+                dns.lookup(host)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("无法解析内网主机地址: $host (${e.message})")
+            }
+            if (addresses.isEmpty()) {
+                throw IllegalArgumentException("无法解析主机名: $host")
+            }
+            for (addr in addresses) {
+                if (!isPrivateAddress(addr)) {
+                    throw IllegalArgumentException("HTTP 仅支持私有内网地址或主机名，禁止连接公网地址: $host (${addr.hostAddress})")
+                }
+            }
+            IntranetDns.pin(host, addresses)
         }
 
         return "$trimmed/"

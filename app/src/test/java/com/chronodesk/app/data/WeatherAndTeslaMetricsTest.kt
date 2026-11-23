@@ -84,16 +84,14 @@ class WeatherAndTeslaMetricsTest {
     }
 
     @Test
-    fun testReleaseNetworkSecurityConfig_strictlyNoGlobalCleartext() {
+    fun testReleaseNetworkSecurityConfig_supportsIntranetCleartext() {
         val file1 = File("app/src/main/res/xml/network_security_config.xml")
         val file2 = File("src/main/res/xml/network_security_config.xml")
         val mainConfigFile = if (file1.exists()) file1 else file2
         assertTrue("主网络安全配置文件必须存在 (checked: ${mainConfigFile.absolutePath})", mainConfigFile.exists())
         val content = mainConfigFile.readText()
 
-        assertTrue("Release 主配置必须设置 cleartextTrafficPermitted=\"false\"",
-            content.contains("cleartextTrafficPermitted=\"false\""))
-        assertFalse("Release 主配置绝不可包含宽泛全局明文 cleartextTrafficPermitted=\"true\"",
-            content.contains("<base-config cleartextTrafficPermitted=\"true\""))
+        assertTrue("网络安全配置必须允许明文传输以支持内网 TeslaMate HTTP",
+            content.contains("cleartextTrafficPermitted=\"true\""))
     }
 }

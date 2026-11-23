@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Release 构建默认严格仅允许 HTTPS 安全连接，禁止全局明文 HTTP -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- 允许系统建立所需 HTTP 连接，由应用内客户端 (GrafanaApiClient) 严格落实私有内网地址范围和用户开关校验 -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

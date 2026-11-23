@@ -91,7 +91,7 @@
 - **安全与电池保护原则**：
   - **只读采集**：直连本地 Grafana PostgreSQL 接口执行只读 SELECT 查询，严禁任何控制指令，**绝不唤醒车辆**。
   - **自适应动态轮询**：车辆行驶或充电中 30s 刷新，日常在线 60s 刷新，休眠状态 180s 刷新，节约服务器资源。
-  - **内网安全通信**：支持配置可信局域网明文 HTTP 传输，解决 Android 9+ 系统级明文流量拦截。
+  - **内网安全通信**：Release 与 Debug 版本均支持配置可信局域网明文 HTTP 传输（仅限私有内网 IP 与内网主机名，禁止公网 HTTP 与重定向），解决 Android 9+ 系统级明文流量拦截。
   - **一键级联发现**：自动探测 PostgreSQL 数据源 UID 与已绑定车辆，一键点击连接测试。
 
 ### 🌓 5. 水墨纸感 / 赛博夜间双主题
@@ -159,7 +159,7 @@ app/src/main/java/com/chronodesk/app/
 # 构建 Debug 版本 (包含内网 HTTP 联调白名单与测试辅助配置)
 ./gradlew assembleDebug
 
-# 构建 Release 正式发布包 (严格仅允许 HTTPS，支持从环境变量注入正式签名)
+# 构建 Release 正式发布包 (支持受信内网 HTTP 与 HTTPS，支持从环境变量注入正式签名)
 ./gradlew assembleRelease
 ```
 产物位置：
