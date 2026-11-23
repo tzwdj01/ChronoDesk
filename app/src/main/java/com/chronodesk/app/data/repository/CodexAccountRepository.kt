@@ -295,7 +295,12 @@ class CodexAccountRepository(
     }
 
     fun removeAccountById(accountId: String) {
+        accountCredentialVersions.compute(accountId) { _, v -> (v ?: 0L) + 1L }
         credentialStorage.removeAccountCredentials(accountId)
+        prefs.edit().remove("snap_$accountId").apply()
+        retryAfterMap.remove(accountId)
+        backoffAttempts.remove(accountId)
+
         val current = _accounts.value.toMutableList()
         current.removeAll { it.id == accountId }
 
@@ -317,7 +322,12 @@ class CodexAccountRepository(
         if (_accounts.value.size > 2) {
             removeAccountById(acc.id)
         } else {
+            accountCredentialVersions.compute(acc.id) { _, v -> (v ?: 0L) + 1L }
             credentialStorage.removeAccountCredentials(acc.id)
+            prefs.edit().remove("snap_${acc.id}").apply()
+            retryAfterMap.remove(acc.id)
+            backoffAttempts.remove(acc.id)
+
             val current = _accounts.value.toMutableList()
             current[slot] = CodexAccount.createPlaceholder()
             _accounts.value = current
@@ -400,6 +410,10 @@ class CodexAccountRepository(
             return false
         }
 
+        accountCredentialVersions.compute(account.id) { _, v -> (v ?: 0L) + 1L }
+        retryAfterMap.remove(account.id)
+        backoffAttempts.remove(account.id)
+
         // 自动发现邮箱绑定
         val detectedEmail = account.email
             ?: JwtUtils.extractEmail(idToken)
@@ -478,6 +492,9 @@ class CodexAccountRepository(
             if (current != null) updateAccount(updated) else addAccount(updated)
             putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "DEEPSEEK"))
         }
+        accountCredentialVersions.compute(target.id) { _, v -> (v ?: 0L) + 1L }
+        retryAfterMap.remove(target.id)
+        backoffAttempts.remove(target.id)
         return true
     }
 
@@ -568,6 +585,9 @@ class CodexAccountRepository(
             if (current != null) updateAccount(updated) else addAccount(updated)
             putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "ANTIGRAVITY"))
         }
+        accountCredentialVersions.compute(target.id) { _, v -> (v ?: 0L) + 1L }
+        retryAfterMap.remove(target.id)
+        backoffAttempts.remove(target.id)
         return true
     }
 
@@ -630,6 +650,7 @@ class CodexAccountRepository(
     }
 
     private val inFlightRefreshes = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+    private val accountCredentialVersions = ConcurrentHashMap<String, Long>()
     private val retryAfterMap = ConcurrentHashMap<String, Long>()
     private val backoffAttempts = ConcurrentHashMap<String, Int>()
 
@@ -653,6 +674,8 @@ class CodexAccountRepository(
             return
         }
 
+        val requestVersion = accountCredentialVersions[accountId] ?: 0L
+
         // 合并并发刷新请求
         val deferred = CompletableDeferred<Unit>()
         val existing = inFlightRefreshes.putIfAbsent(accountId, deferred)
@@ -662,20 +685,25 @@ class CodexAccountRepository(
         }
 
         try {
-            doRefreshAccount(accountId, isMockGlobal)
+            doRefreshAccount(accountId, isMockGlobal, requestVersion)
             deferred.complete(Unit)
         } catch (e: Throwable) {
             deferred.completeExceptionally(e)
             throw e
         } finally {
-            inFlightRefreshes.remove(accountId)
+            inFlightRefreshes.remove(accountId, deferred)
         }
     }
 
-    private suspend fun doRefreshAccount(accountId: String, isMockGlobal: Boolean) {
+    private suspend fun doRefreshAccount(accountId: String, isMockGlobal: Boolean, requestVersion: Long) {
         val mutex = getMutex(accountId)
         mutex.withLock {
             val account = _accounts.value.firstOrNull { it.id == accountId } ?: return
+            val curVersion = accountCredentialVersions[accountId] ?: 0L
+            if (curVersion != requestVersion) {
+                Log.i(TAG, "Request version expired before lock for account $accountId ($requestVersion vs $curVersion)")
+                return
+            }
             setLoading(accountId, true)
             val provider = getProviderForAccount(account, isMockGlobal)
 
@@ -684,7 +712,7 @@ class CodexAccountRepository(
                 if (account.modelProvider == "DEEPSEEK") {
                     val apiKey = credentialStorage.getAccessToken(account.id)
                     val result = deepSeekProvider.fetchUsage(account.id, account.displayTitle, apiKey)
-                    handleFetchResult(account, result)
+                    handleFetchResult(account, result, requestVersion)
                     return
                 }
 
@@ -692,7 +720,7 @@ class CodexAccountRepository(
                 if (account.modelProvider == "ANTIGRAVITY") {
                     val apiKey = credentialStorage.getAccessToken(account.id)
                     val result = antigravityProvider.fetchUsage(account.id, account.displayTitle, apiKey)
-                    handleFetchResult(account, result)
+                    handleFetchResult(account, result, requestVersion)
                     return
                 }
 
@@ -713,7 +741,7 @@ class CodexAccountRepository(
                         accessToken = "mock_token",
                         chatgptAccountId = account.chatgptAccountId
                     )
-                    handleFetchResult(account, usageResult)
+                    handleFetchResult(account, usageResult, requestVersion)
                     return
                 }
 
@@ -737,16 +765,21 @@ class CodexAccountRepository(
 
                     when (val refreshResult = provider.refreshToken(refreshToken)) {
                         is TokenResult.Success -> {
-                            accessToken = refreshResult.accessToken
-                            credentialStorage.saveAccessToken(
-                                account.id,
-                                refreshResult.accessToken,
-                                System.currentTimeMillis() + (refreshResult.expiresInSeconds * 1000)
-                            )
-                            if (!refreshResult.refreshToken.isNullOrBlank()) {
-                                credentialStorage.saveRefreshToken(account.id, refreshResult.refreshToken)
+                            val vNow = accountCredentialVersions[accountId] ?: 0L
+                            if (vNow == requestVersion && _accounts.value.any { it.id == accountId }) {
+                                accessToken = refreshResult.accessToken
+                                credentialStorage.saveAccessToken(
+                                    account.id,
+                                    refreshResult.accessToken,
+                                    System.currentTimeMillis() + (refreshResult.expiresInSeconds * 1000)
+                                )
+                                if (!refreshResult.refreshToken.isNullOrBlank()) {
+                                    credentialStorage.saveRefreshToken(account.id, refreshResult.refreshToken)
+                                }
+                                updateAccount(account.copy(credentialStatus = CredentialStatus.VALID))
+                            } else {
+                                return
                             }
-                            updateAccount(account.copy(credentialStatus = CredentialStatus.VALID))
                         }
                         is TokenResult.ExpiredOrInvalid -> {
                             val failedSnap = CodexUsageSnapshot.error(
@@ -766,7 +799,7 @@ class CodexAccountRepository(
                                 accountId = account.id,
                                 alias = account.displayTitle,
                                 status = account.credentialStatus,
-                                message = refreshResult.message,
+                                message = "刷新超时，保留当前数据: ${refreshResult.message}",
                                 lastGood = _snapshots.value[account.id],
                                 errorType = SyncErrorType.NETWORK_TIMEOUT
                             )
@@ -774,6 +807,10 @@ class CodexAccountRepository(
                             return
                         }
                     }
+                }
+
+                if (accessToken.isNullOrBlank()) {
+                    return
                 }
 
                 // 使用 Access Token 查询额度
@@ -791,52 +828,69 @@ class CodexAccountRepository(
                         Log.i(TAG, "Account ${account.id} received 401, attempting controlled token refresh once...")
                         when (val reauth = provider.refreshToken(refreshToken)) {
                             is TokenResult.Success -> {
-                                accessToken = reauth.accessToken
-                                credentialStorage.saveAccessToken(
-                                    account.id,
-                                    reauth.accessToken,
-                                    System.currentTimeMillis() + (reauth.expiresInSeconds * 1000)
-                                )
-                                if (!reauth.refreshToken.isNullOrBlank()) {
-                                    credentialStorage.saveRefreshToken(account.id, reauth.refreshToken)
+                                val vNow = accountCredentialVersions[accountId] ?: 0L
+                                if (vNow == requestVersion && _accounts.value.any { it.id == accountId }) {
+                                    accessToken = reauth.accessToken
+                                    credentialStorage.saveAccessToken(
+                                        account.id,
+                                        reauth.accessToken,
+                                        System.currentTimeMillis() + (reauth.expiresInSeconds * 1000)
+                                    )
+                                    if (!reauth.refreshToken.isNullOrBlank()) {
+                                        credentialStorage.saveRefreshToken(account.id, reauth.refreshToken)
+                                    }
+                                    // 重试一次 fetchUsage
+                                    usageResult = provider.fetchUsage(
+                                        accountId = account.id,
+                                        accountAlias = account.displayTitle,
+                                        accessToken = accessToken,
+                                        chatgptAccountId = account.chatgptAccountId
+                                    )
                                 }
-                                // 重试一次 fetchUsage
-                                usageResult = provider.fetchUsage(
-                                    accountId = account.id,
-                                    accountAlias = account.displayTitle,
-                                    accessToken = accessToken,
-                                    chatgptAccountId = account.chatgptAccountId
-                                )
                             }
-                            else -> {
-                                Log.w(TAG, "Controlled token refresh failed for ${account.id}")
+                            is TokenResult.ExpiredOrInvalid -> {
+                                Log.w(TAG, "Controlled token refresh confirmed expired/invalid for ${account.id}")
+                                usageResult = UsageFetchResult.AuthExpired(reauth.message, 401)
+                            }
+                            is TokenResult.TransientError -> {
+                                Log.w(TAG, "Controlled token refresh transient timeout/error for ${account.id}, keeping cache")
+                                usageResult = UsageFetchResult.TransientError("令牌续签临时超时，保留缓存: ${reauth.message}")
                             }
                         }
                     }
                 }
 
-                handleFetchResult(account, usageResult)
+                handleFetchResult(account, usageResult, requestVersion)
 
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Log.e(TAG, "Account $accountId refresh error", e)
-                val failedSnap = CodexUsageSnapshot.error(
-                    accountId = account.id,
-                    alias = account.displayTitle,
-                    status = account.credentialStatus,
-                    message = "刷新异常: ${e.message}",
-                    lastGood = _snapshots.value[account.id],
-                    errorType = SyncErrorType.NETWORK_TIMEOUT
-                )
-                putSnapshot(accountId, failedSnap)
+                val curV = accountCredentialVersions[accountId] ?: 0L
+                if (curV == requestVersion && _accounts.value.any { it.id == accountId }) {
+                    val failedSnap = CodexUsageSnapshot.error(
+                        accountId = account.id,
+                        alias = account.displayTitle,
+                        status = account.credentialStatus,
+                        message = "刷新异常: ${e.message}",
+                        lastGood = _snapshots.value[account.id],
+                        errorType = SyncErrorType.NETWORK_TIMEOUT
+                    )
+                    putSnapshot(accountId, failedSnap)
+                }
             } finally {
                 setLoading(accountId, false)
             }
         }
     }
 
-    private fun handleFetchResult(account: CodexAccount, result: UsageFetchResult) {
+    private fun handleFetchResult(account: CodexAccount, result: UsageFetchResult, requestVersion: Long) {
         val accountId = account.id
+        val curV = accountCredentialVersions[accountId] ?: 0L
+        if (curV != requestVersion || _accounts.value.none { it.id == accountId }) {
+            Log.i(TAG, "Discarding stale handleFetchResult for account $accountId ($requestVersion vs $curV)")
+            return
+        }
+
         when (result) {
             is UsageFetchResult.Success -> {
                 retryAfterMap.remove(accountId)
@@ -864,8 +918,23 @@ class CodexAccountRepository(
                     lastSyncTime = now
                 ))
             }
+            is UsageFetchResult.AccessDenied -> {
+                // 403 访问受限：保留上次成功额度和原时间，不清除凭据
+                Log.w(TAG, "Account $accountId access denied (403), preserving last good cache")
+                val lastGoodSnap = _snapshots.value[accountId]
+                val failedSnap = CodexUsageSnapshot.error(
+                    accountId = accountId,
+                    alias = account.displayTitle,
+                    status = account.credentialStatus,
+                    message = "访问受限",
+                    lastGood = lastGoodSnap,
+                    modelProvider = account.modelProvider,
+                    errorType = SyncErrorType.ACCESS_DENIED
+                )
+                putSnapshot(accountId, failedSnap)
+            }
             is UsageFetchResult.AuthExpired -> {
-                // 明确鉴权失效（401/403）：清除旧额度数值
+                // 明确鉴权失效（401）：清除 AccessToken 并标记授权失效
                 if (account.modelProvider == "CHATGPT") {
                     credentialStorage.saveAccessToken(accountId, "", 0L)
                 }

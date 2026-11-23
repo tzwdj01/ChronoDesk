@@ -400,7 +400,7 @@ private fun CompactSecondaryAccountQuotaItem(
             isWarning -> "即将耗尽"
             else -> "正常"
         }
-        QuotaSyncStatus.CACHED_STALE -> "缓存"
+        QuotaSyncStatus.CACHED_STALE -> if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else "缓存"
         QuotaSyncStatus.CACHE_EXPIRED -> "已过期"
         QuotaSyncStatus.AUTH_EXPIRED -> "失效"
         QuotaSyncStatus.SERVICE_UNAVAILABLE -> if (isCoolingDown) "${remainingCooldown}s" else "暂不可用"
@@ -579,7 +579,7 @@ private fun SingleAccountQuotaItem(
             Triple(label, color, color.copy(alpha = 0.14f))
         }
         QuotaSyncStatus.CACHED_STALE -> Triple(
-            "缓存 · ${snapshot?.errorMessage?.take(6) ?: "异常"}",
+            if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else "缓存 · ${snapshot?.errorMessage?.take(6) ?: "异常"}",
             if (isNightMode) TechAmber else InkWarningAmber,
             (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.14f)
         )

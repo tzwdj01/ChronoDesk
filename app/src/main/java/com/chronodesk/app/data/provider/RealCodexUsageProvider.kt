@@ -146,8 +146,11 @@ class RealCodexUsageProvider : CodexUsageProvider {
             )
 
             when (response.code()) {
-                401, 403 -> {
-                    UsageFetchResult.AuthExpired("Codex 访问令牌已过期或拒绝访问 (HTTP ${response.code()})", response.code())
+                401 -> {
+                    UsageFetchResult.AuthExpired("Codex 访问令牌已过期 (HTTP 401)", 401)
+                }
+                403 -> {
+                    UsageFetchResult.AccessDenied("访问受限 (HTTP 403)", 403)
                 }
                 429 -> {
                     val retryHeader = response.headers()["Retry-After"]

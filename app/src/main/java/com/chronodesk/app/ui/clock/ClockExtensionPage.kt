@@ -40,6 +40,7 @@ import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CodexUsageSnapshot
 import com.chronodesk.app.data.model.CredentialStatus
 import com.chronodesk.app.data.model.QuotaSyncStatus
+import com.chronodesk.app.data.model.SyncErrorType
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkProgressTrack
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -280,7 +281,7 @@ fun ClockExtensionPage(
                             QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
                             QuotaSyncStatus.SYNCING -> "同步中"
                             QuotaSyncStatus.UPDATED -> "已更新 · ${snap?.formattedSuccessTime ?: snap?.formattedQueriedAt ?: "刚刚"}"
-                            QuotaSyncStatus.CACHED_STALE -> "缓存 · ${snap?.errorMessage?.take(6) ?: "异常"}"
+                            QuotaSyncStatus.CACHED_STALE -> if (snap?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限" else "缓存 · ${snap?.errorMessage?.take(6) ?: "异常"}"
                             QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
                             QuotaSyncStatus.AUTH_EXPIRED -> "授权失效"
                             QuotaSyncStatus.SERVICE_UNAVAILABLE -> "服务暂不可用"

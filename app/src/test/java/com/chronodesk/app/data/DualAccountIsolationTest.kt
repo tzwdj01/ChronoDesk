@@ -136,4 +136,89 @@ class DualAccountIsolationTest {
         assertTrue("5小时主窗口应被判定为耗尽/限额", isPrimaryExhausted)
         assertFalse("周额度副窗口绝不能被 limitReached 连带判定为耗尽", isSecondaryExhausted)
     }
+
+    @Test
+    fun testAccountA403KeepsLastGoodWhileAccountBUpdates() {
+        val initialA = CodexUsageSnapshot(
+            accountId = "acc-A",
+            accountAlias = "账号 A",
+            credentialStatus = CredentialStatus.VALID,
+            primaryWindow = CodexUsageWindow.fromRaw(30.0, 18000L, 1700010000L),
+            secondaryWindow = CodexUsageWindow.fromRaw(20.0, 604800L, 1700500000L),
+            queriedAt = 1700000000000L,
+            lastSuccessTime = 1700000000000L,
+            isLastGood = false
+        )
+        // 账号 A 遇到 403 访问受限
+        val snapA403 = CodexUsageSnapshot.error(
+            accountId = "acc-A",
+            alias = "账号 A",
+            status = CredentialStatus.VALID,
+            message = "访问受限",
+            lastGood = initialA,
+            errorType = com.chronodesk.app.data.model.SyncErrorType.ACCESS_DENIED
+        )
+        // 账号 B 正常刷新
+        val snapB = CodexUsageSnapshot(
+            accountId = "acc-B",
+            accountAlias = "账号 B",
+            credentialStatus = CredentialStatus.VALID,
+            primaryWindow = CodexUsageWindow.fromRaw(10.0, 18000L, 1700020000L),
+            secondaryWindow = CodexUsageWindow.fromRaw(15.0, 604800L, 1700520000L),
+            queriedAt = 1700010000000L,
+            lastSuccessTime = 1700010000000L,
+            isLastGood = false
+        )
+
+        assertEquals("账号 A 应保持 VALID 状态而非失效", CredentialStatus.VALID, snapA403.credentialStatus)
+        assertTrue("账号 A 应标记为 LastGood", snapA403.isLastGood)
+        assertEquals("访问受限", snapA403.errorMessage)
+        assertEquals(com.chronodesk.app.data.model.SyncErrorType.ACCESS_DENIED, snapA403.lastErrorType)
+        assertEquals(70.0, snapA403.primaryWindow?.remainingPercent!!, 0.01)
+        assertEquals(80.0, snapA403.secondaryWindow?.remainingPercent!!, 0.01)
+        assertEquals(1700000000000L, snapA403.lastSuccessTime)
+
+        assertEquals("账号 B 正常更新", 90.0, snapB.primaryWindow?.remainingPercent!!, 0.01)
+        assertEquals(85.0, snapB.secondaryWindow?.remainingPercent!!, 0.01)
+    }
+
+    @Test
+    fun testAuthExpiredVsTransientRefreshTimeout() {
+        val originalSnapshot = CodexUsageSnapshot(
+            accountId = "acc-test",
+            accountAlias = "测试账号",
+            credentialStatus = CredentialStatus.VALID,
+            primaryWindow = CodexUsageWindow.fromRaw(40.0, 18000L, 1700010000L),
+            secondaryWindow = CodexUsageWindow.fromRaw(30.0, 604800L, 1700500000L),
+            queriedAt = 1700000000000L,
+            lastSuccessTime = 1700000000000L
+        )
+
+        // 1. 刷新超时 (TransientError)：保留缓存
+        val transientSnap = CodexUsageSnapshot.error(
+            accountId = "acc-test",
+            alias = "测试账号",
+            status = CredentialStatus.VALID,
+            message = "刷新超时，保留当前数据",
+            lastGood = originalSnapshot,
+            errorType = com.chronodesk.app.data.model.SyncErrorType.NETWORK_TIMEOUT
+        )
+        assertTrue("超时应保留缓存数据", transientSnap.isLastGood)
+        assertNotNull("5小时额度不为空", transientSnap.primaryWindow)
+        assertEquals(CredentialStatus.VALID, transientSnap.credentialStatus)
+
+        // 2. 明确失效 (ExpiredOrInvalid)：清除缓存
+        val expiredSnap = CodexUsageSnapshot.error(
+            accountId = "acc-test",
+            alias = "测试账号",
+            status = CredentialStatus.EXPIRED,
+            message = "Refresh token expired",
+            lastGood = originalSnapshot,
+            errorType = com.chronodesk.app.data.model.SyncErrorType.AUTH_FAILED
+        )
+        assertFalse("明确失效不应标记为 LastGood", expiredSnap.isLastGood)
+        assertNull("明确失效必须清空额度", expiredSnap.primaryWindow)
+        assertNull("明确失效必须清空周额度", expiredSnap.secondaryWindow)
+        assertEquals(CredentialStatus.EXPIRED, expiredSnap.credentialStatus)
+    }
 }

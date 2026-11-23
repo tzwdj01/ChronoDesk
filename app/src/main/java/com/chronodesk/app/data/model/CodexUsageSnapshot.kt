@@ -5,7 +5,8 @@ import java.util.Date
 import java.util.Locale
 
 enum class SyncErrorType {
-    AUTH_FAILED,        // 401/403 明确鉴权失效
+    AUTH_FAILED,        // 401 明确鉴权失效（需重新登录）
+    ACCESS_DENIED,      // 403 访问受限（保留上次成功数据与时间）
     RATE_LIMITED,       // 429 限流
     SERVER_FAULT,       // 5xx 服务端故障
     DATA_FORMAT,        // 非 JSON 或关键字段缺失
