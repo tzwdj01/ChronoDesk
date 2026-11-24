@@ -43,6 +43,11 @@ import com.chronodesk.app.ui.theme.DarkClockText
 import com.chronodesk.app.ui.theme.InkClockCardBg
 import com.chronodesk.app.ui.theme.InkClockCardBorder
 import com.chronodesk.app.ui.theme.InkClockText
+import com.chronodesk.app.ui.theme.LocalPureInkMode
+import com.chronodesk.app.ui.theme.PureInkClockBorder
+import com.chronodesk.app.ui.theme.PureInkSeam
+import com.chronodesk.app.ui.theme.PureInkSurface
+import com.chronodesk.app.ui.theme.PureInkTextPrimary
 
 private val TopHalfShape = GenericShape { size, _ ->
     addRect(Rect(0f, 0f, size.width, size.height / 2f))
@@ -83,10 +88,27 @@ fun FlipDigit(
     val progress = flipProgress.value
     val isFlipping = flipProgress.isRunning || progress > 0f
 
-    val cardBg = if (isNightMode) DarkClockCardBg else InkClockCardBg
-    val cardBorder = if (isNightMode) DarkClockCardBorder else InkClockCardBorder
-    val resolvedTextColor = textColor ?: (if (isNightMode) DarkClockText else InkClockText)
-    val seamColor = if (isNightMode) Color(0xFF070C15) else Color(0xFFD5CFC3)
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val cardBg = when {
+        isNightMode -> DarkClockCardBg
+        isPureInk -> PureInkSurface
+        else -> InkClockCardBg
+    }
+    val cardBorder = when {
+        isNightMode -> DarkClockCardBorder
+        isPureInk -> PureInkClockBorder
+        else -> InkClockCardBorder
+    }
+    val resolvedTextColor = textColor ?: when {
+        isNightMode -> DarkClockText
+        isPureInk -> PureInkTextPrimary
+        else -> InkClockText
+    }
+    val seamColor = when {
+        isNightMode -> Color(0xFF070C15)
+        isPureInk -> PureInkSeam
+        else -> Color(0xFFD5CFC3)
+    }
 
     Box(
         modifier = modifier

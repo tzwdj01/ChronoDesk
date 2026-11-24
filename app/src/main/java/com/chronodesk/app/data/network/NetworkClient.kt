@@ -111,6 +111,19 @@ object NetworkClient {
             .build()
     }
 
+    /**
+     * 用于长桥 (Longbridge) MCP 与 OAuth 接口的直连客户端（支持 .cn 国内直连与 SSE/JSON 响应）
+     */
+    val longbridgeHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .proxySelector(ProxySelector.getDefault())
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(AuthLoggingInterceptor())
+            .build()
+    }
+
     const val CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
     const val DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback"
     const val DEVICE_VERIFY_URL = "https://auth.openai.com/codex/device"

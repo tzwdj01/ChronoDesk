@@ -15,12 +15,15 @@ data class GeneralSettingsBackup(
     val showSeconds: Boolean = true,
     val screenOnPolicy: String = "CHARGING_ONLY", // CHARGING_ONLY, ALWAYS, SYSTEM
     val nightModeOption: String = "AUTO", // AUTO, FORCE_NIGHT, FORCE_DAY
+    val dayThemeStyle: String = "COLOR", // COLOR, INK
     val autoNightDim: Boolean = true,
     val nightDimStartHour: Int = 22,
     val nightDimEndHour: Int = 7,
     val nightBrightness: Float = 0.08f,
     val quotaWidthPercent: Int = 38,
     val quotaCardDensity: String = "NORMAL", // COMPACT, NORMAL, SPACIOUS
+    val quotaDisplayMode: String = "NUMBERS_ONLY", // NUMBERS_ONLY, PROGRESS_BAR
+    val quotaProviderOrder: String = "CHATGPT,ANTIGRAVITY,DEEPSEEK",
     val clockScale: Float = 1.0f,
     val clockOffsetX: Float = 0f,
     val clockOffsetY: Float = 0f
@@ -62,6 +65,7 @@ class ClockSettingsRepository(context: Context) {
             keepScreenOn = policy != "SYSTEM",
             screenOnPolicy = policy,
             nightModeOption = prefs.getString("night_mode_option", "AUTO") ?: "AUTO",
+            dayThemeStyle = prefs.getString("day_theme_style", "COLOR") ?: "COLOR",
             autoNightDim = prefs.getBoolean("auto_night_dim", true),
             nightDimStartHour = prefs.getInt("night_start_hour", 22),
             nightDimEndHour = prefs.getInt("night_end_hour", 7),
@@ -76,6 +80,9 @@ class ClockSettingsRepository(context: Context) {
             additionalCities = prefs.getString("additional_cities", "") ?: "",
             quotaWidthPercent = prefs.getInt("quota_width_percent", 38),
             quotaCardDensity = prefs.getString("quota_card_density", "NORMAL") ?: "NORMAL",
+            quotaDisplayMode = prefs.getString("quota_display_mode", "NUMBERS_ONLY") ?: "NUMBERS_ONLY",
+            quotaProviderOrder = prefs.getString("quota_provider_order", "CHATGPT,ANTIGRAVITY,DEEPSEEK")
+                ?: "CHATGPT,ANTIGRAVITY,DEEPSEEK",
             clockScale = prefs.getFloat("clock_scale", 1.0f),
             clockOffsetX = prefs.getFloat("clock_offset_x", 0f),
             clockOffsetY = prefs.getFloat("clock_offset_y", 0f),
@@ -90,6 +97,7 @@ class ClockSettingsRepository(context: Context) {
             .putBoolean("show_seconds", newSettings.showSeconds)
             .putString("screen_on_policy", newSettings.screenOnPolicy)
             .putString("night_mode_option", newSettings.nightModeOption)
+            .putString("day_theme_style", newSettings.normalizedDayThemeStyle)
             .putBoolean("auto_night_dim", newSettings.autoNightDim)
             .putInt("night_start_hour", newSettings.nightDimStartHour)
             .putInt("night_end_hour", newSettings.nightDimEndHour)
@@ -104,6 +112,8 @@ class ClockSettingsRepository(context: Context) {
             .putString("additional_cities", newSettings.additionalCities)
             .putInt("quota_width_percent", newSettings.quotaWidthPercent)
             .putString("quota_card_density", newSettings.quotaCardDensity)
+            .putString("quota_display_mode", newSettings.quotaDisplayMode)
+            .putString("quota_provider_order", newSettings.orderedProviders().joinToString(","))
             .putFloat("clock_scale", newSettings.clockScale)
             .putFloat("clock_offset_x", newSettings.clockOffsetX)
             .putFloat("clock_offset_y", newSettings.clockOffsetY)
@@ -123,12 +133,15 @@ class ClockSettingsRepository(context: Context) {
             showSeconds = current.showSeconds,
             screenOnPolicy = current.screenOnPolicy,
             nightModeOption = current.nightModeOption,
+            dayThemeStyle = current.normalizedDayThemeStyle,
             autoNightDim = current.autoNightDim,
             nightDimStartHour = current.nightDimStartHour,
             nightDimEndHour = current.nightDimEndHour,
             nightBrightness = current.nightBrightness,
             quotaWidthPercent = current.quotaWidthPercent,
             quotaCardDensity = current.quotaCardDensity,
+            quotaDisplayMode = current.quotaDisplayMode,
+            quotaProviderOrder = current.orderedProviders().joinToString(","),
             clockScale = current.clockScale,
             clockOffsetX = current.clockOffsetX,
             clockOffsetY = current.clockOffsetY
@@ -167,6 +180,11 @@ class ClockSettingsRepository(context: Context) {
             if (nightModeOption !in listOf("AUTO", "FORCE_NIGHT", "FORCE_DAY")) {
                 return SettingsValidationResult.Invalid("夜间模式选项非法: $nightModeOption")
             }
+            val dayThemeStyleRaw = if (root.has("dayThemeStyle")) root.get("dayThemeStyle").asString else "COLOR"
+            val dayThemeStyle = dayThemeStyleRaw.trim().uppercase(java.util.Locale.US)
+            if (dayThemeStyle !in listOf("COLOR", "INK")) {
+                return SettingsValidationResult.Invalid("日间主题风格无效: $dayThemeStyleRaw")
+            }
             val autoNightDim = if (root.has("autoNightDim")) root.get("autoNightDim").asBoolean else true
             val startHour = if (root.has("nightDimStartHour")) root.get("nightDimStartHour").asInt else 22
             if (startHour !in 0..23) {
@@ -188,6 +206,16 @@ class ClockSettingsRepository(context: Context) {
             if (density !in listOf("COMPACT", "NORMAL", "SPACIOUS")) {
                 return SettingsValidationResult.Invalid("看板密度配置无效: $density")
             }
+            val displayMode = if (root.has("quotaDisplayMode")) root.get("quotaDisplayMode").asString else "NUMBERS_ONLY"
+            if (displayMode !in listOf("NUMBERS_ONLY", "PROGRESS_BAR")) {
+                return SettingsValidationResult.Invalid("额度展示模式无效: $displayMode")
+            }
+            val providerOrderRaw = if (root.has("quotaProviderOrder")) {
+                root.get("quotaProviderOrder").asString
+            } else {
+                "CHATGPT,ANTIGRAVITY,DEEPSEEK"
+            }
+            val providerOrder = ClockSettings(quotaProviderOrder = providerOrderRaw).orderedProviders().joinToString(",")
             val clockScale = if (root.has("clockScale")) root.get("clockScale").asFloat else 1.0f
             if (clockScale !in 0.5f..2.5f) {
                 return SettingsValidationResult.Invalid("时钟缩放比例超出范围 (0.5-2.5): $clockScale")
@@ -207,12 +235,15 @@ class ClockSettingsRepository(context: Context) {
                 showSeconds = showSeconds,
                 screenOnPolicy = screenOnPolicy,
                 nightModeOption = nightModeOption,
+                dayThemeStyle = dayThemeStyle,
                 autoNightDim = autoNightDim,
                 nightDimStartHour = startHour,
                 nightDimEndHour = endHour,
                 nightBrightness = brightness,
                 quotaWidthPercent = widthPercent,
                 quotaCardDensity = density,
+                quotaDisplayMode = displayMode,
+                quotaProviderOrder = providerOrder,
                 clockScale = clockScale,
                 clockOffsetX = clockOffsetX,
                 clockOffsetY = clockOffsetY
@@ -244,12 +275,15 @@ class ClockSettingsRepository(context: Context) {
             screenOnPolicy = backup.screenOnPolicy,
             keepScreenOn = backup.screenOnPolicy != "SYSTEM",
             nightModeOption = backup.nightModeOption,
+            dayThemeStyle = ClockSettings(dayThemeStyle = backup.dayThemeStyle).normalizedDayThemeStyle,
             autoNightDim = backup.autoNightDim,
             nightDimStartHour = backup.nightDimStartHour,
             nightDimEndHour = backup.nightDimEndHour,
             nightBrightness = backup.nightBrightness,
             quotaWidthPercent = backup.quotaWidthPercent,
             quotaCardDensity = backup.quotaCardDensity,
+            quotaDisplayMode = backup.quotaDisplayMode,
+            quotaProviderOrder = ClockSettings(quotaProviderOrder = backup.quotaProviderOrder).orderedProviders().joinToString(","),
             clockScale = backup.clockScale,
             clockOffsetX = backup.clockOffsetX,
             clockOffsetY = backup.clockOffsetY

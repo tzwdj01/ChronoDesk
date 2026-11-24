@@ -20,6 +20,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.chronodesk.app.R
+import com.chronodesk.app.ui.theme.LocalPureInkMode
+import com.chronodesk.app.ui.theme.PureInkBorder
+import com.chronodesk.app.ui.theme.PureInkSurfaceElevated
+import com.chronodesk.app.ui.theme.PureInkTextPrimary
 
 enum class AiModelProvider(val code: String, val displayName: String, val defaultPlan: String) {
     CHATGPT("CHATGPT", "ChatGPT Plus", "Plus"),
@@ -44,50 +48,69 @@ enum class AiModelProvider(val code: String, val displayName: String, val defaul
 
 /**
  * 极简 AI 模型品牌 Logo 渲染组件
- * 根据日间（水墨风单色）与夜间（深色科技品牌彩色）自动适配官方矢量/高清图标
+ * 夜间：深色科技品牌彩色；日间彩色：浅底+官方原彩；日间全水墨：纯黑白灰墨水屏质感
  */
 @Composable
 fun ModelProviderLogo(
     provider: AiModelProvider,
     size: Dp = 32.dp,
     isNightMode: Boolean = false,
+    isPureInk: Boolean = LocalPureInkMode.current,
     modifier: Modifier = Modifier
 ) {
-    // 背景与边框适配
-    val containerBg = if (isNightMode) {
-        when (provider) {
+    val usePureInk = !isNightMode && isPureInk
+    val containerBg = when {
+        isNightMode -> when (provider) {
             AiModelProvider.CHATGPT -> Color(0xFF0F261E)
             AiModelProvider.DEEPSEEK -> Color(0xFF0E1F38)
             AiModelProvider.ANTIGRAVITY -> Color(0xFF101B30)
             AiModelProvider.GEMINI -> Color(0xFF0E2338)
             AiModelProvider.CLAUDE -> Color(0xFF26190F)
         }
-    } else {
-        Color(0xFFF0EDE5)
+        usePureInk -> PureInkSurfaceElevated
+        else -> when (provider) {
+            AiModelProvider.CHATGPT -> Color(0xFFEAF6F2)
+            AiModelProvider.DEEPSEEK -> Color(0xFFECF1FE)
+            AiModelProvider.ANTIGRAVITY -> Color(0xFFF1F5FD)
+            AiModelProvider.GEMINI -> Color(0xFFEBF6FE)
+            AiModelProvider.CLAUDE -> Color(0xFFFEF1E8)
+        }
     }
 
-    val containerBorder = if (isNightMode) {
-        when (provider) {
+    val containerBorder = when {
+        isNightMode -> when (provider) {
             AiModelProvider.CHATGPT -> Color(0xFF1B4D3E)
             AiModelProvider.DEEPSEEK -> Color(0xFF1E3A66)
             AiModelProvider.ANTIGRAVITY -> Color(0xFF1E3860)
             AiModelProvider.GEMINI -> Color(0xFF1E4366)
             AiModelProvider.CLAUDE -> Color(0xFF4D2E1B)
         }
-    } else {
-        Color(0xFFDDD7CC)
+        usePureInk -> PureInkBorder
+        else -> when (provider) {
+            AiModelProvider.CHATGPT -> Color(0xFFC6E7DC)
+            AiModelProvider.DEEPSEEK -> Color(0xFFCBD9FC)
+            AiModelProvider.ANTIGRAVITY -> Color(0xFFD6E2FA)
+            AiModelProvider.GEMINI -> Color(0xFFC7E4FC)
+            AiModelProvider.CLAUDE -> Color(0xFFF9D5BD)
+        }
     }
 
-    val brandColor = if (isNightMode) {
-        when (provider) {
+    val brandColor = when {
+        isNightMode -> when (provider) {
             AiModelProvider.CHATGPT -> Color(0xFF10A37F)
             AiModelProvider.DEEPSEEK -> Color(0xFF4D6BFE)
             AiModelProvider.ANTIGRAVITY -> Color(0xFF4285F4)
             AiModelProvider.GEMINI -> Color(0xFF38BDF8)
             AiModelProvider.CLAUDE -> Color(0xFFEA580C)
         }
-    } else {
-        Color(0xFF242220) // 水墨黑
+        usePureInk -> PureInkTextPrimary
+        else -> when (provider) {
+            AiModelProvider.CHATGPT -> Color(0xFF10A37F)
+            AiModelProvider.DEEPSEEK -> Color(0xFF4D6BFE)
+            AiModelProvider.ANTIGRAVITY -> Color(0xFF4285F4)
+            AiModelProvider.GEMINI -> Color(0xFF0284C7)
+            AiModelProvider.CLAUDE -> Color(0xFFEA580C)
+        }
     }
 
     Box(
@@ -120,11 +143,11 @@ fun ModelProviderLogo(
             }
 
             AiModelProvider.ANTIGRAVITY -> {
-                // Google Antigravity 官方色彩标识
+                // Google Antigravity 官方色彩标识（日间彩色/夜间均保持四色，全水墨收敛为纯黑灰）
                 Icon(
                     painter = painterResource(id = R.drawable.ic_antigravity_logo),
                     contentDescription = "Google Antigravity",
-                    tint = if (isNightMode) Color.Unspecified else brandColor,
+                    tint = if (usePureInk) brandColor else Color.Unspecified,
                     modifier = Modifier.size(size * 0.62f)
                 )
             }

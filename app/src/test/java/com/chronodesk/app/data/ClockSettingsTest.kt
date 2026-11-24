@@ -66,4 +66,32 @@ class ClockSettingsTest {
         assertFalse("强制日间模式无论何时都应返回 false", forceDay.isNightTime(23))
         assertFalse("强制日间模式无论何时都应返回 false", forceDay.isNightTime(3))
     }
+
+    @Test
+    fun testQuotaOrderingAndDisplayModeDefaults() {
+        val def = ClockSettings()
+        assertTrue(def.isNumbersOnlyMode)
+        org.junit.Assert.assertEquals(listOf("CHATGPT", "ANTIGRAVITY", "DEEPSEEK"), def.orderedProviders())
+
+        val custom = ClockSettings(
+            quotaDisplayMode = "PROGRESS_BAR",
+            quotaProviderOrder = "deepseek, antigravity , chatgpt"
+        )
+        assertFalse(custom.isNumbersOnlyMode)
+        org.junit.Assert.assertEquals(listOf("DEEPSEEK", "ANTIGRAVITY", "CHATGPT"), custom.orderedProviders())
+
+        val partial = ClockSettings(quotaProviderOrder = "DEEPSEEK,UNKNOWN,DEEPSEEK")
+        org.junit.Assert.assertEquals(listOf("DEEPSEEK", "CHATGPT", "ANTIGRAVITY"), partial.orderedProviders())
+    }
+
+    @Test
+    fun testDayThemeStyleDefaultsAndNormalization() {
+        val def = ClockSettings()
+        org.junit.Assert.assertEquals("COLOR", def.normalizedDayThemeStyle)
+        assertFalse(def.isPureInkDayStyle)
+
+        val ink = ClockSettings(dayThemeStyle = "ink")
+        assertTrue(ink.isPureInkDayStyle)
+        org.junit.Assert.assertEquals("INK", ink.normalizedDayThemeStyle)
+    }
 }

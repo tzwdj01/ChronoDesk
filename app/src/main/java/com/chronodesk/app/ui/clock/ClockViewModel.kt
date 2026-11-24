@@ -249,6 +249,23 @@ class ClockViewModel @JvmOverloads constructor(
         return next
     }
 
+    /**
+     * 顶部主题按钮一键三态循环切换：日间彩色 -> 日间全水墨 -> 夜间深色 -> 日间彩色
+     */
+    fun cycleThemeMode(): String {
+        val current = settings.value
+        return if (_isNightMode.value) {
+            updateSettings(current.copy(nightModeOption = "FORCE_DAY", dayThemeStyle = "COLOR"))
+            "DAY_COLOR"
+        } else if (!current.isPureInkDayStyle) {
+            updateSettings(current.copy(nightModeOption = "FORCE_DAY", dayThemeStyle = "INK"))
+            "DAY_INK"
+        } else {
+            updateSettings(current.copy(nightModeOption = "FORCE_NIGHT"))
+            "NIGHT"
+        }
+    }
+
     suspend fun searchLocations(query: String): List<GeocodingItem> {
         return weatherRepo.searchLocations(query).getOrDefault(emptyList())
     }

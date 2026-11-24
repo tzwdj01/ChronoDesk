@@ -1,6 +1,12 @@
 package com.chronodesk.app.ui.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -34,36 +40,52 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.WatchLater
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import com.chronodesk.app.data.model.LongbridgeSettings
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,6 +104,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,11 +114,14 @@ import androidx.compose.ui.window.DialogProperties
 import com.chronodesk.app.data.model.ClockSettings
 import com.chronodesk.app.data.model.CodexAccount
 import com.chronodesk.app.data.model.CredentialStatus
+import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.network.GeocodingItem
 import com.chronodesk.app.data.repository.GeneralSettingsBackup
 import com.chronodesk.app.data.repository.SettingsValidationResult
 import com.chronodesk.app.ui.clock.AiModelProvider
 import com.chronodesk.app.ui.clock.ModelProviderLogo
+import com.chronodesk.app.ui.longbridge.LongbridgeViewModel
+import com.chronodesk.app.ui.tesla.TeslaViewModel
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -117,6 +144,7 @@ import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
+import com.chronodesk.app.ui.theme.resolveChronoPalette
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
@@ -128,7 +156,9 @@ enum class SettingsTab(val label: String, val shortLabel: String) {
     CLOCK_LAYOUT("时钟与排版", "时钟排版"),
     WEATHER("天气与城市", "天气城市"),
     VEHICLE_SYNC("车辆与同步", "车辆同步"),
-    BACKUP("备份与迁移", "备份迁移")
+    PORTFOLIO("长桥与资产", "长桥资产"),
+    BACKUP("备份与迁移", "备份迁移"),
+    ABOUT("关于项目", "关于")
 }
 
 private data class SettingsPalette(
@@ -149,42 +179,61 @@ private data class SettingsPalette(
     val danger: Color
 ) {
     companion object {
-        fun from(isNightMode: Boolean): SettingsPalette = if (isNightMode) {
-            SettingsPalette(
-                isNight = true,
-                dialogBg = DarkSurface,
-                sidebarBg = DarkBackground.copy(alpha = 0.72f),
-                cardBg = DarkSurfaceElevated,
-                chipBg = DarkBackground,
-                border = DarkBorder,
-                divider = DarkBorder.copy(alpha = 0.65f),
-                primaryText = TextPrimary,
-                secondaryText = TextSecondary,
-                mutedText = TextTertiary,
-                accent = TechCyan,
-                onAccent = Color.Black,
-                positive = TechEmerald,
-                warning = TechAmber,
-                danger = TechRose
-            )
-        } else {
-            SettingsPalette(
-                isNight = false,
-                dialogBg = InkBackground,
-                sidebarBg = InkSurfaceElevated,
-                cardBg = InkSurface,
-                chipBg = InkSurfaceElevated,
-                border = InkBorder,
-                divider = InkBorderSubtle,
-                primaryText = InkTextPrimary,
-                secondaryText = InkTextSecondary,
-                mutedText = InkTextTertiary,
-                accent = Color(0xFF0284C7),
-                onAccent = Color.White,
-                positive = InkStatusGreen,
-                warning = InkWarningAmber,
-                danger = InkWarningRed
-            )
+        fun from(isNightMode: Boolean, isPureInk: Boolean = false): SettingsPalette {
+            val t = resolveChronoPalette(isNightMode, !isNightMode && isPureInk)
+            return when {
+                isNightMode -> SettingsPalette(
+                    isNight = true,
+                    dialogBg = DarkSurface,
+                    sidebarBg = DarkBackground.copy(alpha = 0.72f),
+                    cardBg = DarkSurfaceElevated,
+                    chipBg = DarkBackground,
+                    border = DarkBorder,
+                    divider = DarkBorder.copy(alpha = 0.65f),
+                    primaryText = TextPrimary,
+                    secondaryText = TextSecondary,
+                    mutedText = TextTertiary,
+                    accent = TechCyan,
+                    onAccent = Color.Black,
+                    positive = TechEmerald,
+                    warning = TechAmber,
+                    danger = TechRose
+                )
+                isPureInk -> SettingsPalette(
+                    isNight = false,
+                    dialogBg = t.bg,
+                    sidebarBg = t.surfaceElevated,
+                    cardBg = t.surface,
+                    chipBg = t.surfaceElevated,
+                    border = t.border,
+                    divider = t.dividerSubtle,
+                    primaryText = t.primaryText,
+                    secondaryText = t.secondaryText,
+                    mutedText = t.mutedText,
+                    accent = Color(0xFF222222),
+                    onAccent = Color.White,
+                    positive = t.positive,
+                    warning = t.warning,
+                    danger = t.danger
+                )
+                else -> SettingsPalette(
+                    isNight = false,
+                    dialogBg = InkBackground,
+                    sidebarBg = InkSurfaceElevated,
+                    cardBg = InkSurface,
+                    chipBg = InkSurfaceElevated,
+                    border = InkBorder,
+                    divider = InkBorderSubtle,
+                    primaryText = InkTextPrimary,
+                    secondaryText = InkTextSecondary,
+                    mutedText = InkTextTertiary,
+                    accent = Color(0xFF0284C7),
+                    onAccent = Color.White,
+                    positive = InkStatusGreen,
+                    warning = InkWarningAmber,
+                    danger = InkWarningRed
+                )
+            }
         }
     }
 }
@@ -228,6 +277,12 @@ fun SettingsDialog(
     onOpenTeslaSettings: () -> Unit = {},
     onExportSettings: () -> String = { "" },
     onValidateSettings: (String) -> SettingsValidationResult = { SettingsValidationResult.Invalid("未实现") },
+    longbridgeSettings: LongbridgeSettings = LongbridgeSettings(),
+    longbridgeHasCredentials: Boolean = false,
+    onUpdateLongbridgeSettings: ((LongbridgeSettings) -> LongbridgeSettings) -> Unit = {},
+    onOpenLongbridgeSettings: () -> Unit = {},
+    teslaViewModel: TeslaViewModel? = null,
+    longbridgeViewModel: LongbridgeViewModel? = null,
     onApplySettingsBackup: (GeneralSettingsBackup) -> Unit = {},
     onRequestLocationPermission: () -> Unit = {},
     onSearchLocations: suspend (String) -> List<GeocodingItem> = { emptyList() }
@@ -235,7 +290,9 @@ fun SettingsDialog(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isCompact = configuration.screenHeightDp < 380 || configuration.screenWidthDp < 700
-    val palette = remember(isNightMode) { SettingsPalette.from(isNightMode) }
+    var nightModeOption by remember(currentSettings) { mutableStateOf(currentSettings.nightModeOption) }
+    var dayThemeStyle by remember(currentSettings) { mutableStateOf(currentSettings.normalizedDayThemeStyle) }
+    val palette = remember(isNightMode, dayThemeStyle) { SettingsPalette.from(isNightMode, dayThemeStyle == "INK") }
 
     var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
     val detailScrollState = rememberScrollState()
@@ -377,7 +434,6 @@ fun SettingsDialog(
     var is24Hour by remember { mutableStateOf(currentSettings.is24Hour) }
     var showSeconds by remember { mutableStateOf(currentSettings.showSeconds) }
     var screenOnPolicy by remember { mutableStateOf(currentSettings.screenOnPolicy) }
-    var nightModeOption by remember { mutableStateOf(currentSettings.nightModeOption) }
     val autoNightDim = currentSettings.autoNightDim
     var nightBrightness by remember { mutableFloatStateOf(currentSettings.nightBrightness) }
     var refreshInterval by remember { mutableIntStateOf(currentSettings.autoRefreshIntervalMinutes) }
@@ -387,8 +443,61 @@ fun SettingsDialog(
     var clockOffsetY by remember { mutableFloatStateOf(currentSettings.clockOffsetY) }
     var quotaWidthPercent by remember { mutableIntStateOf(currentSettings.quotaWidthPercent) }
     var quotaCardDensity by remember { mutableStateOf(currentSettings.quotaCardDensity) }
+    var quotaDisplayMode by remember { mutableStateOf(currentSettings.quotaDisplayMode) }
+    var quotaProviderOrder by remember { mutableStateOf(currentSettings.orderedProviders()) }
     var showTeslaOnHome by remember { mutableStateOf(currentSettings.showTeslaOnHome) }
     var useMockData by remember { mutableStateOf(currentSettings.useMockData) }
+
+    // 车辆监控内嵌草稿状态（直接接入主设置「车辆同步」页，保持原生 UI）
+    val currentTeslaSettings = teslaViewModel?.let { it.settings.collectAsState().value } ?: TeslaSettings()
+    val isTeslaTesting = teslaViewModel?.let { it.isTestingConnection.collectAsState().value } ?: false
+    val teslaTestResult = teslaViewModel?.let { it.testResult.collectAsState().value }
+    val discoveredDatasources = teslaViewModel?.let { it.discoveredDatasources.collectAsState().value }.orEmpty()
+    val discoveredCars = teslaViewModel?.let { it.discoveredCars.collectAsState().value }.orEmpty()
+    val initialTeslaToken = remember(teslaViewModel) { teslaViewModel?.getStoredToken().orEmpty() }
+
+    var teslaEnabled by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.enabled) }
+    var teslaBaseUrl by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.baseUrl) }
+    var teslaToken by remember(initialTeslaToken) { mutableStateOf(initialTeslaToken) }
+    var isTeslaTokenVisible by remember { mutableStateOf(false) }
+    var teslaDataSourceUid by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.dataSourceUid) }
+    var teslaDataSourceType by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.dataSourceType) }
+    var teslaCarId by remember(currentTeslaSettings) { mutableIntStateOf(currentTeslaSettings.carId) }
+    var teslaCarName by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.carName) }
+    var teslaRefreshSec by remember(currentTeslaSettings) { mutableIntStateOf(currentTeslaSettings.refreshIntervalSec) }
+    var teslaTimeZone by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.timeZone) }
+    var teslaAllowHttp by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.allowHttp) }
+    var teslaVehicleColor by remember(currentTeslaSettings) { mutableStateOf(currentTeslaSettings.vehicleColor) }
+
+    LaunchedEffect(discoveredDatasources) {
+        if (teslaDataSourceUid.isBlank() && discoveredDatasources.isNotEmpty()) {
+            teslaDataSourceUid = discoveredDatasources.first().uid
+        }
+    }
+    LaunchedEffect(discoveredCars) {
+        if (discoveredCars.isNotEmpty() && discoveredCars.none { it.id == teslaCarId }) {
+            teslaCarId = discoveredCars.first().id
+            teslaCarName = discoveredCars.first().name ?: "Tesla"
+        }
+    }
+
+    // 长桥授权子弹窗（内嵌触发，无需先跳离设置页）
+    var showLongbridgeAuthModal by remember { mutableStateOf(false) }
+    if (showLongbridgeAuthModal && longbridgeViewModel != null) {
+        LongbridgeAuthModalDialog(
+            viewModel = longbridgeViewModel,
+            selectedRegion = longbridgeSettings.normalizedRegion,
+            isNightMode = isNightMode,
+            onRegionSyncBeforeAuth = { chosenRegion ->
+                longbridgeViewModel.updateSettings { it.copy(region = chosenRegion, enabled = true) }
+            },
+            onAuthSuccess = {
+                showLongbridgeAuthModal = false
+                Toast.makeText(context, "长桥只读授权成功，已自动同步真实资产", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { showLongbridgeAuthModal = false }
+        )
+    }
 
     var locationList by remember {
         val list = mutableListOf<LocationItem>()
@@ -474,8 +583,8 @@ fun SettingsDialog(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.90f)
+                .fillMaxWidth(if (isCompact) 0.96f else 0.92f)
+                .fillMaxHeight(if (isCompact) 0.94f else 0.90f)
                 .widthIn(max = 820.dp)
                 .heightIn(max = 520.dp)
                 .clip(RoundedCornerShape(16.dp))
@@ -487,7 +596,7 @@ fun SettingsDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (isCompact) 42.dp else 48.dp)
+                        .height(if (isCompact) 38.dp else 48.dp)
                         .padding(start = 16.dp, end = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -512,7 +621,7 @@ fun SettingsDialog(
 
                     Box(
                         modifier = Modifier
-                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .sizeIn(minWidth = if (isCompact) 38.dp else 48.dp, minHeight = if (isCompact) 38.dp else 48.dp)
                             .clickable(role = Role.Button, onClickLabel = "关闭设置") { onDismiss() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -540,7 +649,9 @@ fun SettingsDialog(
                         SettingsTab.CLOCK_LAYOUT to Icons.Default.Tune,
                         SettingsTab.WEATHER to Icons.Default.Place,
                         SettingsTab.VEHICLE_SYNC to Icons.Default.DirectionsCar,
-                        SettingsTab.BACKUP to Icons.Default.FileUpload
+                        SettingsTab.PORTFOLIO to Icons.Default.AccountBalanceWallet,
+                        SettingsTab.BACKUP to Icons.Default.FileUpload,
+                        SettingsTab.ABOUT to Icons.Default.Info
                     )
 
                     Column(
@@ -549,8 +660,8 @@ fun SettingsDialog(
                             .fillMaxHeight()
                             .background(palette.sidebarBg)
                             .verticalScroll(rememberScrollState())
-                            .padding(horizontal = if (isCompact) 6.dp else 10.dp, vertical = if (isCompact) 8.dp else 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp)
+                            .padding(horizontal = if (isCompact) 6.dp else 10.dp, vertical = if (isCompact) 4.dp else 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (isCompact) 1.5.dp else 6.dp)
                     ) {
                         navItems.forEach { (tab, icon) ->
                             val isSelected = selectedTab == tab
@@ -629,6 +740,18 @@ fun SettingsDialog(
                                         isCompact = isCompact,
                                         onSelect = { nightModeOption = it }
                                     )
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+                                    Text("日间视觉风格", color = palette.secondaryText, fontSize = 11.sp)
+                                    SegmentedOptionRow(
+                                        options = listOf(
+                                            "COLOR" to "日间彩色（原彩图标）",
+                                            "INK" to "全水墨（纯黑白灰）"
+                                        ),
+                                        selectedKey = dayThemeStyle,
+                                        palette = palette,
+                                        isCompact = isCompact,
+                                        onSelect = { dayThemeStyle = it }
+                                    )
                                     if (nightModeOption != "FORCE_DAY") {
                                         HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
                                         Column {
@@ -676,30 +799,120 @@ fun SettingsDialog(
 
                             SettingsTab.CLOCK_LAYOUT -> {
                                 SettingsGroupCard(
-                                    title = "时钟显示格式",
+                                    title = "右侧额度看板排版",
+                                    subtitle = "支持「纯数字 / 进度条」切换，与 ChatGPT / Antigravity / DeepSeek 自由排序",
                                     palette = palette
                                 ) {
-                                    SettingSwitchRow(
-                                        title = "24 小时制",
-                                        subtitle = "关闭则采用 12 小时制显示",
-                                        checked = is24Hour,
+                                    Text("额度展示模式", color = palette.secondaryText, fontSize = 11.sp)
+                                    SegmentedOptionRow(
+                                        options = listOf(
+                                            "NUMBERS_ONLY" to "纯数字看板",
+                                            "PROGRESS_BAR" to "进度条看板"
+                                        ),
+                                        selectedKey = if (quotaDisplayMode.equals("PROGRESS_BAR", ignoreCase = true)) {
+                                            "PROGRESS_BAR"
+                                        } else {
+                                            "NUMBERS_ONLY"
+                                        },
                                         palette = palette,
-                                        onCheckedChange = { is24Hour = it }
+                                        isCompact = isCompact,
+                                        onSelect = { quotaDisplayMode = it }
                                     )
                                     HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
-                                    SettingSwitchRow(
-                                        title = "显示秒钟",
-                                        subtitle = "在主时钟右侧并排显示翻页秒针",
-                                        checked = showSeconds,
-                                        palette = palette,
-                                        onCheckedChange = { showSeconds = it }
-                                    )
-                                }
-
-                                SettingsGroupCard(
-                                    title = "主屏横屏分栏与卡片密度",
-                                    palette = palette
-                                ) {
+                                    Text("平台卡片显示顺序", color = palette.secondaryText, fontSize = 11.sp)
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        quotaProviderOrder.forEachIndexed { index, code ->
+                                            val (providerEnum, labelText, subHint) = when (code) {
+                                                "CHATGPT" -> Triple(AiModelProvider.CHATGPT, "ChatGPT", "5h 与周双额度")
+                                                "ANTIGRAVITY" -> Triple(AiModelProvider.ANTIGRAVITY, "Antigravity", "Gemini · Claude/GPT 双轨")
+                                                else -> Triple(AiModelProvider.DEEPSEEK, "DeepSeek", "官方 API 余额")
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(palette.chipBg)
+                                                    .border(0.8.dp, palette.border, RoundedCornerShape(8.dp))
+                                                    .padding(horizontal = 10.dp, vertical = if (isCompact) 4.dp else 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "${index + 1}.",
+                                                        color = palette.accent,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    ModelProviderLogo(
+                                                        provider = providerEnum,
+                                                        size = 18.dp,
+                                                        isNightMode = isNightMode
+                                                    )
+                                                    Text(
+                                                        text = labelText,
+                                                        color = palette.primaryText,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = subHint,
+                                                        color = palette.mutedText,
+                                                        fontSize = 9.5.sp
+                                                    )
+                                                }
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                                ) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (index > 0) {
+                                                                val next = quotaProviderOrder.toMutableList()
+                                                                val tmp = next[index - 1]
+                                                                next[index - 1] = next[index]
+                                                                next[index] = tmp
+                                                                quotaProviderOrder = next
+                                                            }
+                                                        },
+                                                        enabled = index > 0,
+                                                        modifier = Modifier.size(if (isCompact) 26.dp else 30.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.KeyboardArrowUp,
+                                                            contentDescription = "上移 $labelText",
+                                                            tint = if (index > 0) palette.primaryText else palette.mutedText.copy(alpha = 0.35f),
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (index < quotaProviderOrder.lastIndex) {
+                                                                val next = quotaProviderOrder.toMutableList()
+                                                                val tmp = next[index + 1]
+                                                                next[index + 1] = next[index]
+                                                                next[index] = tmp
+                                                                quotaProviderOrder = next
+                                                            }
+                                                        },
+                                                        enabled = index < quotaProviderOrder.lastIndex,
+                                                        modifier = Modifier.size(if (isCompact) 26.dp else 30.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                                            contentDescription = "下移 $labelText",
+                                                            tint = if (index < quotaProviderOrder.lastIndex) palette.primaryText else palette.mutedText.copy(alpha = 0.35f),
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -721,10 +934,10 @@ fun SettingsDialog(
                                     )
                                     SegmentedOptionRow(
                                         options = listOf(
-                                            32 to "紧凑 32%",
+                                            34 to "紧凑 34%",
                                             38 to "标准 38%",
-                                            44 to "宽体 44%",
-                                            50 to "对等 50%"
+                                            43 to "均衡 43%",
+                                            48 to "宽体 48%"
                                         ),
                                         selectedKey = quotaWidthPercent,
                                         palette = palette,
@@ -743,6 +956,27 @@ fun SettingsDialog(
                                         palette = palette,
                                         isCompact = isCompact,
                                         onSelect = { quotaCardDensity = it }
+                                    )
+                                }
+
+                                SettingsGroupCard(
+                                    title = "时钟显示格式",
+                                    palette = palette
+                                ) {
+                                    SettingSwitchRow(
+                                        title = "24 小时制",
+                                        subtitle = "关闭则采用 12 小时制显示",
+                                        checked = is24Hour,
+                                        palette = palette,
+                                        onCheckedChange = { is24Hour = it }
+                                    )
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+                                    SettingSwitchRow(
+                                        title = "显示秒钟",
+                                        subtitle = "在主时钟右侧并排显示翻页秒针",
+                                        checked = showSeconds,
+                                        palette = palette,
+                                        onCheckedChange = { showSeconds = it }
                                     )
                                 }
 
@@ -1250,65 +1484,581 @@ fun SettingsDialog(
                                 }
                             }
 
-                            SettingsTab.VEHICLE_SYNC -> {
+                            SettingsTab.PORTFOLIO -> {
                                 SettingsGroupCard(
-                                    title = "Tesla 车辆监控配置",
+                                    title = "长桥证券与资产看板 (只读 MCP)",
+                                    palette = palette
+                                ) {
+                                    Text(
+                                        text = if (longbridgeHasCredentials) {
+                                            "授权状态：已连接长桥官方无状态只读通道 (${if (longbridgeSettings.normalizedRegion == "GLOBAL") "国际站 .com" else "大陆站 .cn"})"
+                                        } else {
+                                            "授权状态：尚未授权连接。支持 10 分钟只读授权码、OAuth 2.1 PKCE 或凭据 JSON 导入。"
+                                        },
+                                        color = if (longbridgeHasCredentials) palette.accent else palette.secondaryText,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        lineHeight = 16.sp
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                if (longbridgeViewModel != null) {
+                                                    showLongbridgeAuthModal = true
+                                                } else {
+                                                    onOpenLongbridgeSettings()
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = palette.accent,
+                                                contentColor = palette.onAccent,
+                                                disabledContainerColor = palette.border,
+                                                disabledContentColor = palette.mutedText
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Key,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (longbridgeHasCredentials) "更换 / 重新授权" else "立即只读授权连接",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        if (longbridgeHasCredentials && longbridgeViewModel != null) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    longbridgeViewModel.disconnect()
+                                                    Toast.makeText(context, "已清除长桥凭据与缓存", Toast.LENGTH_SHORT).show()
+                                                },
+                                                border = BorderStroke(1.dp, palette.danger.copy(alpha = 0.55f))
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = null,
+                                                    tint = palette.danger,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("断开", color = palette.danger, fontSize = 11.5.sp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                SettingsGroupCard(
+                                    title = "首页胶囊与资产展示偏好 (即时生效)",
                                     palette = palette
                                 ) {
                                     SettingSwitchRow(
-                                        title = "首页显示车辆电量与续航",
-                                        subtitle = "启用 TeslaMate 监控并完成配置后，在时钟下方展示电量百分比与剩余续航",
+                                        title = "启用长桥独立全屏资产页",
+                                        subtitle = "主界面右滑可查看完整净资产、现金余额与持仓明细",
+                                        checked = longbridgeSettings.enabled,
+                                        palette = palette,
+                                        onCheckedChange = { v -> onUpdateLongbridgeSettings { it.copy(enabled = v) } }
+                                    )
+
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+
+                                    SettingSwitchRow(
+                                        title = "首页在 Model 3 旁展示当日盈亏胶囊",
+                                        subtitle = "与天气胶囊严格对齐，仅展示官方 Logo 与当日盈亏额/涨跌幅（支持单独刷新）",
+                                        checked = longbridgeSettings.showOnHome,
+                                        palette = palette,
+                                        onCheckedChange = { v -> onUpdateLongbridgeSettings { it.copy(showOnHome = v) } }
+                                    )
+
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+
+                                    SettingSwitchRow(
+                                        title = "含美股盘前 / 盘后 / 夜盘报价",
+                                        subtitle = "美股非常规盘中时段优先取扩展报价计算当日盈亏",
+                                        checked = longbridgeSettings.includeExtendedHours,
+                                        palette = palette,
+                                        onCheckedChange = { v -> onUpdateLongbridgeSettings { it.copy(includeExtendedHours = v) } }
+                                    )
+
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+
+                                    SettingSwitchRow(
+                                        title = "金额隐私脱敏 (****)",
+                                        subtitle = "隐藏首页与全屏看板具体金额，保留百分比涨跌幅",
+                                        checked = longbridgeSettings.privacyMaskAmounts,
+                                        palette = palette,
+                                        onCheckedChange = { v -> onUpdateLongbridgeSettings { it.copy(privacyMaskAmounts = v) } }
+                                    )
+
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+
+                                    Text("展示币种", color = palette.primaryText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    SegmentedOptionRow(
+                                        options = listOf(
+                                            "HKD" to "港币 HKD",
+                                            "USD" to "美元 USD",
+                                            "CNY" to "人民币 CNY",
+                                            "ACCOUNT" to "账户本位"
+                                        ),
+                                        selectedKey = longbridgeSettings.normalizedDisplayCurrency,
+                                        palette = palette,
+                                        isCompact = isCompact,
+                                        onSelect = { cur -> onUpdateLongbridgeSettings { it.copy(displayCurrency = cur) } }
+                                    )
+
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+
+                                    Text("当日盈亏涨跌配色", color = palette.primaryText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    SegmentedOptionRow(
+                                        options = listOf(
+                                            "RED_UP_GREEN_DOWN" to "红涨绿跌",
+                                            "GREEN_UP_RED_DOWN" to "绿涨红跌"
+                                        ),
+                                        selectedKey = if (longbridgeSettings.isRedUpGreenDown) "RED_UP_GREEN_DOWN" else "GREEN_UP_RED_DOWN",
+                                        palette = palette,
+                                        isCompact = isCompact,
+                                        onSelect = { scheme -> onUpdateLongbridgeSettings { it.copy(colorScheme = scheme) } }
+                                    )
+
+                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+
+                                    Text("接入节点与自动刷新间隔", color = palette.primaryText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    SegmentedOptionRow(
+                                        options = listOf(
+                                            "CN" to "大陆站 (.cn)",
+                                            "GLOBAL" to "国际站 (.com)"
+                                        ),
+                                        selectedKey = longbridgeSettings.normalizedRegion,
+                                        palette = palette,
+                                        isCompact = isCompact,
+                                        onSelect = { reg -> onUpdateLongbridgeSettings { it.copy(region = reg) } }
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    SegmentedOptionRow(
+                                        options = listOf(
+                                            "30" to "30 秒",
+                                            "60" to "60 秒",
+                                            "120" to "2 分钟",
+                                            "300" to "5 分钟"
+                                        ),
+                                        selectedKey = longbridgeSettings.refreshIntervalSec.toString(),
+                                        palette = palette,
+                                        isCompact = isCompact,
+                                        onSelect = { sec ->
+                                            onUpdateLongbridgeSettings { it.copy(refreshIntervalSec = sec.toIntOrNull() ?: 60) }
+                                        }
+                                    )
+                                }
+                            }
+
+                            SettingsTab.VEHICLE_SYNC -> {
+                                SettingsGroupCard(
+                                    title = "车辆监控显示与车模外观",
+                                    palette = palette
+                                ) {
+                                    if (teslaViewModel != null) {
+                                        SettingSwitchRow(
+                                            title = "启用车辆监控页",
+                                            subtitle = "开启后主界面将增加横向滑屏车辆页展示车况、定位与今日看板",
+                                            checked = teslaEnabled,
+                                            palette = palette,
+                                            onCheckedChange = { teslaEnabled = it }
+                                        )
+                                        HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+                                    }
+
+                                    SettingSwitchRow(
+                                        title = "首页在天气下方展示车辆胶囊",
+                                        subtitle = "启用 TeslaMate 监控并完成配置后，与长桥胶囊同排对齐展示",
                                         checked = showTeslaOnHome,
                                         palette = palette,
                                         onCheckedChange = { showTeslaOnHome = it }
                                     )
 
-                                    HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
-
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(palette.chipBg)
-                                            .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                            .clickable { onOpenTeslaSettings() }
-                                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.weight(1f)
+                                    if (teslaViewModel != null) {
+                                        HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+                                        Text(
+                                            text = "车辆外观配色（3D 写实车模）",
+                                            color = palette.primaryText,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        FlowRow(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
+                                            listOf(
+                                                "AUTO" to "自动匹配",
+                                                "RED" to "烈焰红",
+                                                "RED_CLASSIC" to "经典红",
+                                                "WHITE" to "珍珠白",
+                                                "BLACK" to "纯黑",
+                                                "SILVER" to "星空灰",
+                                                "BLUE" to "深海蓝"
+                                            ).forEach { (key, label) ->
+                                                val isSel = teslaVehicleColor == key
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(if (isSel) palette.accent else palette.chipBg)
+                                                        .border(
+                                                            1.dp,
+                                                            if (isSel) palette.accent else palette.border,
+                                                            RoundedCornerShape(6.dp)
+                                                        )
+                                                        .clickable { teslaVehicleColor = key }
+                                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                ) {
+                                                    Text(
+                                                        text = label,
+                                                        color = if (isSel) palette.onAccent else palette.secondaryText,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(palette.chipBg)
+                                                .border(1.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                                .clickable { onOpenTeslaSettings() }
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DirectionsCar,
+                                                    contentDescription = null,
+                                                    tint = palette.accent,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = "TeslaMate / Grafana 数据源设置",
+                                                        color = palette.primaryText,
+                                                        fontSize = 12.5.sp,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = teslaStatusSummary.ifBlank { "配置本地或远程 Grafana API" },
+                                                        color = palette.secondaryText,
+                                                        fontSize = 10.5.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
                                             Icon(
-                                                imageVector = Icons.Default.DirectionsCar,
-                                                contentDescription = null,
+                                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                                contentDescription = "打开 Tesla 设置",
                                                 tint = palette.accent,
                                                 modifier = Modifier.size(20.dp)
                                             )
-                                            Column {
-                                                Text(
-                                                    text = "TeslaMate / Grafana 数据源设置",
-                                                    color = palette.primaryText,
-                                                    fontSize = 12.5.sp,
-                                                    fontWeight = FontWeight.SemiBold
+                                        }
+                                    }
+                                }
+
+                                if (teslaViewModel != null) {
+                                    SettingsGroupCard(
+                                        title = "TeslaMate / Grafana 只读数据源",
+                                        subtitle = "当前状态：${teslaStatusSummary.ifBlank { "未配置" }}",
+                                        palette = palette
+                                    ) {
+                                        OutlinedTextField(
+                                            value = teslaBaseUrl,
+                                            onValueChange = { teslaBaseUrl = it },
+                                            label = { Text("Grafana 根地址 (Base URL)", fontSize = 11.sp) },
+                                            placeholder = { Text("https://grafana.example.com", fontSize = 11.5.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = palette.primaryText,
+                                                unfocusedTextColor = palette.primaryText,
+                                                focusedBorderColor = palette.accent,
+                                                unfocusedBorderColor = palette.border
+                                            )
+                                        )
+
+                                        OutlinedTextField(
+                                            value = teslaToken,
+                                            onValueChange = { teslaToken = it },
+                                            label = { Text("Grafana 服务账号 Token (只读 SELECT)", fontSize = 11.sp) },
+                                            placeholder = { Text("粘贴 Service Account Token", fontSize = 11.5.sp) },
+                                            singleLine = true,
+                                            visualTransformation = if (isTeslaTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                            trailingIcon = {
+                                                IconButton(onClick = { isTeslaTokenVisible = !isTeslaTokenVisible }) {
+                                                    Icon(
+                                                        imageVector = if (isTeslaTokenVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                                        contentDescription = if (isTeslaTokenVisible) "隐藏 Token" else "显示 Token",
+                                                        tint = palette.secondaryText,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = palette.primaryText,
+                                                unfocusedTextColor = palette.primaryText,
+                                                focusedBorderColor = palette.accent,
+                                                unfocusedBorderColor = palette.border
+                                            )
+                                        )
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { teslaAllowHttp = !teslaAllowHttp }
+                                        ) {
+                                            Checkbox(
+                                                checked = teslaAllowHttp,
+                                                onCheckedChange = { teslaAllowHttp = it }
+                                            )
+                                            Text(
+                                                text = "允许可信内网 HTTP（Token 将在局域网明文传输，禁止公网地址）",
+                                                color = if (teslaAllowHttp) palette.warning else palette.secondaryText,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    if (teslaBaseUrl.isBlank() || teslaToken.isBlank()) {
+                                                        Toast.makeText(context, "请先填写 Base URL 和 Token", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        val temp = TeslaSettings(
+                                                            enabled = teslaEnabled,
+                                                            baseUrl = teslaBaseUrl,
+                                                            dataSourceUid = teslaDataSourceUid,
+                                                            dataSourceType = teslaDataSourceType,
+                                                            carId = teslaCarId,
+                                                            carName = teslaCarName,
+                                                            refreshIntervalSec = teslaRefreshSec,
+                                                            timeZone = teslaTimeZone,
+                                                            allowHttp = teslaAllowHttp,
+                                                            vehicleColor = teslaVehicleColor
+                                                        )
+                                                        teslaViewModel.testConnection(temp, teslaToken)
+                                                    }
+                                                },
+                                                enabled = !isTeslaTesting,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = palette.accent,
+                                                    contentColor = palette.onAccent,
+                                                    disabledContainerColor = palette.border,
+                                                    disabledContentColor = palette.mutedText
                                                 )
+                                            ) {
+                                                if (isTeslaTesting) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(13.dp),
+                                                        strokeWidth = 1.5.dp,
+                                                        color = palette.onAccent
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("正在测试连接…", fontSize = 11.5.sp)
+                                                } else {
+                                                    Text("① 测试连接与发现车辆", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+
+                                            if (!teslaTestResult.isNullOrBlank()) {
+                                                val ok = teslaTestResult.startsWith("连接成功")
                                                 Text(
-                                                    text = teslaStatusSummary.ifBlank { "配置本地或远程 Grafana API，只读采集电量、位置与行程" },
-                                                    color = palette.secondaryText,
-                                                    fontSize = 10.5.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    text = teslaTestResult,
+                                                    color = if (ok) palette.positive else palette.danger,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
                                                 )
                                             }
                                         }
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                            contentDescription = "打开 Tesla 设置",
-                                            tint = palette.accent,
-                                            modifier = Modifier.size(20.dp)
+                                    }
+
+                                    SettingsGroupCard(
+                                        title = "数据源、目标车辆与同步频率",
+                                        palette = palette
+                                    ) {
+                                        if (discoveredDatasources.isNotEmpty()) {
+                                            FlowRow(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                discoveredDatasources.forEach { ds ->
+                                                    val isSel = teslaDataSourceUid == ds.uid
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(if (isSel) palette.accent else palette.chipBg)
+                                                            .border(1.dp, if (isSel) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                                                            .clickable {
+                                                                teslaDataSourceUid = ds.uid
+                                                                teslaDataSourceType = ds.type
+                                                            }
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "${ds.name} (${ds.uid})",
+                                                            color = if (isSel) palette.onAccent else palette.secondaryText,
+                                                            fontSize = 10.5.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        OutlinedTextField(
+                                            value = teslaDataSourceUid,
+                                            onValueChange = { teslaDataSourceUid = it },
+                                            label = { Text("PostgreSQL 数据源 UID", fontSize = 11.sp) },
+                                            placeholder = { Text("例如: teslamate", fontSize = 11.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = palette.primaryText,
+                                                unfocusedTextColor = palette.primaryText,
+                                                focusedBorderColor = palette.accent,
+                                                unfocusedBorderColor = palette.border
+                                            )
                                         )
+
+                                        if (discoveredCars.isNotEmpty()) {
+                                            FlowRow(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                discoveredCars.forEach { car ->
+                                                    val isSel = teslaCarId == car.id
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(if (isSel) palette.accent else palette.chipBg)
+                                                            .border(1.dp, if (isSel) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                                                            .clickable {
+                                                                teslaCarId = car.id
+                                                                teslaCarName = car.displayName
+                                                            }
+                                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "${car.displayName} (#${car.id})",
+                                                            color = if (isSel) palette.onAccent else palette.secondaryText,
+                                                            fontSize = 10.5.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = teslaCarName,
+                                                onValueChange = { teslaCarName = it },
+                                                label = { Text("车辆名称", fontSize = 11.sp) },
+                                                modifier = Modifier.weight(1.5f),
+                                                singleLine = true,
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = palette.primaryText,
+                                                    unfocusedTextColor = palette.primaryText,
+                                                    focusedBorderColor = palette.accent,
+                                                    unfocusedBorderColor = palette.border
+                                                )
+                                            )
+                                            OutlinedTextField(
+                                                value = teslaCarId.toString(),
+                                                onValueChange = { teslaCarId = it.toIntOrNull() ?: 1 },
+                                                label = { Text("车辆 ID", fontSize = 11.sp) },
+                                                modifier = Modifier.weight(1f),
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedTextColor = palette.primaryText,
+                                                    unfocusedTextColor = palette.primaryText,
+                                                    focusedBorderColor = palette.accent,
+                                                    unfocusedBorderColor = palette.border
+                                                )
+                                            )
+                                        }
+
+                                        Text("轮询刷新频率", color = palette.primaryText, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                        SegmentedOptionRow(
+                                            options = listOf(
+                                                "30" to "30 秒",
+                                                "60" to "60 秒",
+                                                "120" to "120 秒"
+                                            ),
+                                            selectedKey = teslaRefreshSec.toString(),
+                                            palette = palette,
+                                            isCompact = isCompact,
+                                            onSelect = { teslaRefreshSec = it.toIntOrNull() ?: 60 }
+                                        )
+
+                                        OutlinedTextField(
+                                            value = teslaTimeZone,
+                                            onValueChange = { teslaTimeZone = it },
+                                            label = { Text("统计时区", fontSize = 11.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = palette.primaryText,
+                                                unfocusedTextColor = palette.primaryText,
+                                                focusedBorderColor = palette.accent,
+                                                unfocusedBorderColor = palette.border
+                                            )
+                                        )
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                teslaViewModel.clearConfiguration()
+                                                teslaEnabled = false
+                                                teslaBaseUrl = ""
+                                                teslaToken = ""
+                                                teslaDataSourceUid = ""
+                                                Toast.makeText(context, "已清除 TeslaMate 配置与缓存", Toast.LENGTH_SHORT).show()
+                                            },
+                                            border = BorderStroke(1.dp, palette.danger.copy(alpha = 0.5f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = palette.danger,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("清除车辆配置与本地缓存", color = palette.danger, fontSize = 11.5.sp)
+                                        }
                                     }
                                 }
                             }
@@ -1346,6 +2096,13 @@ fun SettingsDialog(
                                     }
                                 }
                             }
+
+                            SettingsTab.ABOUT -> {
+                                AboutSettingsTabContent(
+                                    palette = palette,
+                                    isCompact = isCompact
+                                )
+                            }
                         }
                     }
                 }
@@ -1356,7 +2113,7 @@ fun SettingsDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (isCompact) 48.dp else 54.dp)
+                        .height(if (isCompact) 42.dp else 54.dp)
                         .background(palette.sidebarBg)
                         .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1402,6 +2159,7 @@ fun SettingsDialog(
                                     screenOnPolicy = screenOnPolicy,
                                     keepScreenOn = screenOnPolicy != "SYSTEM",
                                     nightModeOption = nightModeOption,
+                                    dayThemeStyle = dayThemeStyle,
                                     autoNightDim = autoNightDim,
                                     nightBrightness = nightBrightness,
                                     autoRefreshIntervalMinutes = refreshInterval,
@@ -1412,6 +2170,8 @@ fun SettingsDialog(
                                     additionalCities = finalAdditional,
                                     quotaWidthPercent = quotaWidthPercent,
                                     quotaCardDensity = quotaCardDensity,
+                                    quotaDisplayMode = quotaDisplayMode,
+                                    quotaProviderOrder = quotaProviderOrder.joinToString(","),
                                     clockScale = clockScale,
                                     clockOffsetX = clockOffsetX,
                                     clockOffsetY = clockOffsetY,
@@ -1419,6 +2179,30 @@ fun SettingsDialog(
                                     useMockData = useMockData
                                 )
                                 onSave(updated)
+                                if (teslaViewModel != null) {
+                                    val updatedTesla = TeslaSettings(
+                                        enabled = teslaEnabled,
+                                        baseUrl = teslaBaseUrl.trim(),
+                                        dataSourceUid = teslaDataSourceUid.trim(),
+                                        dataSourceType = teslaDataSourceType.trim(),
+                                        carId = teslaCarId,
+                                        carName = teslaCarName.trim(),
+                                        refreshIntervalSec = teslaRefreshSec,
+                                        timeZone = teslaTimeZone.trim(),
+                                        allowHttp = teslaAllowHttp,
+                                        vehicleColor = teslaVehicleColor
+                                    )
+                                    val tokenChanged = teslaToken.isNotBlank() && teslaToken != initialTeslaToken
+                                    if (updatedTesla != currentTeslaSettings || tokenChanged) {
+                                        val ok = teslaViewModel.updateSettings(
+                                            updatedTesla,
+                                            teslaToken.takeIf { it.isNotBlank() }
+                                        )
+                                        if (!ok) {
+                                            Toast.makeText(context, "设备安全存储不可用，车辆凭据未保存", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
                                 onDismiss()
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -1450,12 +2234,12 @@ private fun SettingsSidebarItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .sizeIn(minHeight = if (isCompact) 40.dp else 44.dp)
+            .sizeIn(minHeight = if (isCompact) 26.5.dp else 44.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(bg)
             .border(1.dp, borderColor, RoundedCornerShape(8.dp))
             .clickable(role = Role.Tab) { onClick() }
-            .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 7.dp else 9.dp),
+            .padding(horizontal = if (isCompact) 7.dp else 10.dp, vertical = if (isCompact) 2.5.dp else 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
     ) {
@@ -1463,12 +2247,12 @@ private fun SettingsSidebarItem(
             imageVector = icon,
             contentDescription = null,
             tint = contentColor,
-            modifier = Modifier.size(if (isCompact) 15.dp else 17.dp)
+            modifier = Modifier.size(if (isCompact) 14.dp else 17.dp)
         )
         Text(
             text = label,
             color = if (isSelected) palette.primaryText else palette.secondaryText,
-            fontSize = if (isCompact) 11.sp else 12.5.sp,
+            fontSize = if (isCompact) 10.5.sp else 12.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -2401,5 +3185,201 @@ private fun AccountVisibilityChipsRow(
                 fontWeight = if (isPinnedMain) FontWeight.Bold else FontWeight.Normal
             )
         }
+    }
+}
+
+private data class AboutFeatureSpec(
+    val icon: ImageVector,
+    val title: String,
+    val summary: String
+)
+
+/**
+ * 关于项目页签：展示 ChronoDesk 版本、仓库开源地址、四大核心子系统、硬件加密安全架构与开源致谢
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AboutSettingsTabContent(
+    palette: SettingsPalette,
+    isCompact: Boolean
+) {
+    val context = LocalContext.current
+    val repoUrl = "https://github.com/tzwdj01/ChronoDesk"
+    val (versionName, versionCode) = remember(context) {
+        try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            (info.versionName ?: "2.0.0") to PackageInfoCompat.getLongVersionCode(info)
+        } catch (_: Exception) {
+            "2.0.0" to 2L
+        }
+    }
+
+    val features = remember {
+        listOf(
+            AboutFeatureSpec(
+                icon = Icons.Default.WatchLater,
+                title = "机械翻牌与三态视觉",
+                summary = "分体折页时钟 · 公历农历与多城气象 · 日间原彩 / 纯水墨(R=G=B) / AMOLED 夜间一键循环，轻触零跳变"
+            ),
+            AboutFeatureSpec(
+                icon = Icons.Default.AutoAwesome,
+                title = "AI 算力额度中枢",
+                summary = "ChatGPT (5h/周双窗) · Google Antigravity (Gemini + Claude/GPT 双轨) · DeepSeek 余额 · 纯数字/进度条自由排序"
+            ),
+            AboutFeatureSpec(
+                icon = Icons.Default.DirectionsCar,
+                title = "TeslaMate 智驾座舱",
+                summary = "Grafana PostgreSQL 只读直连（休眠零唤醒） · 多车漆超清车模与四轮胎压 · 今日行程能耗与国内离线纠偏地图"
+            ),
+            AboutFeatureSpec(
+                icon = Icons.Default.AccountBalanceWallet,
+                title = "长桥环球证券看板",
+                summary = "OpenAPI 实时净资产与当日盈亏 · HKD/USD/CNY 汇率折算 · 美/港/A 股核心指数与市场温度计"
+            )
+        )
+    }
+
+    SettingsGroupCard(
+        title = "ChronoDesk · 极客桌面遥测座舱",
+        subtitle = "专为开发者、AI 重度用户与智驾车主打造的 Android 常亮桌面伴侣",
+        palette = palette
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            AboutTagBadge("v$versionName (Build $versionCode)", palette.accent)
+            AboutTagBadge("MIT Open Source", palette.positive)
+            AboutTagBadge("100% Kotlin · Compose", palette.secondaryText)
+        }
+
+        Text(
+            text = "将闲置旗舰与经典小屏设备（如小米 6 / 小米 11）重塑为全天候桌面中控屏：兼顾温润水墨可读性与夜间 AMOLED 护眼，聚合高频个人工作流的关键状态，绝无广告与云端追踪。",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+            lineHeight = if (isCompact) 15.sp else 17.sp
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = {
+                    val opened = runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(repoUrl))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }.isSuccess
+                    if (!opened) {
+                        Toast.makeText(context, "未找到可用浏览器，请点击复制开源地址", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, palette.accent.copy(alpha = 0.55f)),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
+                Spacer(modifier = Modifier.width(5.dp))
+                Text("访问 GitHub 仓库", fontSize = if (isCompact) 11.sp else 12.sp, color = palette.accent, fontWeight = FontWeight.SemiBold)
+            }
+            OutlinedButton(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("ChronoDesk GitHub", repoUrl))
+                    Toast.makeText(context, "已复制 GitHub 仓库地址", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, palette.border),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.secondaryText)
+                Spacer(modifier = Modifier.width(5.dp))
+                Text("复制开源地址", fontSize = if (isCompact) 11.sp else 12.sp, color = palette.primaryText, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+
+    SettingsGroupCard(
+        title = "四大核心模块",
+        subtitle = "全链路真机调优，支持横屏分栏与 16:9 紧凑屏自适应排版",
+        palette = palette
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)) {
+            features.forEach { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.chipBg)
+                        .border(0.8.dp, palette.border, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = if (isCompact) 6.dp else 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = null,
+                        tint = palette.accent,
+                        modifier = Modifier.padding(top = 1.dp).size(15.dp)
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = item.title,
+                            color = palette.primaryText,
+                            fontSize = if (isCompact) 11.sp else 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = item.summary,
+                            color = palette.secondaryText,
+                            fontSize = if (isCompact) 9.8.sp else 10.8.sp,
+                            lineHeight = if (isCompact) 13.5.sp else 15.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    SettingsGroupCard(
+        title = "安全架构与开源致谢",
+        subtitle = "本地硬件密文存储 · 零中转服务器 · MIT 开源协议",
+        palette = palette
+    ) {
+        Text(
+            text = "• 硬件级加密：Android KeyStore (AES-256-GCM) 托管所有 API Key / Token；TokenRedactor 全链路日志自动脱敏，严防跨域名重定向泄露。\n" +
+                "• 技术栈：Kotlin · Jetpack Compose · Material 3 · Clean MVVM + UDF · Coroutines / StateFlow · OkHttp / Retrofit。\n" +
+                "• 致谢与许可：本项目遵循 MIT License 开源；多模型额度接口设计部分借鉴 CC Switch（Copyright (c) 2025 Jason Young）。\n" +
+                "• 仓库地址：$repoUrl",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 10.sp else 11.sp,
+            lineHeight = if (isCompact) 14.5.sp else 16.5.sp
+        )
+    }
+}
+
+@Composable
+private fun AboutTagBadge(
+    text: String,
+    accent: Color
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(accent.copy(alpha = 0.12f))
+            .border(0.8.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = text,
+            color = accent,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
     }
 }

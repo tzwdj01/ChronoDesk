@@ -1,6 +1,98 @@
 package com.chronodesk.app.ui.theme
 
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+val LocalPureInkMode = compositionLocalOf { false }
+
+// ==================== 纯水墨模式色彩系统（严格纯黑白灰 R==G==B） ====================
+val PureInkBackground = Color(0xFFF4F4F4)
+val PureInkSurface = Color(0xFFFFFFFF)
+val PureInkSurfaceElevated = Color(0xFFEBEBEB)
+val PureInkBorder = Color(0xFFD4D4D4)
+val PureInkTextPrimary = Color(0xFF141414)
+val PureInkTextSecondary = Color(0xFF525252)
+val PureInkTextTertiary = Color(0xFF858585)
+val PureInkProgress = Color(0xFF1F1F1F)
+val PureInkTrack = Color(0xFFE0E0E0)
+val PureInkClockBorder = Color(0xFFD0D0D0)
+val PureInkSeam = Color(0xFFD4D4D4)
+
+data class ChronoDayNightPalette(
+    val isNight: Boolean,
+    val isPureInk: Boolean,
+    val bg: Color,
+    val surface: Color,
+    val surfaceElevated: Color,
+    val border: Color,
+    val dividerSubtle: Color,
+    val primaryText: Color,
+    val secondaryText: Color,
+    val mutedText: Color,
+    val progressActive: Color,
+    val progressTrack: Color,
+    val accent: Color,
+    val positive: Color,
+    val warning: Color,
+    val danger: Color
+)
+
+fun resolveChronoPalette(isNightMode: Boolean, isPureInk: Boolean): ChronoDayNightPalette = when {
+    isNightMode -> ChronoDayNightPalette(
+        isNight = true,
+        isPureInk = false,
+        bg = DarkBackground,
+        surface = DarkSurface,
+        surfaceElevated = DarkSurfaceElevated,
+        border = DarkBorder,
+        dividerSubtle = DarkBorderSubtle,
+        primaryText = TextPrimary,
+        secondaryText = TextSecondary,
+        mutedText = TextTertiary,
+        progressActive = TechEmerald,
+        progressTrack = DarkProgressTrack,
+        accent = TechCyan,
+        positive = TechEmerald,
+        warning = TechAmber,
+        danger = TechRose
+    )
+    isPureInk -> ChronoDayNightPalette(
+        isNight = false,
+        isPureInk = true,
+        bg = PureInkBackground,
+        surface = PureInkSurface,
+        surfaceElevated = PureInkSurfaceElevated,
+        border = PureInkBorder,
+        dividerSubtle = PureInkBorder,
+        primaryText = PureInkTextPrimary,
+        secondaryText = PureInkTextSecondary,
+        mutedText = PureInkTextTertiary,
+        progressActive = PureInkProgress,
+        progressTrack = PureInkTrack,
+        accent = PureInkTextPrimary,
+        positive = Color(0xFF2B2B2B),
+        warning = Color(0xFF525252),
+        danger = PureInkTextPrimary
+    )
+    else -> ChronoDayNightPalette(
+        isNight = false,
+        isPureInk = false,
+        bg = InkBackground,
+        surface = InkSurface,
+        surfaceElevated = InkSurfaceElevated,
+        border = InkBorder,
+        dividerSubtle = InkBorderSubtle,
+        primaryText = InkTextPrimary,
+        secondaryText = InkTextSecondary,
+        mutedText = InkTextTertiary,
+        progressActive = InkStatusGreen,
+        progressTrack = InkProgressTrack,
+        accent = Color(0xFF0284C7),
+        positive = InkStatusGreen,
+        warning = InkWarningAmber,
+        danger = InkWarningRed
+    )
+}
 
 // ==================== 日间水墨 / 电子墨水屏主题色彩系统 ====================
 // 米白、宣纸浅灰与浓淡墨色，柔和、护眼、清晰呈现电子墨水屏质感

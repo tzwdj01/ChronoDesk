@@ -31,11 +31,11 @@ object TokenRedactor {
      */
     fun redactJsonString(json: String): String {
         return json
-            .replace(Regex("\"(access_token|refresh_token|id_token|grafana_token|token|api_key|client_secret)\"\\s*:\\s*\"[^\"]+\"")) { match ->
+            .replace(Regex("\"(access_token|refresh_token|id_token|grafana_token|token|api_key|client_secret|registration_access_token)\"\\s*:\\s*\"[^\"]+\"")) { match ->
                 val key = match.groupValues[1]
                 "\"$key\":\"***REDACTED***\""
             }
-            .replace(Regex("\"(code|code_verifier)\"\\s*:\\s*\"[^\"]+\"")) { match ->
+            .replace(Regex("\"(code|code_verifier|auth_code)\"\\s*:\\s*\"[^\"]+\"")) { match ->
                 val key = match.groupValues[1]
                 "\"$key\":\"***REDACTED***\""
             }

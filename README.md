@@ -1,220 +1,223 @@
-# ChronoDesk - 极简科技风 Android 智能桌面时钟 & 极客监控仪表盘
+<div align="center">
 
-<p align="center">
-  <img src="docs/images/preview_clock_night.png" width="85%" alt="ChronoDesk Preview" />
+# ⏱️ ChronoDesk
+
+**极简美学 Android 智能桌面时钟 & 极客全栈遥测座舱**
+
+专为闲置旗舰与经典小屏 Android 设备（小米 11 / 小米 6 等）打造的常亮桌面伴侣
+
+<p>
+  <a href="https://github.com/tzwdj01/ChronoDesk/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/Release-v2.0.0-2563EB?style=for-the-badge&logo=github" alt="Release v2.0.0" /></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android 8.0+" />
+  <img src="https://img.shields.io/badge/Kotlin-100%25-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin 100%" />
+  <img src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
+  <img src="https://img.shields.io/badge/Tests-134%20Passed-16A34A?style=for-the-badge&logo=checkmarx&logoColor=white" alt="134 Unit Tests Passed" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-F59E0B?style=for-the-badge" alt="MIT License" /></a>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android%209.0%2B-blue?logo=android" alt="Platform" />
-  <img src="https://img.shields.io/badge/Language-Kotlin%20100%25-purple?logo=kotlin" alt="Language" />
-  <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-green?logo=jetpackcompose" alt="Compose" />
-  <img src="https://img.shields.io/badge/Architecture-Clean%20MVVM-orange" alt="Architecture" />
-  <img src="https://img.shields.io/badge/Tests-74%20Passed-brightgreen" alt="Tests" />
-  <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
+<p>
+  <a href="#-关于项目-about">关于项目</a> ·
+  <a href="#-视觉画廊-showcase">视觉画廊</a> ·
+  <a href="#-五大核心子系统">核心功能</a> ·
+  <a href="#-系统架构与安全设计">架构与安全</a> ·
+  <a href="#-快速安装与构建">下载与构建</a>
 </p>
 
-一款专为开发者与极客打造的 **Android 原生智能桌面时钟与设备监控仪表盘**。专为将闲置手机（如小米 6、小米 11 等）改造为桌面常亮伴侣而生。
+<img src="docs/images/hero_banner.png" width="100%" alt="ChronoDesk Three-Theme Triptych Hero Banner" />
 
-集成了精致的拟物机械翻牌时钟、公历农历天气气象胶囊、**水墨日间 / 深色 AMOLED 双主题**、**ChatGPT / DeepSeek / Gemini API 多模型订阅额度聚合看板**，以及深度集成的 **TeslaMate 车辆能耗与状态大屏**。
+</div>
 
 ---
 
-## 📸 真实界面展示 (Showcase)
+## 💡 关于项目 (About)
 
-> 全部截图均来自 Android 真机实测运行（真实接口数据驱动）。
-> 注：演示截图中所展示的账户别名、额度及车辆数据均为测试环境演示数据或已全面脱敏处理，非真实个人隐私数据。
+大多数人的抽屉里都躺着一台屏幕素质依然出色的旧手机——它们性能充沛，却缺少一个真正配得上桌面立式支架的常亮形态。
 
-### 1. 主页面：机械翻牌时钟 & AI 额度聚合监控 (Page 0)
-横屏三栏黄金比例布局。左侧为大尺寸翻牌数字时钟、公历农历与多地区天气气象胶囊；右侧紧凑呈现 ChatGPT Plus 5小时/周额度双窗口与 DeepSeek 账户余额。
+**ChronoDesk** 将这方寸屏幕重塑为一站式**桌面时间美学与个人核心工作流遥测中控**：在保留独立机械翻牌时钟的仪式感之余，无感聚合开发者每日高频关注的关键状态——**ChatGPT / Google Antigravity / DeepSeek 算力额度**、**TeslaMate 爱车能耗与停靠位置**、**长桥证券环球市场指数与当日盈亏**以及**多地区实时气象**，全程本地直连、硬件加密，绝无广告与云端中转。
 
-| 水墨纸感模式 (Ink Day) | 赛博科技模式 (AMOLED Night) |
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <strong>🎨 三态视觉一键循环</strong><br/>
+      默认 <b>日间彩色</b>（纸感浅底 + 品牌原彩图标）、<b>全水墨</b>（严格 <code>R=G=B</code> 黑白灰）与 <b>夜间深色</b>（AMOLED 纯黑护眼）一键循环，轻触显隐控制栏 <b>0 像素位移</b>。
+    </td>
+    <td width="33%" valign="top">
+      <strong>📐 双屏比例真机调优</strong><br/>
+      针对全面屏高分旗舰（如 <b>小米 11</b>）与经典 16:9 紧凑小屏（如 <b>小米 6</b> <code>640×360dp</code>）分别精调留白、列宽权重与触控热区，久置工位不裁切、不折行。
+    </td>
+    <td width="33%" valign="top">
+      <strong>🔐 零中转硬件级安全</strong><br/>
+      所有 Token / API Key 统一由 <code>Android KeyStore (AES-256-GCM)</code> 密文托管；<code>TokenRedactor</code> 全链路脱敏，直连官方开放接口或个人私有网关。
+    </td>
+  </tr>
+</table>
+
+---
+
+## 📸 视觉画廊 (Showcase)
+
+> 以下画面均来自 **小米 11** 与 **小米 6** 真机实拍截屏；展示所使用的账户名称、资产与位置数据均已替换为脱敏演示数据集。
+
+### 1. 主视窗三态美学对比 · 轻触零跳变 (Page 0)
+
+左侧高对比机械翻牌时钟集成公历、星期、传统农历、多城气象胶囊与 Tesla / 长桥高频状态胶囊（位置上下边框完全对齐）；右侧同构三平台 AI 额度看板支持**纯数字网格 / 进度条**双形态切换与自由排序。
+
+| 日间彩色模式 · Day Color *(默认)* | 日间全水墨模式 · Pure E-Ink (`R=G=B`) |
 | :---: | :---: |
-| <img src="docs/images/preview_clock_day.png" width="100%" alt="Day Mode Clock" /> | <img src="docs/images/preview_clock_night.png" width="100%" alt="Night Mode Clock" /> |
+| <img src="docs/images/preview_clock_day.png" width="100%" alt="ChronoDesk Day Color" /> | <img src="docs/images/preview_clock_ink.png" width="100%" alt="ChronoDesk Pure Ink" /> |
 
----
-
-### 2. Tesla 专属页面：TeslaMate 车辆能耗仪表盘 (Page 2)
-直连自建 TeslaMate PostgreSQL 数据源。中间自绘纯代码 Canvas 车模轮廓并标注四轮胎压（bar），左右呈现电量 SOC、续航里程、今日行程里程与能耗估算、7 日能耗柱状图、月度汇总及车内外温控。
-
-| 深色科技模式 (AMOLED Night) | 水墨纸感模式 (Ink Day) |
+| 夜间 AMOLED 模式 · Cyber Night | 经典 16:9 小屏适配 · Xiaomi 6 实机 |
 | :---: | :---: |
-| <img src="docs/images/preview_tesla_night.png" width="100%" alt="Tesla Night Dashboard" /> | <img src="docs/images/preview_tesla_day.png" width="100%" alt="Tesla Day Dashboard" /> |
+| <img src="docs/images/preview_clock_night.png" width="100%" alt="ChronoDesk AMOLED Night" /> | <img src="docs/images/preview_mi6.png" width="100%" alt="ChronoDesk on Xiaomi 6" /> |
 
 ---
 
-### 3. 扩展遥测页与经典老机型实测 (Page 1 & Xiaomi 6)
-支持左右横向滑屏自由穿梭，第二页展示各模型 API 的 Token 用量深度遥测与往返延时；同时原生深度适配 16:9 紧凑型经典机型（如小米 6），自适应字体与卡片间距，不遮挡、不截断，让闲置设备焕发桌面新生。
+### 2. 长桥环球资产指数 & AI 额度深度大屏 (Page 1 & Page 3)
 
-| AI 额度与账号详情页 (多模型额度/余额/重置监控) | 小米 6 (16:9 紧凑屏实测运行) |
+左右滑屏即刻切换全屏细分座舱：AI 详情页支持单账号双窗精确倒计时；长桥看板实时聚合**美股 / 港股 / A 股核心指数与市场温度计**、多币种汇率折算（`HKD / USD / CNY`）、红涨绿跌 / 绿涨红跌一键切换与隐私脱敏遮罩。
+
+| AI 算力额度详情大屏 (Extension Page) | 长桥证券资产与美港A市场温度 (Longbridge Portfolio) |
 | :---: | :---: |
-| <img src="docs/images/preview_token_telemetry.png" width="100%" alt="AI Quota & Status Details" /> | <img src="docs/images/preview_mi6.png" width="100%" alt="Xiaomi 6 Showcase" /> |
+| <img src="docs/images/preview_token_telemetry.png" width="100%" alt="AI Quota Extension Page" /> | <img src="docs/images/preview_longbridge.png" width="100%" alt="Longbridge Portfolio Dashboard" /> |
 
 ---
 
-## ✨ 核心特性矩阵
+### 3. TeslaMate 智驾座舱日夜双视图 & 设置关于中心 (Page 2 & Settings)
 
-### 🕒 1. 拟物机械翻牌时钟与历法
-- **分体机械折叠翻牌动画 (Split-Flap Animation)**：
-  - 细腻的高清机械折页中缝阴影与高光细节，时、分数字大号居中，支持秒钟独立悬浮切换。
-- **公历、星期与传统农历**：
-  - 完整呈现公历日期与星期；内置纯算法农历转换引擎，精准呈现农历月日（如 `农历十月十五`）。
-- **时钟尺寸与位置调节**：
-  - 支持双指手势或设置滑块自由调节时钟大小比例（80% - 150%），支持上下左右自由平移并一键复位居中。
-- **AMOLED 防烧屏与常亮**：
-  - 原生保持屏幕常亮（`FLAG_KEEP_SCREEN_ON`）；内置防烧屏微移算法（Burn-in Shift），每隔 3 分钟平滑微调像素位置，守护屏幕寿命。
+直连自建 Grafana PostgreSQL 数据源执行**纯只读 SQL 采集**，严禁控制指令与车辆唤醒；支持车漆颜色匹配、超清数字车展 / 实车照片与四轮胎压视图一键切换、今日能耗统计、7 日里程柱状图、GCJ-02 国内纠偏离线地图弹窗，以及统一归口管理全部数据源与版本信息的**「关于项目」**面板。
 
-### 🤖 2. 多模型 AI 额度聚合看板
-- **ChatGPT (Codex) 官方遥测**：
-  - 深度适配 OpenAI WHAM 额度监控接口，精准区分并同时展示 **5 小时限额窗口** 与 **7 天周额度窗口**；
-  - 实时显示重置倒计时（如 `14:24 重置`）与剩余额度重置次数（如 `重置:3次`）。
-- **DeepSeek 官方 API**：
-  - 直连 DeepSeek 官方开放接口，实时呈现账户可用余额（如 `¥92.59 CNY`），去除充值充赠冗余信息，清爽明了。
-- **Gemini API 连接状态**：
-  - 直连 Google Generative Language 官方模型列表接口，真实反映 Key 有效性与模型就绪连接状态，杜绝虚构配额。
-- **多账号选择与状态胶囊**：
-  - 支持在设置中自由勾选展示/隐藏特定账号，支持根据重要程度排序；
-  - 额度耗尽（Exhausted）、即将耗尽（Warning）与正常（Normal）动态变色预警。
+| TeslaMate 日间高清座舱 | TeslaMate 夜间赛博座舱 |
+| :---: | :---: |
+| <img src="docs/images/preview_tesla_day.png" width="100%" alt="Tesla Dashboard Day" /> | <img src="docs/images/preview_tesla_night.png" width="100%" alt="Tesla Dashboard Night" /> |
 
-### 🌦️ 3. 多地区天气气象胶囊
-- **多城市多行并列**：支持同时添加并并列展示多个关注地区的天气气象（如 `北京市 海淀`、`英格兰 倫敦` 等）。
-- **智能地名搜索补全**：接入 Open-Meteo Geocoding API，支持模糊搜索县级行政区、海外城市，自动补全所属行政区以避免重名歧义。
-- **经纬度自定义录入**：支持手动录入纬度（-90 ~ 90）与经度（-180 ~ 180），可附加自定义地点别名。
-- **坐标级去重与缓存保障**：按坐标经纬度精准去重与维护独立缓存，同名不同坐标地点可共存；网络失败保留原温度并标注更新时间，无城市配置时优雅展示「选择城市」。
-- **实时指标**：气温、天气状况图标与文字、空气湿度百分比、实时风速。
-- **零商业 Key 依赖**：基于 Open-Meteo 开放气象与地理编码数据源，支持 GPS 自动定位与快捷预设。
-
-### 🚗 4. TeslaMate 车辆监控模块 (New!)
-- **双视角自绘车模与照片自定义**：
-  - **俯视四轮胎压图**：几何俯视车身轮廓自适应绘制，四周清晰标注 **左前、右前、左后、右后 4 轮胎压（bar）**，胎压异常智能色卡提醒；
-  - **侧面车型剪影**：从 `cars.model` 智能识别车型代码，纯代码自绘 **Model 3 / Model Y / Model S / Model X** 侧面矢量剪影，严禁使用未授权商业商标；
-  - **自定义车辆照片**：支持从相册录入爱车照片并与车辆 ID 本地隔离持久化，点击卡片随时在「胎压环绕图」与「车型/实车照片」间一键切换。
-- **最后停靠位置与地图直达**：
-  - 查询 `positions` 与 `geofences` 表最新一条合法定位，展示地理围栏名称（如家、公司、超充站）、经纬度坐标与采样时效；
-  - 提供无障碍触控区「在地图中打开」按钮，通过 `geo:` 隐式 Intent 唤起系统地图应用。
-- **全维度车辆数据看板**：
-  - **核心指标**：剩余电量 SOC 百分比、电量进度条、额定续航（km）、累计总里程（km）。
-  - **今日行程**：今日行驶距离、已完成行程次数、今日平均能耗估算（Wh/km）。
-  - **能耗与趋势**：近 7 天每日行驶能耗柱状图可视化展示、本月累计行驶与充入电量统计。
-  - **双温控**：车内温度与车外环境温度最近采样对比。
-- **安全与电池保护原则**：
-  - **只读采集**：直连本地 Grafana PostgreSQL 接口执行只读 SELECT 查询，严禁任何控制指令，**绝不唤醒车辆**。
-  - **自适应动态轮询**：车辆行驶或充电中 30s 刷新，日常在线 60s 刷新，休眠状态 180s 刷新，节约服务器资源。
-  - **内网安全通信**：Release 与 Debug 版本均支持配置可信局域网明文 HTTP 传输（仅限私有内网 IP 与内网主机名，禁止公网 HTTP 与重定向），解决 Android 9+ 系统级明文流量拦截。
-  - **一键级联发现**：自动探测 PostgreSQL 数据源 UID 与已绑定车辆，一键点击连接测试。
-
-### 🌓 5. 水墨纸感 / 赛博夜间双主题
-- **水墨纸感日间模式 (Ink Paper Day)**：米白柔和底色配合温润纸质纹理，高对比度墨黑数字，适合日间书房与办公室，视觉温和不刺眼。
-- **深色科技夜间模式 (AMOLED Cyber Night)**：纯黑背景（RGB #000000），荧光青科技线条点缀，深度降低夜间卧室反光，极致省电。
-- **0 像素位移**：日间与夜间模式切换时，所有组件坐标、字体排版严格保持 0 像素位移。
-
-### 📲 6. 跨设备免云端安全迁移
-- 针对多台闲置手机同时使用的场景，提供基于本地安全广播的跨设备数据迁移功能；
-- 账号凭据与个性化配置通过局域网直接传输，**数据不经过任何第三方云端服务器**，杜绝隐私泄漏。
+<p align="center">
+  <img src="docs/images/preview_settings_about.png" width="78%" alt="ChronoDesk Settings and About Center" />
+</p>
 
 ---
 
-## 🔒 安全与凭据保护架构
+## ✨ 五大核心子系统
 
-- **硬件级密文存储**：敏感凭据（OpenAI Access Token、Refresh Token、DeepSeek API Key、Grafana Service Account Token）统一使用 `Android KeyStore` 生成主密钥，通过 `EncryptedSharedPreferences`（AES-256-GCM）密文持久化。
-- **日志自动脱敏 (Token Redaction)**：所有网络日志、JSON 序列化与 Retrofit 请求头均经过 `TokenRedactor` 处理，敏感字符一律打码掩蔽。
-- **严格重定向隔离**：网络拦截器内置跨主机重定向防护，严禁向第三方未经验证的域名传递 Authorization 凭据。
+### 1. 🕒 拟物机械翻牌时钟与三态视觉系统
+- **分体翻牌与手势微调**：高对比机械中缝折页设计，支持双指捏合缩放（`80% - 150%`）与自由拖拽定位；「复位」按钮整合进顶部默认隐藏的悬浮 `ClockTopBar`，轻触呼出或 6 秒自动隐去时**时钟位置 0 像素跳变**。
+- **公历与纯算法农历**：精确计算并展示公历、星期与农历月日；支持 12/24 小时制、可选秒钟位，以及按充电状态 / 时段智能触发的常亮（`FLAG_KEEP_SCREEN_ON`）与防 AMOLED 烧屏每 3 分钟平滑像素微移。
+- **三态主题一键循环**：顶栏按钮一键切换 **日间彩色（原彩图标）→ 全水墨（逐像素纯黑白灰）→ 夜间深色（纯黑防反光 + 自动压暗窗亮度）**。
+
+### 2. 🤖 全栈多模型 AI 额度聚合中枢
+| 平台 / 数据源 | 监测维度 | 特色能力 |
+| :--- | :--- | :--- |
+| **ChatGPT (OpenAI)** | `5h` 限额窗口 + `7d` 周额度窗口 | 适配 WHAM 遥测接口，展示具体重置时刻 / 倒计时及剩余重置次数，支持多账号主屏置顶与别名 |
+| **Google Antigravity** | **Gemini** 与 **Claude/GPT (3P)** 双轨双窗 | 与 ChatGPT 同构分轨呈现 `5h + 周额度` 实时配额、套餐档位徽标（如 `AI Ultra 20x`）与同步状态 |
+| **DeepSeek API** | 账户可用余额 (`CNY` / `USD`) | 直连官方余额接口，过滤冗杂充赠明细，多账号双列紧致排列 |
+- 全局支持 **「纯数字看板」** 与 **「进度条看板」** 切换、卡片紧密度调节、右侧分栏比例（`28% - 52%`）以及三平台卡片**任意自定义排序**。
+
+### 3. 📈 长桥证券 (Longbridge OpenAPI) 环球资产与市场温度
+- **首页迷你盈亏胶囊**：在主屏 Tesla 胶囊旁并列对齐显示，仅呈现长桥官方图标与**当日盈亏金额 / 涨跌幅百分比**（红涨绿跌 / 绿涨红跌可切换），支持单点独立手动刷新。
+- **全屏资产与指数座舱**：
+  - 汇总净资产、现金余额、证券市值、购买力、累计盈亏与多币种可用现金明细；
+  - 实时行情覆盖 **美股（纳指 / 标普500 / 道指）**、**港股（恒指 / 恒科）**、**A 股（上证 / 沪深300）** 及各市场估值/情绪温度计；
+  - 持仓明细支持美股盘前盘后/夜盘标签，一键隐藏金额隐私模式（`••••••`）。
+
+### 4. 🚗 TeslaMate 零唤醒智驾与能耗座舱
+- **静默只读护电池**：通过 Grafana DataSource Proxy 查询 PostgreSQL 时序表，仅在 App 前台且必要时按自适应频率轮询，绝不向 Tesla 车控服务器发送唤醒请求。
+- **车型识别与实车画廊**：自动识别 `Model 3 / Model Y / Model S / Model X` 与原厂车漆代码并渲染多配色高清数字车模，支持录入本地爱车实拍照片与一键切换四轮 TPMS 胎压环绕图（bar）。
+- **行程回溯与高德/国内纠偏定位**：展示最近一次完整行程（起终点围栏/多级地名反解析、时长、距离与百公里电耗 `Wh/km`）、近 7 天里程趋势与月度充放电统计，内置 WGS-84 → GCJ-02 纠偏离线瓦片地图预览。
+
+### 5. 🌦️ 多地区气象胶囊与无凭据配置迁移
+- 基于 Open-Meteo 开放接口与内建中国县市地名库 (`ChinaCityDatabase`)，支持 GPS 定位、国内外模糊搜城、多城同卡并列展示（温度、体感、天气图标、湿度、风速）。
+- 支持将外观、排版、排序、城市等通用偏好导出为 **Schema v1 纯净 JSON**（严格排除一切 API Key、Token 与邮箱），跨机秒级恢复桌面布局。
 
 ---
 
-## 🛠️ 技术架构
+## 🛠️ 系统架构与安全设计
 
-- **开发语言**: 100% Kotlin
-- **界面开发**: Jetpack Compose + Material 3 (全声明式 UI 与动态手势交互)
-- **架构模式**: Clean Architecture + MVVM + UDF (单向数据流)
-- **并发与响应式**: Kotlin Coroutines + StateFlow / SharedFlow
-- **网络与解析**: Retrofit 2 + OkHttp 3 + Gson + DataFrame 列式解析引擎
-- **本地存储**: Android KeyStore + EncryptedSharedPreferences + SharedPreferences
+ChronoDesk 采用 **Clean Architecture + MVVM + 单向数据流（UDF）** 分层解耦，全界面使用 **100% Kotlin + Jetpack Compose (Material 3)** 编写：
 
+```mermaid
+flowchart LR
+    UI["Compose UI Layer<br/>(Clock / Extension / Tesla / Longbridge / Settings & About)"]
+    VM["ViewModel Layer<br/>(StateFlow / Coroutines / Auto Lifecycle Polling)"]
+    REPO["Repository & Security Layer<br/>(EncryptedSharedPreferences · AES-256-GCM · TokenRedactor)"]
+    PROV["Data Providers & Parsers<br/>(Codex · Antigravity · DeepSeek · Grafana SQL · Longbridge OpenAPI · Open-Meteo)"]
+
+    UI <-->|State & User Intents| VM
+    VM <-->|Typed Snapshots & Flow| REPO
+    REPO <-->|TLS / Trusted LAN HTTP| PROV
 ```
+
+### 安全边界设计
+- **硬件主密钥密文持久化**：OpenAI OAuth 凭据、Google Antigravity Refresh Token、DeepSeek API Key、Grafana Service Account Token、Longbridge AppKey / Secret / AccessToken 均通过 `Android KeyStore` 派生的 `MasterKey` 写入 `EncryptedSharedPreferences`。
+- **重定向与日志防火墙**：[`AuthLoggingInterceptor`](app/src/main/java/com/chronodesk/app/data/network/AuthLoggingInterceptor.kt) 与 [`TokenRedactor`](app/src/main/java/com/chronodesk/app/data/security/TokenRedactor.kt) 强制抹除请求头与调试日志中的敏感字符；[`NetworkClient`](app/src/main/java/com/chronodesk/app/data/network/NetworkClient.kt) 严禁向跨主机重定向携带鉴权头，仅对用户显式信任的私有内网网段开放可配置 HTTP 通信。
+
+<details>
+<summary>📂 展开查看完整源码目录结构 (app/src/main/java/com/chronodesk/app)</summary>
+
+```text
 app/src/main/java/com/chronodesk/app/
-├── MainActivity.kt                 # 入口 Activity、全屏沉浸、屏幕常亮与夜间亮度控制
-├── ChronoDeskApp.kt                # Application 单例初始化
+├── ChronoDeskApp.kt                        # 全局 Application 初始化
+├── MainActivity.kt                         # 沉浸式全屏、常亮控制、充电/亮度动态响应
 ├── data/
-│   ├── model/                      # 数据模型 (CodexAccount, TeslaSnapshot, WeatherInfo...)
-│   ├── network/                    # Retrofit 接口、GrafanaApi、OkHttp 拦截器与列式解析器
-│   ├── provider/                   # 数据源提供器 (RealCodexUsageProvider, TeslaDataProvider)
-│   ├── repository/                 # 数据仓储层 (AccountRepo, TeslaRepo, WeatherRepo, SettingsRepo)
-│   └── security/                   # 安全模块 (CredentialStorage KeyStore加密, TokenRedactor)
+│   ├── model/                              # 核心不可变数据模型 (ClockSettings, Codex*, Longbridge*, Tesla*, WeatherInfo)
+│   ├── network/                            # OkHttp/Retrofit 客户端、Grafana 列式帧解析、天气与气象回退链路
+│   ├── provider/                           # OpenAI/Antigravity/DeepSeek 额度采集、Longbridge、TeslaMate SQL、多级位置反解析
+│   ├── repository/                         # 仓储存取、缓存水化、Schema v1 导入导出与状态机协调
+│   ├── security/                           # CredentialStorage (KeyStore AES-256-GCM)、JwtUtils、TokenRedactor
+│   └── utils/                              # LunarCalendarHelper 农历引擎、CoordinateConverter (GCJ-02)、车模与实拍管理
 └── ui/
-    ├── clock/                      # 翻牌时钟、天气胶囊、AI额度卡片、横向滑屏系统
-    ├── tesla/                      # TeslaScreen、Canvas车身胎压俯视图、TeslaViewModel
-    ├── settings/                   # 系统设置弹窗、账号管理、设备授权、TeslaMate配置弹窗
-    └── theme/                      # 水墨日间与深色AMOLED双主题配色系统
+    ├── clock/                              # ClockScreen、ClockExtensionPage、FlipDigit、WeatherCard、DualAccountQuotaSection、ModelProviderLogos
+    ├── longbridge/                         # LongbridgeScreen (指数/温度/盈亏/持仓) & LongbridgeViewModel
+    ├── tesla/                              # TeslaScreen (车模/胎压/行程/趋势)、VehicleLocationMapDialog & TeslaViewModel
+    ├── settings/                           # SettingsDialog (8大分组含关于页)、账号 OAuth/Token 授权与配置弹窗
+    └── theme/                              # Color.kt (Day Color / Pure Ink R=G=B / AMOLED Night 统一色板系统)、Theme.kt
 ```
+
+</details>
 
 ---
 
-## 📦 构建与部署
+## 📦 快速安装与构建
 
-### 开发环境要求
-- OpenJDK 17 LTS
-- Android SDK 34 (Android 14)
-- Gradle 8.7
+### 方式一：直接下载预编译安装包 (推荐)
+前往 [**GitHub Releases · v2.0.0**](https://github.com/tzwdj01/ChronoDesk/releases/tag/v2.0.0) 下载：
+- `ChronoDesk-v2.0.0-release.apk` — 正式发布签名版（包名 `com.chronodesk.app`，移除调试钩子、体积更轻量）
+- `ChronoDesk-v2.0.0-debug.apk` — 开发调试版（包名 `com.chronodesk.app.debug`，支持 ADB 调试与视图检查，可与正式版共存）
+- `SHA256SUMS.txt` — 所有 APK 安装包的 SHA-256 完整性校验摘要
 
-### 1. 运行自动化单元测试
 ```bash
-./gradlew testDebugUnitTest
+# 通过 ADB 安装正式版
+adb install -r ChronoDesk-v2.0.0-release.apk
+
+# 验证签名与完整性
+apksigner verify --print-certs ChronoDesk-v2.0.0-release.apk
+shasum -a 256 -c SHA256SUMS.txt
 ```
-> 目前包含 **95 项单元测试**，全面覆盖 AI 额度状态机、窗口百分比截断、Token 脱敏与安全日志、加密凭据隔离、常亮与夜间生命周期、Tesla 能耗与网络安全配置、Open-Meteo 地名搜索与经纬度缓存、Tesla 车型矢量剪影与位置隔离等关键路径，全部通过。
 
-### 2. 构建 Release / Debug APK
+### 方式二：从源码编译与运行测试
+环境要求：**OpenJDK 17 LTS** · **Android SDK 34** · **Gradle 8.7**
+
 ```bash
-# 构建 Debug 版本 (包含测试辅助配置与调试签名)
+# 1. 运行全量 134 项单元测试与 Android Lint 静态分析
+./gradlew testDebugUnitTest lintDebug
+
+# 2. 构建 Debug APK
 ./gradlew assembleDebug
 
-# 构建 Release 正式发布包 (支持从环境变量注入正式签名；未配置时输出 unsigned APK)
-# 可选环境变量：KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+# 3. 构建正式签名 Release APK（支持从环境变量注入签名密钥）
+KEYSTORE_PATH=/path/to/release.jks \
+KEYSTORE_PASSWORD=*** \
+KEY_ALIAS=*** \
+KEY_PASSWORD=*** \
 ./gradlew assembleRelease
 ```
-产物位置：
-- Debug: `app/build/outputs/apk/debug/app-debug.apk`
-- Release (未签名): `app/build/outputs/apk/release/app-release-unsigned.apk`
-- Release (正式签名): `app/build/outputs/apk/release/app-release.apk`
-
-验证签名证书与校验和：
-```bash
-apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
-sha256sum app/build/outputs/apk/release/*.apk
-```
-
-### 3. 安装与运行
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.chronodesk.app.debug/com.chronodesk.app.MainActivity
-```
-
-### 4. 安装与版本升级指引
-
-#### 安装与签名冲突排查
-- **标准安装**:
-  使用 `adb install -r <apk-file>` 进行安装。
-- **覆盖安装签名冲突解决**:
-  若安装提示 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，说明设备上已安装不同签名证书的构建。请先卸载旧版本再安装：
-  ```bash
-  adb uninstall com.chronodesk.app.debug   # 针对 Debug 构建
-  # 或
-  adb uninstall com.chronodesk.app         # 针对 Release 正式包
-  adb install app-release.apk
-  ```
-- **降级限制**: Android 系统默认限制应用版本号降级（不可直接覆盖低于当前已装 versionCode 的安装包）。
-
-#### 数据保留与重新授权指引
-- **通用设置保留范围**:
-  基础桌面配置（时间制式、秒钟开关、常亮策略、主题模式、时钟缩放与位置、天气城市等）在升级过程中完全保留。支持在设置界面通过系统文件选择器导出/导入带 `schemaVersion: 1` 的 JSON 配置文件。
-- **安全升级与重新授权**:
-  新版本已废止所有明文凭据存储通道并自动清理旧迁移缓存。若升级后账号卡片提示「授权已失效」或「待同步」，请按如下指引重新绑定：
-  1. **ChatGPT (Codex)**: 点击卡片或顶栏「账号管理」，点击「重新授权」重新完成 OAuth 认证；
-  2. **DeepSeek / Gemini API**: 点击顶栏「账号管理」，重新填入或校验有效 API Key；
-  3. **Tesla 车辆监控**: 若 Grafana Service Account Token 发生变动，进入「设置 -> TeslaMate 配置」更新 Token 并保存测试。
 
 ---
 
-## 📄 开源许可证
+## 📄 开源许可证 (License)
 
-本项目基于 [MIT License](LICENSE) 开源。
-涉及 CC Switch 代码设计与逻辑部分，版权归属原作者 (Copyright (c) 2025 Jason Young)。
+本项目基于 [**MIT License**](LICENSE) 开源。
+其中多模型额度模型与客户端适配部分设计借鉴了 [CC Switch](https://github.com/farion1231/cc-switch) 的优秀思路（Copyright (c) 2025 Jason Young）。
+
+<div align="center">
+  <br/>
+  <sub>如果 ChronoDesk 让你的桌面设备焕发了第二春，欢迎点亮右上角 <b>★ Star</b> 支持项目持续进化！</sub>
+</div>

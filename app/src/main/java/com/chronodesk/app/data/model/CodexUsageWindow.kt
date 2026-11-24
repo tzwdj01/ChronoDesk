@@ -63,6 +63,25 @@ data class CodexUsageWindow(
     }
 
     /**
+     * 紧凑倒计时格式（用于纯数字看板或窄屏卡片，如 "3天14h" / "2h30m" / "45m"）
+     */
+    fun formattedCompactCountdown(
+        nowUnix: Long = System.currentTimeMillis() / 1000
+    ): String {
+        if (resetAtUnix == null) return "未知"
+        if (nowUnix >= resetAtUnix) return "待更新"
+        val diffSec = resetAtUnix - nowUnix
+        val hours = diffSec / 3600
+        val minutes = (diffSec % 3600) / 60
+        return when {
+            hours > 24 -> "${hours / 24}天${hours % 24}h"
+            hours > 0 -> "${hours}h${minutes}m"
+            minutes > 0 -> "${minutes}m"
+            else -> "<1m"
+        }
+    }
+
+    /**
      * 格式化具体重置时间点，如 "18:45"
      */
     fun formattedResetTime(nowUnix: Long = System.currentTimeMillis() / 1000): String {

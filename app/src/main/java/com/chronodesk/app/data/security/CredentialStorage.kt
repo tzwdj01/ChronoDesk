@@ -126,6 +126,67 @@ class CredentialStorage @JvmOverloads constructor(
         return p.edit().remove(KEY_GRAFANA_TOKEN).commit()
     }
 
+    fun saveLongbridgeCredentials(
+        accessToken: String,
+        refreshToken: String? = null,
+        expiresAtMs: Long = Long.MAX_VALUE,
+        clientId: String? = null
+    ): Boolean {
+        val p = prefs ?: return false
+        val cleanAccess = accessToken.trim()
+        if (cleanAccess.isBlank()) return false
+        val editor = p.edit()
+            .putString(KEY_LONGBRIDGE_ACCESS, cleanAccess)
+            .putLong(KEY_LONGBRIDGE_EXPIRES, expiresAtMs)
+        val cleanRefresh = refreshToken?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleanRefresh != null) {
+            editor.putString(KEY_LONGBRIDGE_REFRESH, cleanRefresh)
+        } else {
+            editor.remove(KEY_LONGBRIDGE_REFRESH)
+        }
+        val cleanClientId = clientId?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleanClientId != null) {
+            editor.putString(KEY_LONGBRIDGE_CLIENT_ID, cleanClientId)
+        }
+        return editor.commit()
+    }
+
+    fun getLongbridgeAccessToken(): String? {
+        val p = prefs ?: return null
+        val expiresAt = p.getLong(KEY_LONGBRIDGE_EXPIRES, Long.MAX_VALUE)
+        val now = System.currentTimeMillis()
+        if (expiresAt != Long.MAX_VALUE && expiresAt > 0L && expiresAt - now < BUFFER_EXPIRY_MS) {
+            return null
+        }
+        return p.getString(KEY_LONGBRIDGE_ACCESS, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun getLongbridgeRawAccessToken(): String? {
+        return prefs?.getString(KEY_LONGBRIDGE_ACCESS, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun getLongbridgeRefreshToken(): String? {
+        return prefs?.getString(KEY_LONGBRIDGE_REFRESH, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun getLongbridgeClientId(): String? {
+        return prefs?.getString(KEY_LONGBRIDGE_CLIENT_ID, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun hasLongbridgeCredentials(): Boolean {
+        return getLongbridgeRawAccessToken() != null || getLongbridgeRefreshToken() != null
+    }
+
+    fun clearLongbridgeCredentials(): Boolean {
+        val p = prefs ?: return false
+        return p.edit()
+            .remove(KEY_LONGBRIDGE_ACCESS)
+            .remove(KEY_LONGBRIDGE_REFRESH)
+            .remove(KEY_LONGBRIDGE_EXPIRES)
+            .remove(KEY_LONGBRIDGE_CLIENT_ID)
+            .commit()
+    }
+
     fun clearAll(): Boolean {
         val p = prefs ?: return false
         return p.edit().clear().commit()
@@ -140,6 +201,10 @@ class CredentialStorage @JvmOverloads constructor(
         private const val TAG = "CredentialStorage"
         private const val PREFS_FILE_NAME = "chronodesk_secure_credentials"
         private const val KEY_GRAFANA_TOKEN = "tesla_grafana_token"
+        private const val KEY_LONGBRIDGE_ACCESS = "longbridge_access_token"
+        private const val KEY_LONGBRIDGE_REFRESH = "longbridge_refresh_token"
+        private const val KEY_LONGBRIDGE_EXPIRES = "longbridge_access_expires"
+        private const val KEY_LONGBRIDGE_CLIENT_ID = "longbridge_client_id"
         private const val BUFFER_EXPIRY_MS = 60_000L // 60s
 
         /**

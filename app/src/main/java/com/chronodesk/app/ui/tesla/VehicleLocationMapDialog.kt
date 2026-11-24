@@ -87,6 +87,8 @@ import com.chronodesk.app.ui.theme.TechEmerald
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
+import com.chronodesk.app.ui.theme.LocalPureInkMode
+import com.chronodesk.app.ui.theme.resolveChronoPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -133,13 +135,15 @@ fun VehicleLocationMapDialog(
     val lng = location.longitude ?: return
     if (!location.isValid) return
 
-    val bg = if (isNightMode) DarkSurface else InkSurface
-    val cardBg = if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
-    val border = if (isNightMode) DarkBorder else InkBorder
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
-    val accent = if (isNightMode) TechCyan else Color(0xFF0284C7)
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val theme = resolveChronoPalette(isNightMode, isPureInk)
+    val bg = theme.surface
+    val cardBg = theme.surfaceElevated
+    val border = theme.border
+    val primaryText = theme.primaryText
+    val secondaryText = theme.secondaryText
+    val mutedText = theme.mutedText
+    val accent = theme.accent
 
     val inChina = remember(lat, lng) { CoordinateConverter.isInChinaMainland(lat, lng) }
     val uris = remember(lat, lng, location.primaryPlaceName, vehicleName) {
@@ -391,7 +395,7 @@ fun VehicleLocationMapDialog(
                             MapActionButton(
                                 title = "百度地图",
                                 subtitle = "BD-09 纠偏 · 未安装自动切换网页版",
-                                accent = if (isNightMode) TechEmerald else Color(0xFF16A34A),
+                                accent = if (isPureInk) accent else if (isNightMode) TechEmerald else Color(0xFF16A34A),
                                 cardBg = cardBg,
                                 border = border,
                                 primaryText = primaryText,

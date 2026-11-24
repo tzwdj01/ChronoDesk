@@ -95,10 +95,15 @@ import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
+import com.chronodesk.app.ui.theme.LocalPureInkMode
+import com.chronodesk.app.ui.theme.resolveChronoPalette
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import java.util.Locale
 
 private data class TeslaCockpitPalette(
     val isNight: Boolean,
+    val isPureInk: Boolean,
     val bg: Color,
     val cardBg: Color,
     val innerBg: Color,
@@ -113,37 +118,23 @@ private data class TeslaCockpitPalette(
     val trackBg: Color
 ) {
     companion object {
-        fun from(isNightMode: Boolean): TeslaCockpitPalette = if (isNightMode) {
-            TeslaCockpitPalette(
-                isNight = true,
-                bg = DarkBackground,
-                cardBg = DarkSurface,
-                innerBg = DarkSurfaceElevated,
-                border = DarkBorder,
-                primaryText = TextPrimary,
-                secondaryText = TextSecondary,
-                mutedText = TextTertiary,
-                accent = TechCyan,
-                positive = TechEmerald,
-                warning = TechAmber,
-                danger = TechRose,
-                trackBg = DarkProgressTrack
-            )
-        } else {
-            TeslaCockpitPalette(
-                isNight = false,
-                bg = InkBackground,
-                cardBg = InkSurface,
-                innerBg = InkSurfaceElevated,
-                border = InkBorder,
-                primaryText = InkTextPrimary,
-                secondaryText = InkTextSecondary,
-                mutedText = InkTextTertiary,
-                accent = Color(0xFF0284C7),
-                positive = InkStatusGreen,
-                warning = InkWarningAmber,
-                danger = InkWarningRed,
-                trackBg = InkProgressTrack
+        fun from(isNightMode: Boolean, isPureInk: Boolean = false): TeslaCockpitPalette {
+            val t = resolveChronoPalette(isNightMode, !isNightMode && isPureInk)
+            return TeslaCockpitPalette(
+                isNight = t.isNight,
+                isPureInk = t.isPureInk,
+                bg = t.bg,
+                cardBg = t.surface,
+                innerBg = t.surfaceElevated,
+                border = t.border,
+                primaryText = t.primaryText,
+                secondaryText = t.secondaryText,
+                mutedText = t.mutedText,
+                accent = t.accent,
+                positive = t.positive,
+                warning = t.warning,
+                danger = t.danger,
+                trackBg = t.progressTrack
             )
         }
     }
@@ -168,7 +159,8 @@ fun TeslaScreen(
         }
     }
 
-    val palette = remember(isNightMode) { TeslaCockpitPalette.from(isNightMode) }
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val palette = remember(isNightMode, isPureInk) { TeslaCockpitPalette.from(isNightMode, isPureInk) }
     val context = LocalContext.current
 
     var renderReloadTrigger by remember { mutableIntStateOf(0) }
@@ -194,7 +186,7 @@ fun TeslaScreen(
         "BLUE" -> "深海蓝"
         else -> "烈焰红"
     }
-    val paintDotColor = when (resolvedColor) {
+    val paintDotColor = if (isPureInk) palette.secondaryText else when (resolvedColor) {
         "RED", "RED_CLASSIC" -> Color(0xFFDC2626)
         "WHITE" -> Color(0xFFE2E8F0)
         "BLACK" -> Color(0xFF334155)
@@ -496,7 +488,7 @@ private fun TeslaModuleCard(
             .clip(RoundedCornerShape(if (isCompact) 12.dp else 14.dp))
             .background(palette.cardBg)
             .border(1.dp, palette.border, RoundedCornerShape(if (isCompact) 12.dp else 14.dp))
-            .padding(horizontal = if (isCompact) 9.dp else 12.dp, vertical = if (isCompact) 7.dp else 10.dp),
+            .padding(horizontal = if (isCompact) 8.5.dp else 12.dp, vertical = if (isCompact) 6.dp else 10.dp),
         verticalArrangement = Arrangement.SpaceBetween,
         content = content
     )
@@ -622,7 +614,7 @@ private fun TeslaCockpitTopBar(
 
             Box(
                 modifier = Modifier
-                    .sizeIn(minWidth = 42.dp, minHeight = 36.dp)
+                    .sizeIn(minWidth = 42.dp, minHeight = if (isCompact) 28.dp else 36.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .background(palette.innerBg)
                     .border(1.dp, palette.border, RoundedCornerShape(7.dp))
@@ -653,7 +645,7 @@ private fun TeslaCockpitTopBar(
 
             Box(
                 modifier = Modifier
-                    .sizeIn(minWidth = 42.dp, minHeight = 36.dp)
+                    .sizeIn(minWidth = 42.dp, minHeight = if (isCompact) 28.dp else 36.dp)
                     .clip(RoundedCornerShape(7.dp))
                     .background(palette.innerBg)
                     .border(1.dp, palette.border, RoundedCornerShape(7.dp))
@@ -789,11 +781,15 @@ private fun TeslaShowroomHeroCard(
                 .padding(vertical = if (isCompact) 2.dp else 4.dp),
             contentAlignment = Alignment.Center
         ) {
+            val imageColorFilter = remember(palette.isPureInk) {
+                if (palette.isPureInk) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null
+            }
             if (customPhotoBitmap != null) {
                 Image(
                     bitmap = customPhotoBitmap,
                     contentDescription = "车辆实拍照片",
                     contentScale = ContentScale.Crop,
+                    colorFilter = imageColorFilter,
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(10.dp))
@@ -827,6 +823,7 @@ private fun TeslaShowroomHeroCard(
                             bitmap = vehicleRenderBitmap,
                             contentDescription = "$resolvedModel 3D 车模",
                             contentScale = ContentScale.Fit,
+                            colorFilter = imageColorFilter,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(horizontal = if (isCompact) 4.dp else 6.dp)
@@ -1278,7 +1275,7 @@ private fun ColumnScope.TodayDashboardModuleContent(
             Text(
                 text = if (todayDist != null) String.format(Locale.US, "%.1f km", todayDist) else "0.0 km",
                 color = palette.primaryText,
-                fontSize = if (isCompact) 14.5.sp else 18.sp,
+                fontSize = if (isCompact) 13.5.sp else 18.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
@@ -1296,7 +1293,7 @@ private fun ColumnScope.TodayDashboardModuleContent(
             Text(
                 text = todayDurationText,
                 color = palette.primaryText,
-                fontSize = if (isCompact) 11.5.sp else 13.5.sp,
+                fontSize = if (isCompact) 11.sp else 13.5.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
@@ -1519,28 +1516,32 @@ private fun ColumnScope.MonthlySummaryModuleContent(
             Text(
                 text = "行驶里程",
                 color = palette.mutedText,
-                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                fontSize = if (isCompact) 7.5.sp else 9.5.sp
             )
             Text(
                 text = if (monthDistance != null) String.format(Locale.US, "%.0f km", monthDistance) else "0 km",
                 color = palette.primaryText,
-                fontSize = if (isCompact) 13.5.sp else 16.sp,
+                fontSize = if (isCompact) 12.sp else 16.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
             )
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = "本月充入",
                 color = palette.mutedText,
-                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                fontSize = if (isCompact) 7.5.sp else 9.5.sp
             )
             Text(
                 text = if (monthCharge != null) "+${String.format(Locale.US, "%.1f", monthCharge)} kWh" else "0.0 kWh",
                 color = palette.positive,
-                fontSize = if (isCompact) 12.sp else 14.sp,
+                fontSize = if (isCompact) 11.sp else 14.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }

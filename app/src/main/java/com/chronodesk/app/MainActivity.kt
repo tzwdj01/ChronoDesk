@@ -41,10 +41,61 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Locale
 
+data class DebugNavCommand(
+    val tick: Int = 0,
+    val page: String? = null,
+    val settingsTab: String? = null,
+    val mockMode: Boolean? = null,
+    val previewLongbridge: Boolean? = null,
+    val displayMode: String? = null,
+    val providerOrder: String? = null,
+    val richPreview: Boolean? = null,
+    val themeMode: String? = null,
+    val controlsVisible: Boolean? = null
+)
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ClockViewModel by viewModels()
     private var isCharging by mutableStateOf(false)
+    private var debugNavCommand by mutableStateOf(DebugNavCommand())
+
+    private fun handleDebugIntent(intent: Intent?) {
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
+        if (intent == null) return
+        val page = intent.getStringExtra("debug_page")
+        val tab = intent.getStringExtra("debug_settings_tab")
+        val mock = intent.getStringExtra("debug_mock")?.toBooleanStrictOrNull()
+        val lbPreview = intent.getStringExtra("debug_lb_preview")?.toBooleanStrictOrNull()
+        val displayMode = intent.getStringExtra("debug_display_mode")
+        val providerOrder = intent.getStringExtra("debug_provider_order")
+        val richPreview = intent.getStringExtra("debug_rich_preview")?.toBooleanStrictOrNull()
+        val themeMode = intent.getStringExtra("debug_theme")
+        val controlsVisible = intent.getStringExtra("debug_controls")?.toBooleanStrictOrNull()
+        if (page != null || tab != null || mock != null || lbPreview != null ||
+            displayMode != null || providerOrder != null || richPreview != null ||
+            themeMode != null || controlsVisible != null
+        ) {
+            debugNavCommand = DebugNavCommand(
+                tick = debugNavCommand.tick + 1,
+                page = page,
+                settingsTab = tab,
+                mockMode = mock,
+                previewLongbridge = lbPreview,
+                displayMode = displayMode,
+                providerOrder = providerOrder,
+                richPreview = richPreview,
+                themeMode = themeMode,
+                controlsVisible = controlsVisible
+            )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDebugIntent(intent)
+    }
 
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -107,6 +158,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleDebugIntent(intent)
 
         // 沉浸式全屏与隐藏系统栏（轻触边缘可呼出）
         applyFullScreenImmersive()
@@ -146,6 +198,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     ClockScreen(
                         viewModel = viewModel,
+                        debugNavCommand = debugNavCommand,
                         onRequestLocationPermission = { requestLocationPermissionExplicitly() }
                     )
                 }

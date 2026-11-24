@@ -60,10 +60,12 @@ import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
+import com.chronodesk.app.ui.theme.LocalPureInkMode
+import com.chronodesk.app.ui.theme.resolveChronoPalette
 
 /**
  * 第二页（扩展页面）：大字远距优先的 AI 额度监控面板。
- * 视觉重心聚焦 ChatGPT 多账号窗口残余额度，DeepSeek 与 Gemini 收敛为底部精简状态条。
+ * 支持 ChatGPT / Antigravity / DeepSeek 按用户配置顺序展示，以及「纯数字 / 进度条」模式快速切换。
  */
 @Composable
 fun ClockExtensionPage(
@@ -74,17 +76,22 @@ fun ClockExtensionPage(
     isNightMode: Boolean,
     isCompact: Boolean = false,
     onRefreshAll: () -> Unit = {},
+    onToggleDisplayMode: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onManageAccount: () -> Unit = {},
     onAccountClick: (CodexAccount) -> Unit = { onManageAccount() },
     onToggleControls: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val cardBg = if (isNightMode) DarkSurface else InkSurface
-    val cardBorder = if (isNightMode) DarkBorder else InkBorder
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val theme = resolveChronoPalette(isNightMode, isPureInk)
+    val cardBg = theme.surface
+    val cardBorder = theme.border
+    val primaryText = theme.primaryText
+    val secondaryText = theme.secondaryText
+    val mutedText = theme.mutedText
+    val isNumbersOnly = settings.isNumbersOnlyMode
+    val providerOrder = settings.orderedProviders()
 
     val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" && it.isVisibleOnSecond }
         .sortedByDescending { it.isPinnedMain }
@@ -94,73 +101,12 @@ fun ClockExtensionPage(
         .sortedByDescending { it.isPinnedMain }
 
     val nowUnix = System.currentTimeMillis() / 1000L
+    val chatGptIndex = providerOrder.indexOf("CHATGPT")
+    val splitChatGptHorizontal = isCompact && chatGptIndex == 1
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onToggleControls() }
-            .padding(
-                start = if (isCompact) 14.dp else 20.dp,
-                end = if (isCompact) 14.dp else 20.dp,
-                top = if (isCompact) 10.dp else 14.dp,
-                bottom = if (isCompact) 18.dp else 22.dp
-            ),
-        verticalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 10.dp)
-    ) {
-        // 顶栏左侧标题区：右侧留白供全局悬浮 ClockTopBar 使用，不再重复绘制操作按钮
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isCompact) 32.dp else 36.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "AI 额度监控",
-                color = primaryText,
-                fontSize = if (isCompact) 15.sp else 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                    .clickable { onRefreshAll() }
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "详情页 · 点击同步",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.sp else 10.sp
-                )
-            }
-            if (settings.useMockData) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isNightMode) TechAmber.copy(alpha = 0.2f) else InkWarningAmber.copy(alpha = 0.15f))
-                        .border(0.8.dp, if (isNightMode) TechAmber else InkWarningAmber, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "演示数据",
-                        color = if (isNightMode) TechAmber else InkWarningAmber,
-                        fontSize = if (isCompact) 9.sp else 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // ================= 主体 Hero 区 (~72%-76%): ChatGPT 高对比大字监控 =================
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
+    @Composable
+    fun ChatGptSection(modifier: Modifier = Modifier) {
+        Box(modifier = modifier.fillMaxWidth()) {
             if (chatGptAccounts.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -169,7 +115,7 @@ fun ClockExtensionPage(
                         .background(cardBg)
                         .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
                         .clickable { onManageAccount() }
-                        .padding(20.dp),
+                        .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -203,6 +149,8 @@ fun ClockExtensionPage(
                             nowUnix = nowUnix,
                             isNightMode = isNightMode,
                             isCompact = isCompact,
+                            isNumbersOnly = isNumbersOnly,
+                            horizontalWindows = splitChatGptHorizontal,
                             onClick = { onAccountClick(acc) },
                             modifier = Modifier
                                 .weight(1f)
@@ -231,6 +179,8 @@ fun ClockExtensionPage(
                                     nowUnix = nowUnix,
                                     isNightMode = isNightMode,
                                     isCompact = isCompact,
+                                    isNumbersOnly = isNumbersOnly,
+                                    horizontalWindows = splitChatGptHorizontal,
                                     onClick = { onAccountClick(acc) },
                                     modifier = Modifier.weight(1f)
                                 )
@@ -243,255 +193,592 @@ fun ClockExtensionPage(
                 }
             }
         }
+    }
 
-        // ================= 底部精简状态条 (~22%-26%): DeepSeek + Gemini + 运行摘要 =================
+    @Composable
+    fun DeepSeekStrip(modifier: Modifier = Modifier) {
+        ExtensionDeepSeekCard(
+            deepSeekAccounts = deepSeekAccounts,
+            allAccounts = accounts,
+            snapshots = snapshots,
+            loadingMap = loadingMap,
+            settings = settings,
+            isNightMode = isNightMode,
+            isCompact = isCompact,
+            onAccountClick = onAccountClick,
+            onManageAccount = onManageAccount,
+            modifier = modifier
+        )
+    }
+
+    @Composable
+    fun AntigravityStrip(wideSideBySide: Boolean, modifier: Modifier = Modifier) {
+        ExtensionAntigravityCard(
+            antigravityAccounts = antigravityAccounts,
+            allAccounts = accounts,
+            snapshots = snapshots,
+            loadingMap = loadingMap,
+            settings = settings,
+            nowUnix = nowUnix,
+            isNightMode = isNightMode,
+            isCompact = isCompact,
+            isNumbersOnly = isNumbersOnly,
+            wideSideBySide = wideSideBySide,
+            onAccountClick = onAccountClick,
+            onManageAccount = onManageAccount,
+            modifier = modifier
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onToggleControls() }
+            .padding(
+                start = if (isCompact) 14.dp else 20.dp,
+                end = if (isCompact) 14.dp else 20.dp,
+                top = if (isCompact) 10.dp else 14.dp,
+                bottom = if (isCompact) 16.dp else 22.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 7.dp else 10.dp)
+    ) {
+        // 顶栏左侧标题与纯数字/进度条快速切换
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (isCompact) 30.dp else 36.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 左侧：DeepSeek 精简余额栏
+            Text(
+                text = "AI 额度监控",
+                color = primaryText,
+                fontSize = if (isCompact) 15.sp else 18.sp,
+                fontWeight = FontWeight.Bold
+            )
             Box(
                 modifier = Modifier
-                    .weight(if (antigravityAccounts.isEmpty()) 1.75f else 1.45f)
-                    .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
-                    .clickable {
-                        val firstDs = deepSeekAccounts.firstOrNull()
-                            ?: accounts.firstOrNull { it.modelProvider == "DEEPSEEK" }
-                        if (firstDs != null) onAccountClick(firstDs) else onManageAccount()
-                    }
-                    .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(theme.surfaceElevated)
+                    .clickable { onRefreshAll() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            ModelProviderLogo(
-                                provider = AiModelProvider.DEEPSEEK,
-                                size = if (isCompact) 15.dp else 18.dp,
-                                isNightMode = isNightMode
-                            )
-                            Text(
-                                text = "DeepSeek API",
-                                color = secondaryText,
-                                fontSize = if (isCompact) 10.5.sp else 11.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Text(
-                            text = if (deepSeekAccounts.isEmpty()) "未配置" else "${deepSeekAccounts.size}个账号",
-                            color = mutedText,
-                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
-                        )
-                    }
+                Text(
+                    text = "详情页 · 点击同步",
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.sp else 10.sp
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        if (isNumbersOnly) theme.accent.copy(alpha = 0.14f) else theme.surfaceElevated
+                    )
+                    .border(
+                        0.8.dp,
+                        if (isNumbersOnly) theme.accent.copy(alpha = 0.5f) else cardBorder,
+                        RoundedCornerShape(4.dp)
+                    )
+                    .clickable { onToggleDisplayMode() }
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = if (isNumbersOnly) "显示: 纯数字" else "显示: 进度条",
+                    color = if (isNumbersOnly) theme.accent else secondaryText,
+                    fontSize = if (isCompact) 9.sp else 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            if (settings.useMockData) {
+                MockBadge(isNightMode = isNightMode)
+            }
+        }
 
-                    if (deepSeekAccounts.isEmpty()) {
-                        Text(
-                            text = "点击接入 DeepSeek Key 查看真实余额",
-                            color = mutedText,
-                            fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+        // 按全局排序依次排布三大平台（相邻的 DeepSeek + Antigravity 自动并列双栏节省纵向空间）
+        var idx = 0
+        while (idx < providerOrder.size) {
+            val current = providerOrder[idx]
+            val next = providerOrder.getOrNull(idx + 1)
+            if (current == "CHATGPT") {
+                ChatGptSection(modifier = Modifier.weight(1f))
+                idx += 1
+            } else if ((current == "DEEPSEEK" && next == "ANTIGRAVITY") ||
+                (current == "ANTIGRAVITY" && next == "DEEPSEEK")
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (current == "DEEPSEEK") {
+                        DeepSeekStrip(
+                            modifier = Modifier.weight(if (antigravityAccounts.isEmpty()) 1.55f else 1.15f)
+                        )
+                        AntigravityStrip(
+                            wideSideBySide = false,
+                            modifier = Modifier.weight(1.35f)
                         )
                     } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
-                        ) {
-                            deepSeekAccounts.take(3).forEach { dsAcc ->
-                                val dsSnap = snapshots[dsAcc.id]
-                                val dsStatus = dsSnap?.computeStatus(
-                                    isConfigured = dsAcc.isConfigured,
-                                    isRefreshing = loadingMap[dsAcc.id] == true,
-                                    refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
-                                ) ?: if (dsAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+                        AntigravityStrip(
+                            wideSideBySide = false,
+                            modifier = Modifier.weight(1.35f)
+                        )
+                        DeepSeekStrip(
+                            modifier = Modifier.weight(if (antigravityAccounts.isEmpty()) 1.55f else 1.15f)
+                        )
+                    }
+                }
+                idx += 2
+            } else if (current == "DEEPSEEK") {
+                DeepSeekStrip(modifier = Modifier.fillMaxWidth())
+                idx += 1
+            } else {
+                AntigravityStrip(wideSideBySide = true, modifier = Modifier.fillMaxWidth())
+                idx += 1
+            }
+        }
+    }
+}
 
-                                val isDsDemo = dsSnap?.isMock == true && dsSnap.errorMessage == "暂无演示数据"
-                                val valueText = when {
-                                    isDsDemo -> "暂无演示数据"
-                                    dsStatus == QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
-                                    dsStatus == QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
-                                    dsStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE || dsSnap?.isAvailable == false -> "服务不可用"
-                                    else -> dsSnap?.formattedBalanceText ?: "暂无余额数据"
-                                }
-                                val valueColor = when {
-                                    dsStatus == QuotaSyncStatus.AUTH_EXPIRED || dsSnap?.isAvailable == false ->
-                                        if (isNightMode) TechRose else InkWarningRed
-                                    valueText.contains("余额为零") || dsStatus == QuotaSyncStatus.CACHED_STALE || dsStatus == QuotaSyncStatus.CACHE_EXPIRED ->
-                                        if (isNightMode) TechAmber else InkWarningAmber
-                                    else -> primaryText
-                                }
-                                val timeStr = dsSnap?.formattedSuccessTime ?: dsSnap?.formattedQueriedAt
-                                Row(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.6f) else InkSurfaceElevated.copy(alpha = 0.65f))
-                                        .padding(horizontal = 7.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f, fill = false)) {
-                                        Text(
-                                            text = dsAcc.displayTitle,
-                                            color = secondaryText,
-                                            fontSize = if (isCompact) 9.sp else 10.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = valueText,
-                                            color = valueColor,
-                                            fontSize = if (isCompact) 10.5.sp else 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (!isCompact && timeStr != null && dsStatus != QuotaSyncStatus.NOT_CONFIGURED && dsStatus != QuotaSyncStatus.AUTH_EXPIRED) {
-                                        Text(
-                                            text = timeStr,
-                                            color = mutedText,
-                                            fontSize = 8.5.sp
-                                        )
-                                    }
-                                }
+@Composable
+private fun ExtensionDeepSeekCard(
+    deepSeekAccounts: List<CodexAccount>,
+    allAccounts: List<CodexAccount>,
+    snapshots: Map<String, CodexUsageSnapshot>,
+    loadingMap: Map<String, Boolean>,
+    settings: ClockSettings,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    onAccountClick: (CodexAccount) -> Unit,
+    onManageAccount: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val theme = resolveChronoPalette(isNightMode, isPureInk)
+    val cardBg = theme.surface
+    val cardBorder = theme.border
+    val primaryText = theme.primaryText
+    val secondaryText = theme.secondaryText
+    val mutedText = theme.mutedText
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+            .clickable {
+                val firstDs = deepSeekAccounts.firstOrNull()
+                    ?: allAccounts.firstOrNull { it.modelProvider == "DEEPSEEK" }
+                if (firstDs != null) onAccountClick(firstDs) else onManageAccount()
+            }
+            .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    ModelProviderLogo(
+                        provider = AiModelProvider.DEEPSEEK,
+                        size = if (isCompact) 15.dp else 18.dp,
+                        isNightMode = isNightMode
+                    )
+                    Text(
+                        text = "DeepSeek API",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = if (deepSeekAccounts.isEmpty()) "未配置" else "${deepSeekAccounts.size}个账号",
+                    color = mutedText,
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                )
+            }
+
+            if (deepSeekAccounts.isEmpty()) {
+                Text(
+                    text = "点击接入 DeepSeek Key 查看真实余额",
+                    color = mutedText,
+                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                ) {
+                    deepSeekAccounts.take(3).forEach { dsAcc ->
+                        val dsSnap = snapshots[dsAcc.id]
+                        val dsStatus = dsSnap?.computeStatus(
+                            isConfigured = dsAcc.isConfigured,
+                            isRefreshing = loadingMap[dsAcc.id] == true,
+                            refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+                        ) ?: if (dsAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+
+                        val isDsDemo = dsSnap?.isMock == true && dsSnap.errorMessage == "暂无演示数据"
+                        val valueText = when {
+                            isDsDemo -> "暂无演示数据"
+                            dsStatus == QuotaSyncStatus.NOT_CONFIGURED -> "未配置"
+                            dsStatus == QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
+                            dsStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE || dsSnap?.isAvailable == false -> "服务不可用"
+                            else -> dsSnap?.formattedBalanceText ?: "暂无余额数据"
+                        }
+                        val valueColor = when {
+                            dsStatus == QuotaSyncStatus.AUTH_EXPIRED || dsSnap?.isAvailable == false -> theme.danger
+                            valueText.contains("余额为零") || dsStatus == QuotaSyncStatus.CACHED_STALE || dsStatus == QuotaSyncStatus.CACHE_EXPIRED -> theme.warning
+                            else -> primaryText
+                        }
+                        val timeStr = dsSnap?.formattedSuccessTime ?: dsSnap?.formattedQueriedAt
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(theme.surfaceElevated.copy(alpha = if (isNightMode) 0.6f else 0.65f))
+                                .padding(horizontal = 7.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = dsAcc.displayTitle,
+                                    color = secondaryText,
+                                    fontSize = if (isCompact) 9.sp else 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = valueText,
+                                    color = valueColor,
+                                    fontSize = if (isCompact) 11.5.sp else 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (!isCompact && timeStr != null && dsStatus != QuotaSyncStatus.NOT_CONFIGURED && dsStatus != QuotaSyncStatus.AUTH_EXPIRED) {
+                                Text(
+                                    text = timeStr,
+                                    color = mutedText,
+                                    fontSize = 8.5.sp
+                                )
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            // 右侧：Antigravity 精简额度摘要
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
-                    .clickable {
-                        val agAcc = antigravityAccounts.firstOrNull()
-                            ?: accounts.firstOrNull { it.modelProvider == "ANTIGRAVITY" }
-                        if (agAcc != null) onAccountClick(agAcc) else onManageAccount()
-                    }
-                    .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
+@Composable
+private fun ExtensionAntigravityCard(
+    antigravityAccounts: List<CodexAccount>,
+    allAccounts: List<CodexAccount>,
+    snapshots: Map<String, CodexUsageSnapshot>,
+    loadingMap: Map<String, Boolean>,
+    settings: ClockSettings,
+    nowUnix: Long,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    isNumbersOnly: Boolean,
+    wideSideBySide: Boolean,
+    onAccountClick: (CodexAccount) -> Unit,
+    onManageAccount: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val theme = resolveChronoPalette(isNightMode, isPureInk)
+    val cardBg = theme.surface
+    val cardBorder = theme.border
+    val primaryText = theme.primaryText
+    val secondaryText = theme.secondaryText
+    val mutedText = theme.mutedText
+    val innerBg = theme.surfaceElevated.copy(alpha = if (isNightMode) 0.6f else 0.65f)
+    val trackColor = theme.progressTrack
+
+    val agAcc = antigravityAccounts.firstOrNull()
+    val agSnap = agAcc?.let { snapshots[it.id] }
+    val agStatus = agSnap?.computeStatus(
+        isConfigured = agAcc.isConfigured,
+        isRefreshing = loadingMap[agAcc.id] == true,
+        refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+    ) ?: if (agAcc?.isConfigured == true) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
+    val agTiers = agSnap?.quotaWindows.orEmpty()
+    val g5h = agTiers.find { it.name == CodexUsageWindow.TIER_AGY_GEMINI_FIVE_HOUR }
+    val gWeek = agTiers.find {
+        it.name == CodexUsageWindow.TIER_AGY_GEMINI_WEEKLY ||
+            it.name == CodexUsageWindow.TIER_AGY_GEMINI_ARGON_WEEKLY
+    }
+    val c5h = agTiers.find { it.name == CodexUsageWindow.TIER_AGY_THIRD_PARTY_FIVE_HOUR }
+    val cWeek = agTiers.find { it.name == CodexUsageWindow.TIER_AGY_THIRD_PARTY_WEEKLY }
+
+    @Composable
+    fun ModelDualTrackTile(
+        trackTitle: String,
+        fiveHourWindow: CodexUsageWindow?,
+        weeklyWindow: CodexUsageWindow?,
+        tileModifier: Modifier = Modifier
+    ) {
+        fun pctColor(rem: Double?): androidx.compose.ui.graphics.Color = when {
+            rem == null -> mutedText
+            rem <= 0.0 -> theme.danger
+            rem <= 15.0 -> theme.warning
+            else -> primaryText
+        }
+
+        Column(
+            modifier = tileModifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(innerBg)
+                .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.5.dp else 5.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 8.dp)
             ) {
-                val agAcc = antigravityAccounts.firstOrNull()
-                val agSnap = agAcc?.let { snapshots[it.id] }
-                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            ModelProviderLogo(
-                                provider = AiModelProvider.ANTIGRAVITY,
-                                size = if (isCompact) 15.dp else 18.dp,
-                                isNightMode = isNightMode
-                            )
-                            Text(
-                                text = "Antigravity",
-                                color = secondaryText,
-                                fontSize = if (isCompact) 10.5.sp else 11.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Text(
-                            text = agSnap?.planName?.takeIf { it.isNotBlank() }
-                                ?: "${settings.autoRefreshIntervalMinutes}分钟同步",
-                            color = mutedText,
-                            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+                Text(
+                    text = trackTitle,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 9.5.sp else 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.width(if (isCompact) 52.dp else 66.dp)
+                )
 
-                    if (agAcc == null || agSnap == null) {
+                val f5Str = fiveHourWindow?.formattedRemaining() ?: "—"
+                val f5Reset = fiveHourWindow?.formattedResetTime(nowUnix) ?: ""
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "5h",
+                        color = mutedText,
+                        fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                    )
+                    Text(
+                        text = f5Str,
+                        color = pctColor(fiveHourWindow?.remainingPercent),
+                        fontSize = if (isCompact) 11.sp else 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (f5Reset.isNotBlank() && f5Reset != "重置时间未知") {
                         Text(
-                            text = "尚未授权账号 · 点击连接 Antigravity",
+                            text = f5Reset,
                             color = mutedText,
-                            fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                            fontSize = if (isCompact) 8.sp else 9.sp,
                             maxLines = 1,
+                            softWrap = false,
                             overflow = TextOverflow.Ellipsis
                         )
-                    } else {
-                        val agStatus = agSnap.computeStatus(
-                            isConfigured = agAcc.isConfigured,
-                            isRefreshing = loadingMap[agAcc.id] == true,
-                            refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
+                    }
+                }
+
+                val wkStr = weeklyWindow?.formattedRemaining() ?: "—"
+                val wkCd = weeklyWindow?.formattedCompactCountdown(nowUnix) ?: ""
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "周",
+                        color = mutedText,
+                        fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                    )
+                    Text(
+                        text = wkStr,
+                        color = pctColor(weeklyWindow?.remainingPercent),
+                        fontSize = if (isCompact) 11.sp else 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    if (wkCd.isNotBlank() && wkCd != "未知") {
+                        Text(
+                            text = wkCd,
+                            color = mutedText,
+                            fontSize = if (isCompact) 8.sp else 9.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        val isAgDemo = agSnap.isMock && agSnap.errorMessage == "暂无演示数据"
-                        val agTiers = agSnap.quotaWindows.orEmpty()
-                        val hasQuotaData = agSnap.primaryWindow != null || agSnap.secondaryWindow != null || agTiers.isNotEmpty()
-                        val minRem = listOfNotNull(
-                            agSnap.primaryWindow?.remainingPercent,
-                            agSnap.secondaryWindow?.remainingPercent
-                        ).minOrNull()
+                    }
+                }
+            }
 
-                        val agDisplayText = when {
-                            isAgDemo -> "暂无演示数据"
-                            agStatus == QuotaSyncStatus.NOT_CONFIGURED -> "待授权账号"
-                            agStatus == QuotaSyncStatus.AUTH_EXPIRED -> "登录失效"
-                            hasQuotaData -> {
-                                val pStr = agSnap.primaryWindow?.formattedRemaining() ?: "—"
-                                val sStr = agSnap.secondaryWindow?.formattedRemaining() ?: "—"
-                                if (isCompact) "G:$pStr · C:$sStr" else "Gem $pStr · Claude $sStr"
-                            }
-                            agStatus == QuotaSyncStatus.SYNCING -> "同步中"
-                            agStatus == QuotaSyncStatus.CACHED_STALE -> agSnap.errorMessage?.take(10) ?: "缓存异常"
-                            agStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
-                            else -> "等待同步"
+            if (!isNumbersOnly) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    @Composable
+                    fun MiniBar(win: CodexUsageWindow?, mod: Modifier) {
+                        val rem = win?.remainingPercent
+                        val barClr = when {
+                            rem != null && rem <= 0.0 -> theme.danger
+                            rem != null && rem <= 15.0 -> theme.warning
+                            else -> theme.progressActive
                         }
-                        val agColor = when {
-                            agStatus == QuotaSyncStatus.AUTH_EXPIRED || agStatus == QuotaSyncStatus.CACHE_EXPIRED || (minRem != null && minRem <= 0.0) ->
-                                if (isNightMode) TechRose else InkWarningRed
-                            agStatus == QuotaSyncStatus.NOT_CONFIGURED -> mutedText
-                            minRem != null && minRem <= 15.0 -> if (isNightMode) TechAmber else InkWarningAmber
-                            hasQuotaData && agStatus == QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
-                            else -> if (isNightMode) TechAmber else InkWarningAmber
-                        }
+                        LinearProgressIndicator(
+                            progress = { if (rem != null && rem.isFinite()) (rem / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                            modifier = mod
+                                .height(3.5.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = barClr,
+                            trackColor = trackColor
+                        )
+                    }
+                    MiniBar(fiveHourWindow, Modifier.weight(1f))
+                    MiniBar(weeklyWindow, Modifier.weight(1f))
+                }
+            }
+        }
+    }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.6f) else InkSurfaceElevated.copy(alpha = 0.65f))
-                                .padding(horizontal = 7.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = agAcc.displayTitle,
-                                color = secondaryText,
-                                fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Text(
-                                text = agDisplayText,
-                                color = agColor,
-                                fontSize = if (isCompact) 9.5.sp else 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+            .clickable {
+                val target = agAcc ?: allAccounts.firstOrNull { it.modelProvider == "ANTIGRAVITY" }
+                if (target != null) onAccountClick(target) else onManageAccount()
+            }
+            .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 5.5.dp else 8.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 5.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    ModelProviderLogo(
+                        provider = AiModelProvider.ANTIGRAVITY,
+                        size = if (isCompact) 15.dp else 18.dp,
+                        isNightMode = isNightMode
+                    )
+                    Text(
+                        text = if (agAcc != null && agAcc.displayTitle != "Antigravity") {
+                            "Antigravity · ${agAcc.displayTitle}"
+                        } else "Antigravity",
+                        color = secondaryText,
+                        fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = agSnap?.planName?.takeIf { it.isNotBlank() }
+                        ?: "${settings.autoRefreshIntervalMinutes}分钟同步",
+                    color = mutedText,
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+
+            val isAgDemo = agSnap?.isMock == true && agSnap.errorMessage == "暂无演示数据"
+            val hasBuckets = g5h != null || gWeek != null || c5h != null || cWeek != null || agTiers.isNotEmpty()
+            when {
+                agAcc == null || agSnap == null -> {
+                    Text(
+                        text = "尚未授权账号 · 点击连接 Antigravity",
+                        color = mutedText,
+                        fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                isAgDemo -> {
+                    Text(
+                        text = "${agAcc.displayTitle} · 暂无演示数据",
+                        color = theme.warning,
+                        fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                agStatus == QuotaSyncStatus.AUTH_EXPIRED -> {
+                    Text(
+                        text = "${agAcc.displayTitle} · 登录失效，点击重连",
+                        color = theme.danger,
+                        fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                !hasBuckets -> {
+                    val hint = when (agStatus) {
+                        QuotaSyncStatus.SYNCING -> "同步中…"
+                        QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
+                        else -> agSnap.errorMessage ?: "等待同步"
+                    }
+                    Text(
+                        text = "${agAcc.displayTitle} · $hint",
+                        color = mutedText,
+                        fontSize = if (isCompact) 9.5.sp else 10.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                wideSideBySide -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                    ) {
+                        ModelDualTrackTile(
+                            trackTitle = "Gemini",
+                            fiveHourWindow = g5h,
+                            weeklyWindow = gWeek,
+                            tileModifier = Modifier.weight(1f)
+                        )
+                        ModelDualTrackTile(
+                            trackTitle = if (isCompact) "Claude/GPT" else "Claude / GPT",
+                            fiveHourWindow = c5h,
+                            weeklyWindow = cWeek,
+                            tileModifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                else -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)) {
+                        ModelDualTrackTile(
+                            trackTitle = "Gemini",
+                            fiveHourWindow = g5h,
+                            weeklyWindow = gWeek,
+                            tileModifier = Modifier.fillMaxWidth()
+                        )
+                        ModelDualTrackTile(
+                            trackTitle = if (isCompact) "Claude/GPT" else "Claude / GPT",
+                            fiveHourWindow = c5h,
+                            weeklyWindow = cWeek,
+                            tileModifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
@@ -508,14 +795,18 @@ private fun ChatGptHeroCard(
     nowUnix: Long,
     isNightMode: Boolean,
     isCompact: Boolean,
+    isNumbersOnly: Boolean = true,
+    horizontalWindows: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cardBg = if (isNightMode) DarkSurface else InkSurface
-    val cardBorder = if (isNightMode) DarkBorder else InkBorder
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val theme = resolveChronoPalette(isNightMode, isPureInk)
+    val cardBg = theme.surface
+    val cardBorder = theme.border
+    val primaryText = theme.primaryText
+    val secondaryText = theme.secondaryText
+    val mutedText = theme.mutedText
 
     val syncStatus = snapshot?.computeStatus(
         isConfigured = account.isConfigured,
@@ -540,12 +831,12 @@ private fun ChatGptHeroCard(
     }
     val statusColor = when (syncStatus) {
         QuotaSyncStatus.NOT_CONFIGURED -> mutedText
-        QuotaSyncStatus.AWAITING_SYNC -> if (isNightMode) TechAmber else InkWarningAmber
-        QuotaSyncStatus.SYNCING -> if (isNightMode) TechCyan else InkProgress
-        QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
-        QuotaSyncStatus.CACHED_STALE -> if (isNightMode) TechAmber else InkWarningAmber
-        QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
-        QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> if (isNightMode) TechAmber else InkWarningAmber
+        QuotaSyncStatus.AWAITING_SYNC -> theme.warning
+        QuotaSyncStatus.SYNCING -> theme.accent
+        QuotaSyncStatus.UPDATED -> theme.positive
+        QuotaSyncStatus.CACHED_STALE -> theme.warning
+        QuotaSyncStatus.CACHE_EXPIRED, QuotaSyncStatus.AUTH_EXPIRED -> theme.danger
+        QuotaSyncStatus.SERVICE_UNAVAILABLE, QuotaSyncStatus.DATA_FORMAT_ERROR -> theme.warning
     }
 
     Box(
@@ -579,7 +870,7 @@ private fun ChatGptHeroCard(
                     if (account.isPinnedMain) {
                         Text(
                             text = "★",
-                            color = if (isNightMode) TechAmber else InkWarningAmber,
+                            color = if (isPureInk) theme.primaryText else theme.warning,
                             fontSize = if (isCompact) 12.sp else 14.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -597,7 +888,7 @@ private fun ChatGptHeroCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                            .background(theme.surfaceElevated)
                             .padding(horizontal = 5.dp, vertical = 1.5.dp)
                     ) {
                         Text(
@@ -613,12 +904,12 @@ private fun ChatGptHeroCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(if (isNightMode) TechCyan.copy(alpha = 0.14f) else InkProgressTrack)
+                                .background(theme.accent.copy(alpha = 0.14f))
                                 .padding(horizontal = 5.dp, vertical = 1.5.dp)
                         ) {
                             Text(
                                 text = "重置:${resetCredits}次",
-                                color = if (isNightMode) TechCyan else InkProgress,
+                                color = theme.accent,
                                 fontSize = if (isCompact) 8.5.sp else 9.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -650,12 +941,12 @@ private fun ChatGptHeroCard(
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (isNightMode) TechRose.copy(alpha = 0.08f) else InkWarningRed.copy(alpha = 0.06f)),
+                        .background(theme.danger.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "登录凭据已失效 · 点击重新授权",
-                        color = if (isNightMode) TechRose else InkWarningRed,
+                        color = theme.danger,
                         fontSize = if (isCompact) 13.sp else 15.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -666,13 +957,47 @@ private fun ChatGptHeroCard(
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated),
+                        .background(theme.surfaceElevated),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "未配置账号 · 点击进行连接授权",
                         color = secondaryText,
                         fontSize = if (isCompact) 12.sp else 14.sp
+                    )
+                }
+            } else if (horizontalWindows) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                ) {
+                    HeroQuotaWindowBlock(
+                        window = snapshot?.primaryWindow,
+                        fallbackLabel = "额度窗口",
+                        nowUnix = nowUnix,
+                        isPrimary = true,
+                        isNightMode = isNightMode,
+                        isCompact = isCompact,
+                        isNumbersOnly = isNumbersOnly,
+                        horizontalMode = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+                    HeroQuotaWindowBlock(
+                        window = snapshot?.secondaryWindow,
+                        fallbackLabel = "额度窗口",
+                        nowUnix = nowUnix,
+                        isPrimary = false,
+                        isNightMode = isNightMode,
+                        isCompact = isCompact,
+                        isNumbersOnly = isNumbersOnly,
+                        horizontalMode = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
                 }
             } else {
@@ -689,6 +1014,8 @@ private fun ChatGptHeroCard(
                         isPrimary = true,
                         isNightMode = isNightMode,
                         isCompact = isCompact,
+                        isNumbersOnly = isNumbersOnly,
+                        horizontalMode = false,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -700,6 +1027,8 @@ private fun ChatGptHeroCard(
                         isPrimary = false,
                         isNightMode = isNightMode,
                         isCompact = isCompact,
+                        isNumbersOnly = isNumbersOnly,
+                        horizontalMode = false,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -718,35 +1047,31 @@ private fun HeroQuotaWindowBlock(
     isPrimary: Boolean,
     isNightMode: Boolean,
     isCompact: Boolean,
+    isNumbersOnly: Boolean = true,
+    horizontalMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
-    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
-    val panelBg = if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.72f) else InkSurfaceElevated.copy(alpha = 0.75f)
+    val isPureInk = !isNightMode && LocalPureInkMode.current
+    val theme = resolveChronoPalette(isNightMode, isPureInk)
+    val primaryText = theme.primaryText
+    val secondaryText = theme.secondaryText
+    val mutedText = theme.mutedText
+    val trackColor = theme.progressTrack
+    val panelBg = theme.surfaceElevated.copy(alpha = if (isNightMode) 0.72f else 0.75f)
 
     val remaining = window?.remainingPercent
     val isExhausted = remaining != null && remaining <= 0.0
     val isLow = remaining != null && remaining in 0.01..15.0
 
-    val barColor = if (isNightMode) {
-        when {
-            isExhausted -> TechRose
-            isLow -> TechAmber
-            else -> TechEmerald
-        }
-    } else {
-        when {
-            isExhausted -> InkWarningRed
-            isLow -> InkWarningAmber
-            else -> InkProgress
-        }
+    val barColor = when {
+        isExhausted -> theme.danger
+        isLow -> theme.warning
+        else -> theme.progressActive
     }
 
     val percentColor = when {
-        isExhausted -> if (isNightMode) TechRose else InkWarningRed
-        isLow -> if (isNightMode) TechAmber else InkWarningAmber
+        isExhausted -> theme.danger
+        isLow -> theme.warning
         remaining == null -> mutedText
         else -> primaryText
     }
@@ -760,6 +1085,18 @@ private fun HeroQuotaWindowBlock(
         isPrimary -> "${window.formattedResetTime(nowUnix)} 重置 · ${window.formattedCountdown(nowUnix)}"
         else -> "${window.formattedFullDateTime(nowUnix)} · ${window.formattedCountdown(nowUnix)}"
     }
+    val compactResetMain = when {
+        window == null -> "待同步"
+        window.resetAtUnix == null -> "未知"
+        nowUnix >= window.resetAtUnix -> "待更新"
+        isPrimary -> "${window.formattedResetTime(nowUnix)} 重置"
+        else -> window.formattedFullDateTime(nowUnix)
+    }
+    val compactResetSub = when {
+        window == null || window.resetAtUnix == null -> ""
+        nowUnix >= window.resetAtUnix -> ""
+        else -> "剩余 ${window.formattedCompactCountdown(nowUnix)}"
+    }
 
     Column(
         modifier = modifier
@@ -768,52 +1105,119 @@ private fun HeroQuotaWindowBlock(
             .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 6.dp else 9.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = labelText,
-                color = secondaryText,
-                fontSize = if (isCompact) 11.sp else 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                softWrap = false
-            )
-            Text(
-                text = resetDesc,
-                color = mutedText,
-                fontSize = if (isCompact) 9.5.sp else 11.5.sp,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        if (isNumbersOnly) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = labelText,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 11.sp else 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                if (!horizontalMode) {
+                    Text(
+                        text = compactResetMain,
+                        color = mutedText,
+                        fontSize = if (isCompact) 10.sp else 12.sp,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 10.dp else 14.dp)
-        ) {
-            LinearProgressIndicator(
-                progress = { if (remaining != null && remaining.isFinite()) (remaining / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(if (isCompact) 7.dp else 9.5.dp)
-                    .clip(RoundedCornerShape(if (isCompact) 3.5.dp else 5.dp)),
-                color = barColor,
-                trackColor = trackColor
-            )
-            Text(
-                text = remainingText,
-                color = percentColor,
-                fontSize = if (isCompact) 21.sp else 28.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-                softWrap = false
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = remainingText,
+                    color = percentColor,
+                    fontSize = when {
+                        horizontalMode && isCompact -> 22.sp
+                        isCompact -> 28.sp
+                        else -> 36.sp
+                    },
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                Column(horizontalAlignment = Alignment.End) {
+                    if (horizontalMode) {
+                        Text(
+                            text = compactResetMain,
+                            color = mutedText,
+                            fontSize = if (isCompact) 8.5.sp else 10.5.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                    if (compactResetSub.isNotBlank()) {
+                        Text(
+                            text = compactResetSub,
+                            color = if (isLow || isExhausted) percentColor.copy(alpha = 0.85f) else secondaryText,
+                            fontSize = if (isCompact) 10.5.sp else 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = labelText,
+                    color = secondaryText,
+                    fontSize = if (isCompact) 11.sp else 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                Text(
+                    text = resetDesc,
+                    color = mutedText,
+                    fontSize = if (isCompact) 9.5.sp else 11.5.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 10.dp else 14.dp)
+            ) {
+                LinearProgressIndicator(
+                    progress = { if (remaining != null && remaining.isFinite()) (remaining / 100.0).toFloat().coerceIn(0f, 1f) else 0f },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(if (isCompact) 7.dp else 9.5.dp)
+                        .clip(RoundedCornerShape(if (isCompact) 3.5.dp else 5.dp)),
+                    color = barColor,
+                    trackColor = trackColor
+                )
+                Text(
+                    text = remainingText,
+                    color = percentColor,
+                    fontSize = if (isCompact) 21.sp else 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
         }
     }
 }

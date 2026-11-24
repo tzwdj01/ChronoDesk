@@ -15,6 +15,7 @@ data class ClockSettings(
     val keepScreenOn: Boolean = true,
     val screenOnPolicy: String = "CHARGING_ONLY", // "SYSTEM", "CHARGING_ONLY", "ALWAYS"
     val nightModeOption: String = "AUTO", // "AUTO", "FORCE_NIGHT", "FORCE_DAY"
+    val dayThemeStyle: String = "COLOR",   // "COLOR" (日间彩色), "INK" (纯黑白灰全水墨)
     val autoNightDim: Boolean = true,
     val nightDimStartHour: Int = 22,
     val nightDimEndHour: Int = 7,
@@ -29,11 +30,30 @@ data class ClockSettings(
     val additionalCities: String = "",     // 额外城市列表，格式: "城市:纬度:经度;城市:纬度:经度"
     val quotaWidthPercent: Int = 38,       // 右侧额度看板宽度占比 (28% ~ 50%)
     val quotaCardDensity: String = "NORMAL", // COMPACT, NORMAL, SPACIOUS
+    val quotaDisplayMode: String = "NUMBERS_ONLY", // NUMBERS_ONLY, PROGRESS_BAR
+    val quotaProviderOrder: String = "CHATGPT,ANTIGRAVITY,DEEPSEEK",
     val clockScale: Float = 1.0f,          // 时钟缩放比例 (0.6f ~ 1.8f)
     val clockOffsetX: Float = 0f,          // 时钟水平偏移 (-300f ~ 300f)
     val clockOffsetY: Float = 0f,          // 时钟垂直偏移 (-200f ~ 200f)
     val showTeslaOnHome: Boolean = true    // 首页时钟下方是否显示车辆电量与续航胶囊
 ) {
+    val isNumbersOnlyMode: Boolean
+        get() = !quotaDisplayMode.equals("PROGRESS_BAR", ignoreCase = true)
+
+    val isPureInkDayStyle: Boolean
+        get() = dayThemeStyle.equals("INK", ignoreCase = true)
+
+    val normalizedDayThemeStyle: String
+        get() = if (isPureInkDayStyle) "INK" else "COLOR"
+
+    fun orderedProviders(): List<String> {
+        val canonical = listOf("CHATGPT", "ANTIGRAVITY", "DEEPSEEK")
+        val parsed = quotaProviderOrder.split(",")
+            .map { it.trim().uppercase(java.util.Locale.US) }
+            .filter { it in canonical }
+            .distinct()
+        return parsed + canonical.filterNot { it in parsed }
+    }
     /**
      * 判断当前是否处于设定的夜间熄屏/调暗时段
      */
