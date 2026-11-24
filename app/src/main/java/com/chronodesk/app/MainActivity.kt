@@ -174,6 +174,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(
                 settings.screenOnPolicy,
                 settings.autoNightDim,
+                settings.allowNightSleep,
                 settings.nightDimStartHour,
                 settings.nightDimEndHour,
                 isCharging,

@@ -435,6 +435,7 @@ fun SettingsDialog(
     var showSeconds by remember { mutableStateOf(currentSettings.showSeconds) }
     var screenOnPolicy by remember { mutableStateOf(currentSettings.screenOnPolicy) }
     val autoNightDim = currentSettings.autoNightDim
+    var allowNightSleep by remember { mutableStateOf(currentSettings.allowNightSleep) }
     var nightBrightness by remember { mutableFloatStateOf(currentSettings.nightBrightness) }
     var refreshInterval by remember { mutableIntStateOf(currentSettings.autoRefreshIntervalMinutes) }
     var autoLocation by remember { mutableStateOf(currentSettings.autoLocation) }
@@ -780,7 +781,7 @@ fun SettingsDialog(
 
                                 SettingsGroupCard(
                                     title = "屏幕常亮策略",
-                                    subtitle = "夜间时段自动熄屏休眠，清晨充电时按策略恢复常亮",
+                                    subtitle = "控制应用前台常亮锁（FLAG_KEEP_SCREEN_ON），避免充电静置时被系统压暗或息屏",
                                     palette = palette
                                 ) {
                                     SegmentedOptionRow(
@@ -794,6 +795,16 @@ fun SettingsDialog(
                                         isCompact = isCompact,
                                         onSelect = { screenOnPolicy = it }
                                     )
+                                    if (screenOnPolicy != "SYSTEM") {
+                                        HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+                                        SettingSwitchRow(
+                                            title = "夜间时段允许系统自动息屏 (22:00-07:00)",
+                                            subtitle = "开启后在夜间时段释放常亮锁交由系统变暗/息屏；关闭则全天候按策略保持亮屏",
+                                            checked = allowNightSleep,
+                                            palette = palette,
+                                            onCheckedChange = { allowNightSleep = it }
+                                        )
+                                    }
                                 }
                             }
 
@@ -2161,6 +2172,7 @@ fun SettingsDialog(
                                     nightModeOption = nightModeOption,
                                     dayThemeStyle = dayThemeStyle,
                                     autoNightDim = autoNightDim,
+                                    allowNightSleep = allowNightSleep,
                                     nightBrightness = nightBrightness,
                                     autoRefreshIntervalMinutes = refreshInterval,
                                     autoLocation = autoLocation,

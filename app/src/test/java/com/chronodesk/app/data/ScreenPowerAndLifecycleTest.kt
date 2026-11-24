@@ -92,22 +92,34 @@ class ScreenPowerAndLifecycleTest {
 
     @Test
     fun testNightWindow_overridesScreenOn() {
-        val settings = ClockSettings(
+        val keepAwakeAllDay = ClockSettings(
             screenOnPolicy = "CHARGING_ONLY",
             autoNightDim = true,
+            allowNightSleep = false,
             nightDimStartHour = 22,
             nightDimEndHour = 7
         )
+        assertTrue("默认关闭夜间息屏时，夜间充电保持常亮", keepAwakeAllDay.shouldKeepScreenOn(isCharging = true, currentHour = 23))
+        assertTrue("默认关闭夜间息屏时，凌晨充电保持常亮", keepAwakeAllDay.shouldKeepScreenOn(isCharging = true, currentHour = 3))
+
+        val alwaysAwakeAllDay = ClockSettings(
+            screenOnPolicy = "ALWAYS",
+            autoNightDim = true,
+            allowNightSleep = false
+        )
+        assertTrue("前台常亮关闭夜间息屏时，凌晨未充电也保持常亮", alwaysAwakeAllDay.shouldKeepScreenOn(isCharging = false, currentHour = 3))
+
+        val allowSleepSettings = keepAwakeAllDay.copy(allowNightSleep = true)
 
         // 白天 14点，充电中 -> 常亮
-        assertTrue("白天充电中保持常亮", settings.shouldKeepScreenOn(isCharging = true, currentHour = 14))
+        assertTrue("白天充电中保持常亮", allowSleepSettings.shouldKeepScreenOn(isCharging = true, currentHour = 14))
 
-        // 夜间 23点与凌晨 3点 -> 即使充电中也释放常亮以熄屏休眠
-        assertFalse("夜间23点即使充电中也不应强制常亮", settings.shouldKeepScreenOn(isCharging = true, currentHour = 23))
-        assertFalse("凌晨3点即使充电中也不应强制常亮", settings.shouldKeepScreenOn(isCharging = true, currentHour = 3))
+        // 开启 allowNightSleep 后，夜间 23点与凌晨 3点 -> 释放常亮以熄屏休眠
+        assertFalse("开启夜间息屏时，23点即使充电中也应释放常亮", allowSleepSettings.shouldKeepScreenOn(isCharging = true, currentHour = 23))
+        assertFalse("开启夜间息屏时，凌晨3点即使充电中也应释放常亮", allowSleepSettings.shouldKeepScreenOn(isCharging = true, currentHour = 3))
 
         // 清晨到达 7点结束时间，若仍在充电则恢复常亮
-        assertTrue("清晨7点夜间时段结束若在充电恢复常亮", settings.shouldKeepScreenOn(isCharging = true, currentHour = 7))
+        assertTrue("清晨7点夜间时段结束若在充电恢复常亮", allowSleepSettings.shouldKeepScreenOn(isCharging = true, currentHour = 7))
     }
 
     @Test

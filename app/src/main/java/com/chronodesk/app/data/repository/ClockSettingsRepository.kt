@@ -17,6 +17,7 @@ data class GeneralSettingsBackup(
     val nightModeOption: String = "AUTO", // AUTO, FORCE_NIGHT, FORCE_DAY
     val dayThemeStyle: String = "COLOR", // COLOR, INK
     val autoNightDim: Boolean = true,
+    val allowNightSleep: Boolean = false,
     val nightDimStartHour: Int = 22,
     val nightDimEndHour: Int = 7,
     val nightBrightness: Float = 0.08f,
@@ -67,6 +68,7 @@ class ClockSettingsRepository(context: Context) {
             nightModeOption = prefs.getString("night_mode_option", "AUTO") ?: "AUTO",
             dayThemeStyle = prefs.getString("day_theme_style", "COLOR") ?: "COLOR",
             autoNightDim = prefs.getBoolean("auto_night_dim", true),
+            allowNightSleep = prefs.getBoolean("allow_night_sleep", false),
             nightDimStartHour = prefs.getInt("night_start_hour", 22),
             nightDimEndHour = prefs.getInt("night_end_hour", 7),
             nightBrightness = prefs.getFloat("night_brightness", 0.08f),
@@ -99,6 +101,7 @@ class ClockSettingsRepository(context: Context) {
             .putString("night_mode_option", newSettings.nightModeOption)
             .putString("day_theme_style", newSettings.normalizedDayThemeStyle)
             .putBoolean("auto_night_dim", newSettings.autoNightDim)
+            .putBoolean("allow_night_sleep", newSettings.allowNightSleep)
             .putInt("night_start_hour", newSettings.nightDimStartHour)
             .putInt("night_end_hour", newSettings.nightDimEndHour)
             .putFloat("night_brightness", newSettings.nightBrightness)
@@ -135,6 +138,7 @@ class ClockSettingsRepository(context: Context) {
             nightModeOption = current.nightModeOption,
             dayThemeStyle = current.normalizedDayThemeStyle,
             autoNightDim = current.autoNightDim,
+            allowNightSleep = current.allowNightSleep,
             nightDimStartHour = current.nightDimStartHour,
             nightDimEndHour = current.nightDimEndHour,
             nightBrightness = current.nightBrightness,
@@ -186,6 +190,7 @@ class ClockSettingsRepository(context: Context) {
                 return SettingsValidationResult.Invalid("日间主题风格无效: $dayThemeStyleRaw")
             }
             val autoNightDim = if (root.has("autoNightDim")) root.get("autoNightDim").asBoolean else true
+            val allowNightSleep = if (root.has("allowNightSleep")) root.get("allowNightSleep").asBoolean else false
             val startHour = if (root.has("nightDimStartHour")) root.get("nightDimStartHour").asInt else 22
             if (startHour !in 0..23) {
                 return SettingsValidationResult.Invalid("夜间开始小时超出范围 (0-23): $startHour")
@@ -237,6 +242,7 @@ class ClockSettingsRepository(context: Context) {
                 nightModeOption = nightModeOption,
                 dayThemeStyle = dayThemeStyle,
                 autoNightDim = autoNightDim,
+                allowNightSleep = allowNightSleep,
                 nightDimStartHour = startHour,
                 nightDimEndHour = endHour,
                 nightBrightness = brightness,
@@ -277,6 +283,7 @@ class ClockSettingsRepository(context: Context) {
             nightModeOption = backup.nightModeOption,
             dayThemeStyle = ClockSettings(dayThemeStyle = backup.dayThemeStyle).normalizedDayThemeStyle,
             autoNightDim = backup.autoNightDim,
+            allowNightSleep = backup.allowNightSleep,
             nightDimStartHour = backup.nightDimStartHour,
             nightDimEndHour = backup.nightDimEndHour,
             nightBrightness = backup.nightBrightness,

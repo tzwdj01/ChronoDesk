@@ -17,6 +17,7 @@ data class ClockSettings(
     val nightModeOption: String = "AUTO", // "AUTO", "FORCE_NIGHT", "FORCE_DAY"
     val dayThemeStyle: String = "COLOR",   // "COLOR" (日间彩色), "INK" (纯黑白灰全水墨)
     val autoNightDim: Boolean = true,
+    val allowNightSleep: Boolean = false, // 夜间时段 (22:00-07:00) 是否允许释放常亮锁交由系统自动息屏/变暗
     val nightDimStartHour: Int = 22,
     val nightDimEndHour: Int = 7,
     val nightBrightness: Float = 0.08f,
@@ -70,11 +71,11 @@ data class ClockSettings(
 
     /**
      * 根据充电状态、时间段及常亮策略计算是否保持屏幕常亮
-     * 1. 处于夜间时段时，不再强制常亮，交由系统熄屏休眠
-     * 2. 非夜间时段按 screenOnPolicy 判定
+     * 1. 仅在开启 allowNightSleep 且处于夜间时段时释放常亮锁，交由系统自动熄屏/变暗
+     * 2. 默认按 screenOnPolicy 判定（ALWAYS/CHARGING_ONLY 全天候保持亮屏）
      */
     fun shouldKeepScreenOn(isCharging: Boolean, currentHour: Int): Boolean {
-        if (isNightTimeWindow(currentHour)) {
+        if (allowNightSleep && isNightTimeWindow(currentHour)) {
             return false
         }
         return when (screenOnPolicy) {
