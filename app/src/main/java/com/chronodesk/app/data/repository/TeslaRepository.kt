@@ -174,11 +174,15 @@ class TeslaRepository(
                 val loc = finalSnapshot.location
                 val lat = loc.latitude
                 val lng = loc.longitude
-                val needsGeoLookup = loc.isValid && lat != null && lng != null &&
-                    (loc.resolvedAddress.isNullOrBlank() || loc.resolvedAddress.endsWith("附近"))
+                val requireZh = lat != null && lng != null && VehicleLocationResolver.isInGreaterChina(lat, lng)
+                val needsGeoLookup = loc.isValid && lat != null && lng != null && (
+                    loc.resolvedAddress.isNullOrBlank() ||
+                        loc.resolvedAddress.endsWith("附近") ||
+                        (requireZh && !VehicleLocationResolver.containsChinese(loc.resolvedAddress))
+                    )
                 if (needsGeoLookup && lat != null && lng != null) {
                     val cachedAddr = locationResolver?.getCachedAddress(lat, lng)
-                    if (!cachedAddr.isNullOrBlank()) {
+                    if (!cachedAddr.isNullOrBlank() && (!requireZh || VehicleLocationResolver.containsChinese(cachedAddr))) {
                         finalSnapshot = finalSnapshot.copy(
                             location = loc.copy(resolvedAddress = cachedAddr)
                         )
@@ -187,7 +191,11 @@ class TeslaRepository(
                         val fallbackAddr = loc.resolvedAddress
                         scope.launch {
                             val resolved = locationResolver?.resolveAddress(lat, lng, fallbackAddr)
-                            if (!resolved.isNullOrBlank() && resolved != fallbackAddr) {
+                            val improvesFallback = !resolved.isNullOrBlank() && (
+                                resolved != fallbackAddr ||
+                                    (requireZh && VehicleLocationResolver.containsChinese(resolved) && !VehicleLocationResolver.containsChinese(fallbackAddr))
+                                )
+                            if (improvesFallback) {
                                 val current = _snapshotFlow.value
                                 if (current.location.coordinateGridKey == gridKey) {
                                     val updated = current.copy(

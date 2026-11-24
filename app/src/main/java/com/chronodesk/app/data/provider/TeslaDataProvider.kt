@@ -4,6 +4,7 @@ import android.util.Log
 import com.chronodesk.app.data.model.ChargingSnapshot
 import com.chronodesk.app.data.model.DailyDriveItem
 import com.chronodesk.app.data.model.DriveSummary
+import com.chronodesk.app.data.model.LastDriveInfo
 import com.chronodesk.app.data.model.TeslaConnectionState
 import com.chronodesk.app.data.model.TeslaFullSnapshot
 import com.chronodesk.app.data.model.TeslaSettings
@@ -158,7 +159,9 @@ class TeslaDataProvider(
         val (vehicleState, activeCharging) = fetchVehicleStateAndActiveSession(service, auth, dsRef, carId)
 
         // 3. 查询 C：行程与能耗统计 (drives, charging_processes)
-        val (drivesSummary, totalCharges) = fetchDriveAndChargeSummaries(service, auth, dsRef, carId, settings.timeZone)
+        val (drivesSummary, totalCharges) = fetchDriveAndChargeSummaries(
+            service, auth, dsRef, carId, settings.timeZone, lastSnapshot?.drives?.lastDrive
+        )
 
         // 4. 查询 D：车辆最后有效位置与围栏 (positions, geofences)
         val vehicleLocation = fetchLatestLocation(service, auth, dsRef, carId, lastSnapshot?.location)
@@ -246,7 +249,12 @@ class TeslaDataProvider(
                     null
                 }
                 val resolvedAddress = if (lat != null && lng != null && lat.isFinite() && lng.isFinite()) {
-                    val prevAddr = previousLocation?.resolvedAddress?.takeIf { it.isNotBlank() && !it.endsWith("附近") }
+                    val requireZh = VehicleLocationResolver.isInGreaterChina(lat, lng)
+                    val prevAddr = previousLocation?.resolvedAddress?.takeIf {
+                        it.isNotBlank() &&
+                            !it.endsWith("附近") &&
+                            (!requireZh || VehicleLocationResolver.containsChinese(it))
+                    }
                     val prevLat = previousLocation?.latitude
                     val prevLng = previousLocation?.longitude
                     if (prevAddr != null && prevLat != null && prevLng != null &&
@@ -344,7 +352,7 @@ class TeslaDataProvider(
                 }
             }
             val row = bestRow ?: return null
-            if (bestDist <= 500.0) {
+            val formatted = if (bestDist <= 500.0) {
                 val cityPart = row.getString("city")?.takeIf { it.isNotBlank() }
                     ?: row.getString("state")?.takeIf { it.isNotBlank() }
                 val districtPart = row.getString("county")?.takeIf { it.isNotBlank() }
@@ -376,6 +384,11 @@ class TeslaDataProvider(
                 if (areaParts.isNotEmpty()) "${areaParts.joinToString(" · ")}附近" else null
             } else {
                 null
+            }
+            if (formatted != null && VehicleLocationResolver.isInGreaterChina(lat, lng) && !VehicleLocationResolver.containsChinese(formatted)) {
+                null
+            } else {
+                formatted
             }
         } catch (e: Exception) {
             Log.d(tag, "Optional addresses lookup skipped: ${e.message}")
@@ -582,7 +595,8 @@ class TeslaDataProvider(
         auth: String,
         dsRef: GrafanaDatasourceRef,
         carId: Int,
-        timeZoneString: String
+        timeZoneString: String,
+        previousLastDrive: LastDriveInfo? = null
     ): Pair<DriveSummary, ChargingSnapshot> {
         val zoneId = try { ZoneId.of(timeZoneString) } catch (_: Exception) { ZoneId.of("Asia/Shanghai") }
         val nowInZone = ZonedDateTime.now(zoneId)
@@ -688,6 +702,66 @@ class TeslaDataProvider(
             Log.w(tag, "Query 7 days drives failed: ${e.message}")
         }
 
+        // 5. 最近一次行驶记录（独立只读查询 drives，兼容精简列结构）
+        var lastDrive: LastDriveInfo? = previousLastDrive
+        val lastDrivePrimarySql = """
+            SELECT d.distance AS distance_km,
+                   d.duration_min AS duration_min,
+                   (EXTRACT(EPOCH FROM COALESCE(d.end_date, d.start_date)) * 1000)::bigint AS event_epoch_ms,
+                   CASE WHEN d.end_date IS NULL THEN 1 ELSE 0 END AS is_ongoing,
+                   CASE WHEN d.distance > 0.2 AND d.start_rated_range_km IS NOT NULL AND d.end_rated_range_km IS NOT NULL AND c.efficiency > 0
+                        THEN ((d.start_rated_range_km - d.end_rated_range_km) * c.efficiency * 1000.0) / d.distance
+                        ELSE NULL END AS estimated_wh_per_km
+            FROM drives d LEFT JOIN cars c ON c.id = d.car_id
+            WHERE d.car_id = $carId AND d.distance IS NOT NULL
+            ORDER BY COALESCE(d.end_date, d.start_date) DESC
+            LIMIT 1
+        """.trimIndent()
+        val lastDriveFallbackSql = """
+            SELECT distance AS distance_km, end_date, start_date
+            FROM drives
+            WHERE car_id = $carId AND distance IS NOT NULL
+            ORDER BY start_date DESC
+            LIMIT 1
+        """.trimIndent()
+        var lastDriveQueried = false
+        for ((idx, ldSql) in listOf(lastDrivePrimarySql, lastDriveFallbackSql).withIndex()) {
+            try {
+                val ldResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, ldSql))))
+                val ldRows = GrafanaFrameParser.parseResultToRows(ldResp, "A")
+                val row = ldRows.firstOrNull()
+                if (row != null) {
+                    val dist = row.getDouble("distance_km")
+                    if (dist != null) {
+                        val durMin = if (idx == 0) row.getInt("duration_min") else null
+                        val epochMs = if (idx == 0) row.getDouble("event_epoch_ms")?.toLong() else null
+                        val ongoing = if (idx == 0) (row.getInt("is_ongoing") == 1) else (row.getString("end_date").isNullOrBlank())
+                        val rawDate = row.getString("end_date") ?: row.getString("start_date")
+                        val estWhKm = if (idx == 0) row.getDouble("estimated_wh_per_km") else null
+                        lastDrive = LastDriveInfo(
+                            distanceKm = dist,
+                            durationMin = durMin,
+                            eventEpochMs = epochMs,
+                            rawEndDate = rawDate,
+                            estimatedWhPerKm = estWhKm,
+                            isOngoing = ongoing
+                        )
+                    } else {
+                        lastDrive = null
+                    }
+                } else {
+                    lastDrive = null
+                }
+                lastDriveQueried = true
+                break
+            } catch (e: Exception) {
+                Log.d(tag, "Query last drive candidate $idx skipped: ${e.message}")
+            }
+        }
+        if (!lastDriveQueried) {
+            lastDrive = previousLastDrive
+        }
+
         val driveSummary = DriveSummary(
             todayDistanceKm = todayDist,
             todayTrips = todayTrips,
@@ -695,7 +769,8 @@ class TeslaDataProvider(
             todayEnergyKwh = todayEnergy,
             monthDistanceKm = monthDist,
             monthTrips = monthTrips,
-            recent7DaysDrives = recent7List
+            recent7DaysDrives = recent7List,
+            lastDrive = lastDrive
         )
 
         val chargingSnapshot = ChargingSnapshot(

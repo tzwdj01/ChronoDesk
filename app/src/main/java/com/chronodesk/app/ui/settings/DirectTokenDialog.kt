@@ -1,5 +1,6 @@
 package com.chronodesk.app.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +36,12 @@ import com.chronodesk.app.data.security.JwtUtils
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
+import com.chronodesk.app.ui.theme.InkBackground
+import com.chronodesk.app.ui.theme.InkBorder
+import com.chronodesk.app.ui.theme.InkSurface
+import com.chronodesk.app.ui.theme.InkTextPrimary
+import com.chronodesk.app.ui.theme.InkTextSecondary
+import com.chronodesk.app.ui.theme.InkWarningRed
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
@@ -44,9 +51,19 @@ import com.chronodesk.app.ui.theme.TextSecondary
 fun DirectTokenDialog(
     slot: Int,
     currentAccount: CodexAccount?,
+    isNightMode: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean
 ) {
+    val dialogBg = if (isNightMode) DarkSurface else InkBackground
+    val fieldBg = if (isNightMode) DarkSurfaceElevated else InkSurface
+    val borderColor = if (isNightMode) DarkBorder else InkBorder
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val accentColor = if (isNightMode) TechCyan else Color(0xFF0284C7)
+    val onAccentColor = if (isNightMode) Color.Black else Color.White
+    val errorColor = if (isNightMode) TechRose else InkWarningRed
+
     var alias by remember { mutableStateOf(currentAccount?.email ?: currentAccount?.alias ?: "") }
     var accessToken by remember { mutableStateOf("") }
     var refreshToken by remember { mutableStateOf("") }
@@ -57,21 +74,21 @@ fun DirectTokenDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(DarkSurface)
-                .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                .background(dialogBg)
+                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
                 .padding(20.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "直接导入凭据",
-                    color = TextPrimary,
+                    color = primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     text = "适合已在受信任环境中取得 Token 的极客用户。凭据由 Android Keystore 加密存储，绝不泄露。",
-                    color = TextSecondary,
+                    color = secondaryText,
                     fontSize = 11.sp,
                     lineHeight = 16.sp
                 )
@@ -83,12 +100,12 @@ fun DirectTokenDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = DarkSurfaceElevated,
-                        unfocusedContainerColor = DarkSurfaceElevated,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedIndicatorColor = TechCyan,
-                        unfocusedIndicatorColor = DarkBorder
+                        focusedContainerColor = fieldBg,
+                        unfocusedContainerColor = fieldBg,
+                        focusedTextColor = primaryText,
+                        unfocusedTextColor = primaryText,
+                        focusedIndicatorColor = accentColor,
+                        unfocusedIndicatorColor = borderColor
                     )
                 )
 
@@ -99,12 +116,12 @@ fun DirectTokenDialog(
                     maxLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = DarkSurfaceElevated,
-                        unfocusedContainerColor = DarkSurfaceElevated,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedIndicatorColor = TechCyan,
-                        unfocusedIndicatorColor = DarkBorder
+                        focusedContainerColor = fieldBg,
+                        unfocusedContainerColor = fieldBg,
+                        focusedTextColor = primaryText,
+                        unfocusedTextColor = primaryText,
+                        focusedIndicatorColor = accentColor,
+                        unfocusedIndicatorColor = borderColor
                     )
                 )
 
@@ -115,19 +132,19 @@ fun DirectTokenDialog(
                     maxLines = 3,
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = DarkSurfaceElevated,
-                        unfocusedContainerColor = DarkSurfaceElevated,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedIndicatorColor = TechCyan,
-                        unfocusedIndicatorColor = DarkBorder
+                        focusedContainerColor = fieldBg,
+                        unfocusedContainerColor = fieldBg,
+                        focusedTextColor = primaryText,
+                        unfocusedTextColor = primaryText,
+                        focusedIndicatorColor = accentColor,
+                        unfocusedIndicatorColor = borderColor
                     )
                 )
 
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage ?: "",
-                        color = TechRose,
+                        color = errorColor,
                         fontSize = 11.sp
                     )
                 }
@@ -139,9 +156,10 @@ fun DirectTokenDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, borderColor)
                     ) {
-                        Text(text = "取消", color = TextSecondary)
+                        Text(text = "取消", color = secondaryText)
                     }
 
                     Button(
@@ -168,7 +186,7 @@ fun DirectTokenDialog(
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TechCyan, contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = onAccentColor)
                     ) {
                         Text(text = "保存", fontWeight = FontWeight.Bold)
                     }

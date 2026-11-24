@@ -3,6 +3,7 @@ package com.chronodesk.app.ui.clock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +77,7 @@ fun ClockExtensionPage(
     onOpenSettings: () -> Unit = {},
     onManageAccount: () -> Unit = {},
     onAccountClick: (CodexAccount) -> Unit = { onManageAccount() },
+    onToggleControls: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val cardBg = if (isNightMode) DarkSurface else InkSurface
@@ -83,7 +86,7 @@ fun ClockExtensionPage(
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
 
-    val chatGptAccounts = accounts.filter { (it.modelProvider == "CHATGPT" || it.modelProvider == null) && it.isVisibleOnSecond }
+    val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" && it.isVisibleOnSecond }
         .sortedByDescending { it.isPinnedMain }
     val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" && it.isVisibleOnSecond }
         .sortedByDescending { it.isPinnedMain }
@@ -95,6 +98,10 @@ fun ClockExtensionPage(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onToggleControls() }
             .padding(
                 start = if (isCompact) 14.dp else 20.dp,
                 end = if (isCompact) 14.dp else 20.dp,

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,13 +36,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -83,9 +88,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.chronodesk.app.data.model.ClockSettings
+import com.chronodesk.app.data.model.CodexAccount
+import com.chronodesk.app.data.model.CredentialStatus
 import com.chronodesk.app.data.network.GeocodingItem
 import com.chronodesk.app.data.repository.GeneralSettingsBackup
 import com.chronodesk.app.data.repository.SettingsValidationResult
+import com.chronodesk.app.ui.clock.AiModelProvider
+import com.chronodesk.app.ui.clock.ModelProviderLogo
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
@@ -114,6 +123,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 enum class SettingsTab(val label: String, val shortLabel: String) {
+    ACCOUNTS("账号与接口", "账号接口"),
     DISPLAY("显示与外观", "显示外观"),
     CLOCK_LAYOUT("时钟与排版", "时钟排版"),
     WEATHER("天气与城市", "天气城市"),
@@ -188,6 +198,20 @@ fun SettingsDialog(
     isNightMode: Boolean = false,
     initialTab: SettingsTab = SettingsTab.DISPLAY,
     teslaStatusSummary: String = "",
+    accounts: List<CodexAccount> = emptyList(),
+    initialAccountId: String? = null,
+    getDeepSeekApiKey: (accountId: String) -> String? = { null },
+    getAntigravityApiKey: (accountId: String) -> String? = { null },
+    onSaveCodexAccount: (slot: Int, account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean = { _, _, _, _ -> false },
+    onRemoveCodexAccount: (slot: Int) -> Unit = {},
+    onUpdateCodexAlias: (slot: Int, newAlias: String) -> Unit = { _, _ -> },
+    onSaveDeepSeekAccount: (accountId: String, apiKey: String, alias: String) -> Boolean = { _, _, _ -> false },
+    onAddDeepSeekAccount: () -> CodexAccount? = { null },
+    onRemoveDeepSeekAccount: (accountId: String) -> Unit = {},
+    onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Boolean = { _, _, _ -> false },
+    onAddAntigravityAccount: () -> CodexAccount? = { null },
+    onRemoveAntigravityAccount: (accountId: String) -> Unit = {},
+    onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit = { _, _, _, _ -> },
     onDismiss: () -> Unit,
     onSave: (ClockSettings) -> Unit,
     onOpenTeslaSettings: () -> Unit = {},
@@ -353,6 +377,7 @@ fun SettingsDialog(
     var quotaWidthPercent by remember { mutableIntStateOf(currentSettings.quotaWidthPercent) }
     var quotaCardDensity by remember { mutableStateOf(currentSettings.quotaCardDensity) }
     var showTeslaOnHome by remember { mutableStateOf(currentSettings.showTeslaOnHome) }
+    var useMockData by remember { mutableStateOf(currentSettings.useMockData) }
 
     var locationList by remember {
         val list = mutableListOf<LocationItem>()
@@ -499,6 +524,7 @@ fun SettingsDialog(
                 ) {
                     // 左侧导航栏
                     val navItems = listOf(
+                        SettingsTab.ACCOUNTS to Icons.Default.VpnKey,
                         SettingsTab.DISPLAY to Icons.Default.DarkMode,
                         SettingsTab.CLOCK_LAYOUT to Icons.Default.Tune,
                         SettingsTab.WEATHER to Icons.Default.Place,
@@ -548,6 +574,32 @@ fun SettingsDialog(
                         verticalArrangement = Arrangement.spacedBy(if (isCompact) 10.dp else 12.dp)
                     ) {
                         when (selectedTab) {
+                            SettingsTab.ACCOUNTS -> {
+                                AccountsSettingsTabContent(
+                                    accounts = accounts,
+                                    initialAccountId = initialAccountId,
+                                    refreshInterval = refreshInterval,
+                                    onRefreshIntervalChange = { refreshInterval = it },
+                                    useMockData = useMockData,
+                                    onUseMockDataChange = { useMockData = it },
+                                    isNightMode = isNightMode,
+                                    isCompact = isCompact,
+                                    palette = palette,
+                                    getDeepSeekApiKey = getDeepSeekApiKey,
+                                    getAntigravityApiKey = getAntigravityApiKey,
+                                    onSaveCodexAccount = onSaveCodexAccount,
+                                    onRemoveCodexAccount = onRemoveCodexAccount,
+                                    onUpdateCodexAlias = onUpdateCodexAlias,
+                                    onSaveDeepSeekAccount = onSaveDeepSeekAccount,
+                                    onAddDeepSeekAccount = onAddDeepSeekAccount,
+                                    onRemoveDeepSeekAccount = onRemoveDeepSeekAccount,
+                                    onSaveAntigravityAccount = onSaveAntigravityAccount,
+                                    onAddAntigravityAccount = onAddAntigravityAccount,
+                                    onRemoveAntigravityAccount = onRemoveAntigravityAccount,
+                                    onUpdateAccountVisibility = onUpdateAccountVisibility
+                                )
+                            }
+
                             SettingsTab.DISPLAY -> {
                                 SettingsGroupCard(
                                     title = "主题与日夜模式",
@@ -1246,26 +1298,6 @@ fun SettingsDialog(
                                         )
                                     }
                                 }
-
-                                SettingsGroupCard(
-                                    title = "AI 额度自动刷新频率",
-                                    subtitle = "前后台生命周期自动调度各 AI 平台的额度与余额轮询周期",
-                                    palette = palette
-                                ) {
-                                    SegmentedOptionRow(
-                                        options = listOf(
-                                            5 to "5分钟",
-                                            10 to "10分钟",
-                                            15 to "15分钟",
-                                            30 to "30分钟",
-                                            60 to "60分钟"
-                                        ),
-                                        selectedKey = refreshInterval,
-                                        palette = palette,
-                                        isCompact = isCompact,
-                                        onSelect = { refreshInterval = it }
-                                    )
-                                }
                             }
 
                             SettingsTab.BACKUP -> {
@@ -1370,7 +1402,8 @@ fun SettingsDialog(
                                     clockScale = clockScale,
                                     clockOffsetX = clockOffsetX,
                                     clockOffsetY = clockOffsetY,
-                                    showTeslaOnHome = showTeslaOnHome
+                                    showTeslaOnHome = showTeslaOnHome,
+                                    useMockData = useMockData
                                 )
                                 onSave(updated)
                                 onDismiss()
@@ -1543,5 +1576,708 @@ private fun SettingSwitchRow(
                 uncheckedTrackColor = palette.chipBg
             )
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AccountsSettingsTabContent(
+    accounts: List<CodexAccount>,
+    initialAccountId: String?,
+    refreshInterval: Int,
+    onRefreshIntervalChange: (Int) -> Unit,
+    useMockData: Boolean,
+    onUseMockDataChange: (Boolean) -> Unit,
+    isNightMode: Boolean,
+    isCompact: Boolean,
+    palette: SettingsPalette,
+    getDeepSeekApiKey: (accountId: String) -> String?,
+    getAntigravityApiKey: (accountId: String) -> String?,
+    onSaveCodexAccount: (slot: Int, account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean,
+    onRemoveCodexAccount: (slot: Int) -> Unit,
+    onUpdateCodexAlias: (slot: Int, newAlias: String) -> Unit,
+    onSaveDeepSeekAccount: (accountId: String, apiKey: String, alias: String) -> Boolean,
+    onAddDeepSeekAccount: () -> CodexAccount?,
+    onRemoveDeepSeekAccount: (accountId: String) -> Unit,
+    onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Boolean,
+    onAddAntigravityAccount: () -> CodexAccount?,
+    onRemoveAntigravityAccount: (accountId: String) -> Unit,
+    onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit
+) {
+    val context = LocalContext.current
+
+    val chatGptAccounts = remember(accounts) {
+        accounts.filter { it.modelProvider == "CHATGPT" }
+    }
+    var localDeepSeek by remember(accounts) {
+        mutableStateOf(
+            accounts.filter { it.modelProvider == "DEEPSEEK" }.ifEmpty {
+                listOf(CodexAccount(id = "acc_deepseek", alias = "DeepSeek", modelProvider = "DEEPSEEK"))
+            }
+        )
+    }
+    var localGemini by remember(accounts) {
+        mutableStateOf(
+            accounts.filter { it.modelProvider == "ANTIGRAVITY" }.ifEmpty {
+                listOf(CodexAccount(id = "acc_antigravity", alias = "Google Antigravity", modelProvider = "ANTIGRAVITY"))
+            }
+        )
+    }
+
+    val initialProvider = remember(initialAccountId, accounts) {
+        val target = accounts.firstOrNull { it.id == initialAccountId }
+        when (target?.modelProvider) {
+            "DEEPSEEK" -> AiModelProvider.DEEPSEEK
+            "ANTIGRAVITY" -> AiModelProvider.ANTIGRAVITY
+            else -> AiModelProvider.CHATGPT
+        }
+    }
+    var selectedProvider by remember(initialAccountId) { mutableStateOf(initialProvider) }
+    var selectedChatGptSlot by remember(initialAccountId, chatGptAccounts) {
+        val idx = chatGptAccounts.indexOfFirst { it.id == initialAccountId }
+        mutableIntStateOf(if (idx == 1) 1 else 0)
+    }
+    var selectedDeepSeekIdx by remember(initialAccountId, localDeepSeek) {
+        val idx = localDeepSeek.indexOfFirst { it.id == initialAccountId }
+        mutableIntStateOf(if (idx >= 0) idx else 0)
+    }
+    var selectedGeminiIdx by remember(initialAccountId, localGemini) {
+        val idx = localGemini.indexOfFirst { it.id == initialAccountId }
+        mutableIntStateOf(if (idx >= 0) idx else 0)
+    }
+
+    var showDeviceAuthDialog by remember { mutableStateOf(false) }
+    var showDirectTokenDialog by remember { mutableStateOf(false) }
+
+    val activeCodexAcc = chatGptAccounts.getOrNull(selectedChatGptSlot)
+    if (showDeviceAuthDialog) {
+        DeviceAuthDialog(
+            slot = selectedChatGptSlot,
+            isNightMode = isNightMode,
+            onDismiss = { showDeviceAuthDialog = false },
+            onSuccess = { acc, refresh, access ->
+                val targetAcc = if (activeCodexAcc != null) acc.copy(id = activeCodexAcc.id) else acc
+                val saved = onSaveCodexAccount(selectedChatGptSlot, targetAcc, refresh, access)
+                if (saved) {
+                    showDeviceAuthDialog = false
+                    Toast.makeText(context, "账号授权成功并已保存", Toast.LENGTH_SHORT).show()
+                }
+                saved
+            }
+        )
+    }
+
+    if (showDirectTokenDialog) {
+        DirectTokenDialog(
+            slot = selectedChatGptSlot,
+            currentAccount = activeCodexAcc,
+            isNightMode = isNightMode,
+            onDismiss = { showDirectTokenDialog = false },
+            onSave = { acc, refresh, access ->
+                val targetAcc = if (activeCodexAcc != null) acc.copy(id = activeCodexAcc.id) else acc
+                val saved = onSaveCodexAccount(selectedChatGptSlot, targetAcc, refresh, access)
+                if (saved) {
+                    showDirectTokenDialog = false
+                    Toast.makeText(context, "凭据已保存并触发同步", Toast.LENGTH_SHORT).show()
+                }
+                saved
+            }
+        )
+    }
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = palette.primaryText,
+        unfocusedTextColor = palette.primaryText,
+        focusedBorderColor = palette.accent,
+        unfocusedBorderColor = palette.border,
+        focusedContainerColor = palette.chipBg,
+        unfocusedContainerColor = palette.chipBg
+    )
+
+    // 1. 平台切换 + 账号槽位选择器
+    SettingsGroupCard(
+        title = "AI 平台与账号管理",
+        subtitle = "统一配置 ChatGPT (OAuth)、DeepSeek 余额及 Gemini API 连接凭据",
+        palette = palette
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                AiModelProvider.CHATGPT to "ChatGPT",
+                AiModelProvider.DEEPSEEK to "DeepSeek",
+                AiModelProvider.ANTIGRAVITY to "Gemini API"
+            ).forEach { (provider, label) ->
+                val isSel = selectedProvider == provider
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .sizeIn(minHeight = 40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSel) palette.accent.copy(alpha = 0.16f) else palette.chipBg)
+                        .border(1.dp, if (isSel) palette.accent else palette.border, RoundedCornerShape(8.dp))
+                        .clickable { selectedProvider = provider }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    ModelProviderLogo(provider = provider, size = 16.dp, isNightMode = isNightMode)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = label,
+                        color = if (isSel) palette.primaryText else palette.secondaryText,
+                        fontSize = if (isCompact) 10.5.sp else 11.5.sp,
+                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
+        // 对应平台下的账号槽位标签
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            when (selectedProvider) {
+                AiModelProvider.CHATGPT -> {
+                    listOf(0, 1).forEach { slot ->
+                        val acc = chatGptAccounts.getOrNull(slot)
+                        val isSel = selectedChatGptSlot == slot
+                        val title = acc?.displayTitle ?: "槽位 ${slot + 1}"
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) palette.accent else palette.chipBg)
+                                .border(1.dp, if (isSel) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                                .clickable { selectedChatGptSlot = slot }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            isSel -> palette.onAccent
+                                            acc?.credentialStatus == CredentialStatus.VALID -> palette.positive
+                                            acc?.credentialStatus == CredentialStatus.EXPIRED -> palette.danger
+                                            else -> palette.mutedText
+                                        }
+                                    )
+                            )
+                            Text(
+                                text = "账号 ${slot + 1} · $title",
+                                color = if (isSel) palette.onAccent else palette.secondaryText,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+                AiModelProvider.DEEPSEEK -> {
+                    localDeepSeek.forEachIndexed { idx, acc ->
+                        val isSel = selectedDeepSeekIdx == idx
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) palette.accent else palette.chipBg)
+                                .border(1.dp, if (isSel) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                                .clickable { selectedDeepSeekIdx = idx }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = acc.displayTitle,
+                                color = if (isSel) palette.onAccent else palette.secondaryText,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                    if (localDeepSeek.size < 4) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(palette.chipBg)
+                                .border(1.dp, palette.accent.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    val added = onAddDeepSeekAccount()
+                                    if (added != null) {
+                                        localDeepSeek = localDeepSeek + added
+                                        selectedDeepSeekIdx = localDeepSeek.lastIndex
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "+ 新增 DeepSeek",
+                                color = palette.accent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                AiModelProvider.ANTIGRAVITY -> {
+                    localGemini.forEachIndexed { idx, acc ->
+                        val isSel = selectedGeminiIdx == idx
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) palette.accent else palette.chipBg)
+                                .border(1.dp, if (isSel) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                                .clickable { selectedGeminiIdx = idx }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = acc.displayTitle,
+                                color = if (isSel) palette.onAccent else palette.secondaryText,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                    if (localGemini.size < 4) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(palette.chipBg)
+                                .border(1.dp, palette.accent.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    val added = onAddAntigravityAccount()
+                                    if (added != null) {
+                                        localGemini = localGemini + added
+                                        selectedGeminiIdx = localGemini.lastIndex
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "+ 新增 Gemini",
+                                color = palette.accent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                else -> {}
+            }
+        }
+    }
+
+    // 2. 选中账号配置卡片
+    when (selectedProvider) {
+        AiModelProvider.CHATGPT -> {
+            val acc = chatGptAccounts.getOrNull(selectedChatGptSlot)
+            val statusLabel = when {
+                acc == null || !acc.isConfigured -> "未授权" to palette.mutedText
+                acc.credentialStatus == CredentialStatus.EXPIRED -> "凭据失效" to palette.danger
+                else -> "正常在线" to palette.positive
+            }
+            var aliasEdit by remember(selectedChatGptSlot, acc?.id, acc?.alias) {
+                mutableStateOf(
+                    acc?.alias?.takeIf { it != acc.email && !it.contains("账号") } ?: ""
+                )
+            }
+            var showMain by remember(acc?.id, acc?.isVisibleOnMain) { mutableStateOf(acc?.isVisibleOnMain ?: true) }
+            var showSecond by remember(acc?.id, acc?.isVisibleOnSecond) { mutableStateOf(acc?.isVisibleOnSecond ?: true) }
+            var isPinned by remember(acc?.id, acc?.isPinnedMain) { mutableStateOf(acc?.isPinnedMain ?: false) }
+
+            SettingsGroupCard(
+                title = "ChatGPT 槽位 ${selectedChatGptSlot + 1} 配置",
+                subtitle = acc?.maskedEmail?.let { "绑定邮箱：$it · OAuth 2.0 PKCE" } ?: "支持浏览器设备码一键授权或导入 Token",
+                palette = palette,
+                headerTrailing = {
+                    Text(
+                        text = statusLabel.first,
+                        color = statusLabel.second,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            ) {
+                if (acc != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = aliasEdit,
+                            onValueChange = { aliasEdit = it },
+                            placeholder = { Text("自定义显示名称 (避免邮箱暴露)", fontSize = 11.sp, color = palette.mutedText) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = fieldColors
+                        )
+                        Button(
+                            onClick = {
+                                onUpdateCodexAlias(selectedChatGptSlot, aliasEdit.trim())
+                                Toast.makeText(context, "已更新显示名称", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.onAccent)
+                        ) {
+                            Text("保存名称", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    AccountVisibilityChipsRow(
+                        showOnMain = showMain,
+                        showOnSecond = showSecond,
+                        isPinnedMain = isPinned,
+                        palette = palette,
+                        onVisibilityChanged = { m, s, p ->
+                            showMain = m; showSecond = s; isPinned = p
+                            onUpdateAccountVisibility(acc.id, m, s, p)
+                        }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { showDeviceAuthDialog = true },
+                        modifier = Modifier.weight(1.2f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.onAccent)
+                    ) {
+                        Icon(Icons.Default.Devices, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("官方设备码授权", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { showDirectTokenDialog = true },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, palette.border)
+                    ) {
+                        Icon(Icons.Default.Key, contentDescription = null, tint = palette.primaryText, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("导入 Token", fontSize = 11.5.sp, color = palette.primaryText)
+                    }
+
+                    if (acc != null && acc.isConfigured) {
+                        OutlinedButton(
+                            onClick = {
+                                onRemoveCodexAccount(selectedChatGptSlot)
+                                Toast.makeText(context, "已移除该账号凭据", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, palette.danger.copy(alpha = 0.6f))
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = palette.danger, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("清除", fontSize = 11.5.sp, color = palette.danger)
+                        }
+                    }
+                }
+            }
+        }
+
+        AiModelProvider.DEEPSEEK -> {
+            val safeIdx = selectedDeepSeekIdx.coerceIn(0, localDeepSeek.lastIndex)
+            val dsAcc = localDeepSeek[safeIdx]
+            var dsKey by remember(dsAcc.id) { mutableStateOf(getDeepSeekApiKey(dsAcc.id) ?: "") }
+            var dsAlias by remember(dsAcc.id, dsAcc.alias) {
+                mutableStateOf(if (dsAcc.alias != "DeepSeek" && !dsAcc.alias.startsWith("DeepSeek ")) dsAcc.alias else "")
+            }
+            var showMain by remember(dsAcc.id, dsAcc.isVisibleOnMain) { mutableStateOf(dsAcc.isVisibleOnMain) }
+            var showSecond by remember(dsAcc.id, dsAcc.isVisibleOnSecond) { mutableStateOf(dsAcc.isVisibleOnSecond) }
+            var isPinned by remember(dsAcc.id, dsAcc.isPinnedMain) { mutableStateOf(dsAcc.isPinnedMain) }
+
+            val statusLabel = when {
+                dsAcc.credentialStatus == CredentialStatus.EXPIRED -> "Key 失效" to palette.danger
+                dsAcc.credentialStatus == CredentialStatus.VALID && dsKey.isNotBlank() -> "已配置" to palette.positive
+                else -> "待配置" to palette.mutedText
+            }
+
+            SettingsGroupCard(
+                title = "DeepSeek API 余额配置",
+                subtitle = "直连官方 /user/balance 查询实时可用余额",
+                palette = palette,
+                headerTrailing = {
+                    Text(text = statusLabel.first, color = statusLabel.second, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            ) {
+                OutlinedTextField(
+                    value = dsAlias,
+                    onValueChange = { dsAlias = it },
+                    placeholder = { Text("自定义名称（例如：主力号 / 个人号）", fontSize = 11.sp, color = palette.mutedText) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors
+                )
+                OutlinedTextField(
+                    value = dsKey,
+                    onValueChange = { dsKey = it },
+                    placeholder = { Text("DeepSeek API Key (sk-...)", fontSize = 11.sp, color = palette.mutedText) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors
+                )
+                AccountVisibilityChipsRow(
+                    showOnMain = showMain,
+                    showOnSecond = showSecond,
+                    isPinnedMain = isPinned,
+                    palette = palette,
+                    onVisibilityChanged = { m, s, p ->
+                        showMain = m; showSecond = s; isPinned = p
+                        onUpdateAccountVisibility(dsAcc.id, m, s, p)
+                    }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val cleanAlias = dsAlias.trim()
+                            val saved = onSaveDeepSeekAccount(dsAcc.id, dsKey.trim(), cleanAlias)
+                            if (saved) {
+                                localDeepSeek = localDeepSeek.mapIndexed { idx, item ->
+                                    if (idx == safeIdx) item.copy(
+                                        alias = cleanAlias.ifBlank { "DeepSeek" },
+                                        credentialStatus = CredentialStatus.VALID
+                                    ) else item
+                                }
+                                Toast.makeText(context, "DeepSeek API Key 已保存并触发查询", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.positive, contentColor = palette.onAccent)
+                    ) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("保存并验证余额", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (localDeepSeek.size > 1) {
+                        OutlinedButton(
+                            onClick = {
+                                onRemoveDeepSeekAccount(dsAcc.id)
+                                localDeepSeek = localDeepSeek.filterNot { it.id == dsAcc.id }
+                                selectedDeepSeekIdx = 0
+                                Toast.makeText(context, "已删除 DeepSeek 账号", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, palette.danger.copy(alpha = 0.6f))
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = palette.danger, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("删除", fontSize = 12.sp, color = palette.danger)
+                        }
+                    }
+                }
+            }
+        }
+
+        AiModelProvider.ANTIGRAVITY -> {
+            val safeIdx = selectedGeminiIdx.coerceIn(0, localGemini.lastIndex)
+            val agAcc = localGemini[safeIdx]
+            var agKey by remember(agAcc.id) { mutableStateOf(getAntigravityApiKey(agAcc.id) ?: "") }
+            var agAlias by remember(agAcc.id, agAcc.alias) {
+                mutableStateOf(
+                    if (agAcc.alias != "Google Antigravity" && agAcc.alias != "Gemini API" && !agAcc.alias.startsWith("Gemini API ")) agAcc.alias else ""
+                )
+            }
+            var showMain by remember(agAcc.id, agAcc.isVisibleOnMain) { mutableStateOf(agAcc.isVisibleOnMain) }
+            var showSecond by remember(agAcc.id, agAcc.isVisibleOnSecond) { mutableStateOf(agAcc.isVisibleOnSecond) }
+            var isPinned by remember(agAcc.id, agAcc.isPinnedMain) { mutableStateOf(agAcc.isPinnedMain) }
+
+            val statusLabel = when {
+                agAcc.credentialStatus == CredentialStatus.EXPIRED -> "Key 失效" to palette.danger
+                agAcc.credentialStatus == CredentialStatus.VALID && agKey.isNotBlank() -> "已配置" to palette.positive
+                else -> "待配置" to palette.mutedText
+            }
+
+            SettingsGroupCard(
+                title = "Gemini API 连接配置",
+                subtitle = "直连官方 Generative Language API 验证模型接口状态",
+                palette = palette,
+                headerTrailing = {
+                    Text(text = statusLabel.first, color = statusLabel.second, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            ) {
+                OutlinedTextField(
+                    value = agAlias,
+                    onValueChange = { agAlias = it },
+                    placeholder = { Text("自定义名称（例如：工作主号）", fontSize = 11.sp, color = palette.mutedText) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors
+                )
+                OutlinedTextField(
+                    value = agKey,
+                    onValueChange = { agKey = it },
+                    placeholder = { Text("Gemini API Key (AIzaSy...)", fontSize = 11.sp, color = palette.mutedText) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors
+                )
+                AccountVisibilityChipsRow(
+                    showOnMain = showMain,
+                    showOnSecond = showSecond,
+                    isPinnedMain = isPinned,
+                    palette = palette,
+                    onVisibilityChanged = { m, s, p ->
+                        showMain = m; showSecond = s; isPinned = p
+                        onUpdateAccountVisibility(agAcc.id, m, s, p)
+                    }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val cleanAlias = agAlias.trim()
+                            val saved = onSaveAntigravityAccount(agAcc.id, agKey.trim(), cleanAlias)
+                            if (saved) {
+                                localGemini = localGemini.mapIndexed { idx, item ->
+                                    if (idx == safeIdx) item.copy(
+                                        alias = cleanAlias.ifBlank { "Gemini API" },
+                                        credentialStatus = CredentialStatus.VALID
+                                    ) else item
+                                }
+                                Toast.makeText(context, "Gemini API Key 已保存并触发验证", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.positive, contentColor = palette.onAccent)
+                    ) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("保存并验证连接", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (localGemini.size > 1) {
+                        OutlinedButton(
+                            onClick = {
+                                onRemoveAntigravityAccount(agAcc.id)
+                                localGemini = localGemini.filterNot { it.id == agAcc.id }
+                                selectedGeminiIdx = 0
+                                Toast.makeText(context, "已删除 Gemini 账号", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, palette.danger.copy(alpha = 0.6f))
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = palette.danger, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("删除", fontSize = 12.sp, color = palette.danger)
+                        }
+                    }
+                }
+            }
+        }
+        else -> {}
+    }
+
+    // 3. 同步频率与演示数据设置
+    SettingsGroupCard(
+        title = "轮询频率与演示模式",
+        palette = palette
+    ) {
+        SegmentedOptionRow(
+            options = listOf(5 to "5分钟", 10 to "10分钟", 15 to "15分钟", 30 to "30分钟", 60 to "60分钟"),
+            selectedKey = refreshInterval,
+            palette = palette,
+            isCompact = isCompact,
+            onSelect = onRefreshIntervalChange
+        )
+        HorizontalDivider(color = palette.divider, thickness = 0.8.dp)
+        SettingSwitchRow(
+            title = "启用演示数据模式",
+            subtitle = "开启后使用本地脱敏模拟额度用于预览排版（点击底部保存生效后切换）",
+            checked = useMockData,
+            palette = palette,
+            onCheckedChange = onUseMockDataChange
+        )
+    }
+}
+
+@Composable
+private fun AccountVisibilityChipsRow(
+    showOnMain: Boolean,
+    showOnSecond: Boolean,
+    isPinnedMain: Boolean,
+    palette: SettingsPalette,
+    onVisibilityChanged: (showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (showOnMain) palette.accent.copy(alpha = 0.16f) else palette.chipBg)
+                .border(1.dp, if (showOnMain) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                .clickable {
+                    val nextMain = !showOnMain
+                    onVisibilityChanged(nextMain, showOnSecond, if (nextMain) isPinnedMain else false)
+                }
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (showOnMain) "✓ 主屏显示" else "+ 主屏显示",
+                color = if (showOnMain) palette.accent else palette.mutedText,
+                fontSize = 10.5.sp,
+                fontWeight = if (showOnMain) FontWeight.Bold else FontWeight.Normal
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (showOnSecond) palette.positive.copy(alpha = 0.16f) else palette.chipBg)
+                .border(1.dp, if (showOnSecond) palette.positive else palette.border, RoundedCornerShape(6.dp))
+                .clickable { onVisibilityChanged(showOnMain, !showOnSecond, isPinnedMain) }
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (showOnSecond) "✓ 扩展页显示" else "+ 扩展页显示",
+                color = if (showOnSecond) palette.positive else palette.mutedText,
+                fontSize = 10.5.sp,
+                fontWeight = if (showOnSecond) FontWeight.Bold else FontWeight.Normal
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (isPinnedMain) palette.warning.copy(alpha = 0.16f) else palette.chipBg)
+                .border(1.dp, if (isPinnedMain) palette.warning else palette.border, RoundedCornerShape(6.dp))
+                .clickable {
+                    val nextPinned = !isPinnedMain
+                    onVisibilityChanged(if (nextPinned) true else showOnMain, showOnSecond, nextPinned)
+                }
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isPinnedMain) "★ 主屏置顶" else "☆ 主屏置顶",
+                color = if (isPinnedMain) palette.warning else palette.mutedText,
+                fontSize = 10.5.sp,
+                fontWeight = if (isPinnedMain) FontWeight.Bold else FontWeight.Normal
+            )
+        }
     }
 }

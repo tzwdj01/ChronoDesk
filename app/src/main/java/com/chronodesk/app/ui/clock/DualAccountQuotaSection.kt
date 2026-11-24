@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -101,11 +103,12 @@ fun MultiAccountQuotaSection(
     onRefreshAccount: (accountId: String) -> Unit = {},
     onDeleteAccount: (accountId: String) -> Unit = {},
     onAccountClick: (account: CodexAccount) -> Unit = {},
+    onRevealControls: () -> Unit = {},
     onRefreshAll: () -> Unit = {},
     onToggleNightMode: () -> Unit = {},
     onSettingsClick: () -> Unit = {}
 ) {
-    val chatGptAccounts = accounts.filter { (it.modelProvider == "CHATGPT" || it.modelProvider == null) && it.isVisibleOnMain }
+    val chatGptAccounts = accounts.filter { it.modelProvider == "CHATGPT" && it.isVisibleOnMain }
         .sortedByDescending { it.isPinnedMain }
     val deepSeekAccounts = accounts.filter { it.modelProvider == "DEEPSEEK" && it.isVisibleOnMain }
         .sortedByDescending { it.isPinnedMain }
@@ -117,9 +120,9 @@ fun MultiAccountQuotaSection(
         (if (antigravityAccounts.isNotEmpty()) 1 else 0) >= 3
 
     val spacing = when (cardDensity) {
-        "COMPACT" -> if (isCompact) 3.dp else 5.dp
-        "SPACIOUS" -> if (isCompact) 7.dp else 10.dp
-        else -> if (hasMultipleProviders) (if (isCompact) 3.dp else 5.5.dp) else (if (isCompact) 6.dp else 9.dp)
+        "COMPACT" -> if (isCompact) 4.dp else 6.dp
+        "SPACIOUS" -> if (isCompact) 8.dp else 12.dp
+        else -> if (hasMultipleProviders) (if (isCompact) 4.5.dp else 7.dp) else (if (isCompact) 6.5.dp else 10.dp)
     }
 
     Column(
@@ -138,6 +141,7 @@ fun MultiAccountQuotaSection(
                 isMockMode = isMockMode,
                 refreshIntervalMinutes = refreshIntervalMinutes,
                 onAccountClick = onAccountClick,
+                onRevealControls = onRevealControls,
                 onRefreshAccount = onRefreshAccount,
                 onDeleteAccount = onDeleteAccount,
                 modifier = Modifier.fillMaxWidth()
@@ -156,6 +160,7 @@ fun MultiAccountQuotaSection(
                 isMockMode = isMockMode,
                 refreshIntervalMinutes = refreshIntervalMinutes,
                 onAccountClick = onAccountClick,
+                onRevealControls = onRevealControls,
                 onRefreshAccount = onRefreshAccount,
                 onDeleteAccount = onDeleteAccount,
                 modifier = Modifier.fillMaxWidth()
@@ -174,6 +179,7 @@ fun MultiAccountQuotaSection(
                 isMockMode = isMockMode,
                 refreshIntervalMinutes = refreshIntervalMinutes,
                 onAccountClick = onAccountClick,
+                onRevealControls = onRevealControls,
                 onRefreshAccount = onRefreshAccount,
                 onDeleteAccount = onDeleteAccount,
                 modifier = Modifier.fillMaxWidth()
@@ -269,6 +275,7 @@ fun ChatGptUnifiedSubscriptionBox(
     isMockMode: Boolean = false,
     refreshIntervalMinutes: Int = 15,
     onAccountClick: (CodexAccount) -> Unit,
+    onRevealControls: () -> Unit = {},
     onRefreshAccount: (String) -> Unit,
     onDeleteAccount: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -276,16 +283,18 @@ fun ChatGptUnifiedSubscriptionBox(
     val cardBg = if (isNightMode) DarkSurface else InkSurface
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val cornerRadius = if (isCompact) 11.dp else 14.dp
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 5.dp else 7.5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(cornerRadius))
+            .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 6.dp else 9.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 6.dp)) {
-            // 大框顶栏：OpenAI Logo + 订阅商名称 + 演示标签 + 账号汇总
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.5.dp)) {
+            // 大框顶栏：OpenAI Logo + 订阅商名称 + 演示标签 + 简洁账号数
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -297,7 +306,7 @@ fun ChatGptUnifiedSubscriptionBox(
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.CHATGPT,
-                        size = if (isCompact) 20.dp else 24.dp,
+                        size = if (isCompact) 20.dp else 23.dp,
                         isNightMode = isNightMode
                     )
                     Text(
@@ -311,19 +320,11 @@ fun ChatGptUnifiedSubscriptionBox(
                     }
                 }
 
-                // 状态标签
-                val statusColor = if (isNightMode) TechEmerald else InkStatusGreen
-                val statusBg = if (isNightMode) statusColor.copy(alpha = 0.12f) else InkStatusTagBg
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(3.5.dp))
-                        .background(statusBg)
-                        .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                ) {
+                if (accounts.size > 1) {
                     Text(
-                        text = if (accounts.size > 1) "${accounts.size}个账号" else "正常",
-                        color = statusColor,
-                        fontSize = 9.sp,
+                        text = "${accounts.size} 账号",
+                        color = mutedText,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -347,11 +348,25 @@ fun ChatGptUnifiedSubscriptionBox(
                     areControlsVisible = areControlsVisible,
                     refreshIntervalMinutes = refreshIntervalMinutes,
                     onAccountClick = { onAccountClick(acc) },
+                    onRevealControls = onRevealControls,
                     onRefreshClick = { onRefreshAccount(acc.id) },
                     onDeleteClick = { onDeleteAccount(acc.id) }
                 )
             }
         }
+    }
+}
+
+private inline fun handleAccountCardTap(
+    syncStatus: QuotaSyncStatus,
+    areControlsVisible: Boolean,
+    onAccountClick: () -> Unit,
+    onRevealControls: () -> Unit
+) {
+    if (areControlsVisible || syncStatus == QuotaSyncStatus.NOT_CONFIGURED || syncStatus == QuotaSyncStatus.AUTH_EXPIRED) {
+        onAccountClick()
+    } else {
+        onRevealControls()
     }
 }
 
@@ -498,6 +513,7 @@ private fun SingleAccountQuotaItem(
     areControlsVisible: Boolean,
     refreshIntervalMinutes: Int = 15,
     onAccountClick: () -> Unit,
+    onRevealControls: () -> Unit = {},
     onRefreshClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -631,7 +647,12 @@ private fun SingleAccountQuotaItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onAccountClick() },
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                handleAccountCardTap(syncStatus, areControlsVisible, onAccountClick, onRevealControls)
+            },
         verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.dp)
     ) {
         // 账号标识行：别名/脱敏邮箱 + 套餐徽标(Plus/Pro) + 重置次数 + 状态徽标 + 呼出操作按钮
@@ -971,21 +992,24 @@ fun DeepSeekUnifiedSubscriptionBox(
     isMockMode: Boolean = false,
     refreshIntervalMinutes: Int = 15,
     onAccountClick: (CodexAccount) -> Unit = {},
+    onRevealControls: () -> Unit = {},
     onRefreshAccount: (String) -> Unit = {},
     onDeleteAccount: (String) -> Unit = {}
 ) {
     val cardBg = if (isNightMode) DarkSurface else InkSurface
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val cornerRadius = if (isCompact) 11.dp else 14.dp
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
-            .padding(horizontal = if (isCompact) 9.dp else 12.dp, vertical = if (isCompact) 3.5.dp else 5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(cornerRadius))
+            .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 4.5.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.5.dp)) {
             // 超紧凑顶栏
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1012,10 +1036,9 @@ fun DeepSeekUnifiedSubscriptionBox(
                     }
                 }
 
-                val statusColor = if (isNightMode) TechEmerald else InkStatusGreen
                 Text(
-                    text = if (accounts.size > 1) "${accounts.size}个账号" else "API余额",
-                    color = statusColor,
+                    text = if (accounts.size > 1) "${accounts.size} 账号" else "API 余额",
+                    color = mutedText,
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -1032,6 +1055,7 @@ fun DeepSeekUnifiedSubscriptionBox(
                     areControlsVisible = areControlsVisible,
                     refreshIntervalMinutes = refreshIntervalMinutes,
                     onAccountClick = { onAccountClick(accounts.first()) },
+                    onRevealControls = onRevealControls,
                     onRefreshClick = { onRefreshAccount(accounts.first().id) },
                     onDeleteClick = { onDeleteAccount(accounts.first().id) }
                 )
@@ -1053,6 +1077,7 @@ fun DeepSeekUnifiedSubscriptionBox(
                                     areControlsVisible = areControlsVisible,
                                     refreshIntervalMinutes = refreshIntervalMinutes,
                                     onAccountClick = { onAccountClick(acc) },
+                                    onRevealControls = onRevealControls,
                                     onRefreshClick = { onRefreshAccount(acc.id) },
                                     onDeleteClick = { onDeleteAccount(acc.id) },
                                     modifier = Modifier.weight(1f)
@@ -1079,6 +1104,7 @@ private fun CompactDeepSeekTile(
     areControlsVisible: Boolean,
     refreshIntervalMinutes: Int,
     onAccountClick: () -> Unit,
+    onRevealControls: () -> Unit,
     onRefreshClick: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -1132,9 +1158,14 @@ private fun CompactDeepSeekTile(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(tileBg)
-            .clickable { onAccountClick() }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                handleAccountCardTap(syncStatus, areControlsVisible, onAccountClick, onRevealControls)
+            }
             .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 3.5.dp else 4.5.dp),
         verticalArrangement = Arrangement.spacedBy(1.5.dp)
     ) {
@@ -1225,6 +1256,7 @@ private fun SingleDeepSeekAccountItem(
     areControlsVisible: Boolean,
     refreshIntervalMinutes: Int = 15,
     onAccountClick: () -> Unit,
+    onRevealControls: () -> Unit = {},
     onRefreshClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -1325,7 +1357,12 @@ private fun SingleDeepSeekAccountItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onAccountClick() },
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                handleAccountCardTap(syncStatus, areControlsVisible, onAccountClick, onRevealControls)
+            },
         verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 2.5.dp)
     ) {
         // 账号标识行：圆点 + 自定义账号名称 + 状态徽标 + 操作按钮
@@ -1524,19 +1561,21 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
     isMockMode: Boolean = false,
     refreshIntervalMinutes: Int = 15,
     onAccountClick: (CodexAccount) -> Unit = {},
+    onRevealControls: () -> Unit = {},
     onRefreshAccount: (String) -> Unit = {},
     onDeleteAccount: (String) -> Unit = {}
 ) {
     val cardBg = if (isNightMode) DarkSurface else InkSurface
     val cardBorder = if (isNightMode) DarkBorder else InkBorder
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val cornerRadius = if (isCompact) 11.dp else 14.dp
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 12.dp))
-            .padding(horizontal = if (isCompact) 9.dp else 13.dp, vertical = if (isCompact) 4.dp else 6.5.dp)
+            .border(1.dp, cardBorder, RoundedCornerShape(cornerRadius))
+            .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 4.5.dp else 6.5.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
             // 大框头部：官方 Google 4 色 Logo + Gemini API 名称 + 账号数状态
@@ -1611,6 +1650,7 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
                     areControlsVisible = areControlsVisible,
                     refreshIntervalMinutes = refreshIntervalMinutes,
                     onAccountClick = { onAccountClick(acc) },
+                    onRevealControls = onRevealControls,
                     onRefreshClick = { onRefreshAccount(acc.id) },
                     onDeleteClick = { onDeleteAccount(acc.id) }
                 )
@@ -1633,6 +1673,7 @@ private fun SingleAntigravityAccountItem(
     areControlsVisible: Boolean,
     refreshIntervalMinutes: Int = 15,
     onAccountClick: () -> Unit,
+    onRevealControls: () -> Unit = {},
     onRefreshClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -1718,7 +1759,12 @@ private fun SingleAntigravityAccountItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onAccountClick() },
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                handleAccountCardTap(syncStatus, areControlsVisible, onAccountClick, onRevealControls)
+            },
         verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.dp)
     ) {
         // 账号标识行：圆点 + 自定义账号名称 + API 徽标 + 状态徽标 + 操作按钮

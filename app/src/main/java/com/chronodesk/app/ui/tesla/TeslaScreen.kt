@@ -10,6 +10,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
@@ -34,15 +37,15 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,31 +61,33 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chronodesk.app.data.model.DailyDriveItem
+import com.chronodesk.app.data.model.LastDriveInfo
 import com.chronodesk.app.data.model.TeslaFullSnapshot
 import com.chronodesk.app.data.model.TeslaSettings
 import com.chronodesk.app.data.model.VehicleLocation
 import com.chronodesk.app.data.model.VehicleState
 import com.chronodesk.app.data.utils.TeslaPhotoManager
 import com.chronodesk.app.data.utils.TeslaVehicleRenderLoader
-import androidx.compose.runtime.LaunchedEffect
-import java.util.Locale
 import com.chronodesk.app.ui.theme.DarkBackground
 import com.chronodesk.app.ui.theme.DarkBorder
+import com.chronodesk.app.ui.theme.DarkProgressTrack
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkBackground
 import com.chronodesk.app.ui.theme.InkBorder
-import com.chronodesk.app.ui.theme.InkBorderSubtle
+import com.chronodesk.app.ui.theme.InkProgressTrack
+import com.chronodesk.app.ui.theme.InkStatusGreen
 import com.chronodesk.app.ui.theme.InkSurface
 import com.chronodesk.app.ui.theme.InkSurfaceElevated
 import com.chronodesk.app.ui.theme.InkTextPrimary
 import com.chronodesk.app.ui.theme.InkTextSecondary
 import com.chronodesk.app.ui.theme.InkTextTertiary
+import com.chronodesk.app.ui.theme.InkWarningAmber
+import com.chronodesk.app.ui.theme.InkWarningRed
 import com.chronodesk.app.ui.theme.TechAmber
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TechEmerald
@@ -90,6 +95,59 @@ import com.chronodesk.app.ui.theme.TechRose
 import com.chronodesk.app.ui.theme.TextPrimary
 import com.chronodesk.app.ui.theme.TextSecondary
 import com.chronodesk.app.ui.theme.TextTertiary
+import java.util.Locale
+
+private data class TeslaCockpitPalette(
+    val isNight: Boolean,
+    val bg: Color,
+    val cardBg: Color,
+    val innerBg: Color,
+    val border: Color,
+    val primaryText: Color,
+    val secondaryText: Color,
+    val mutedText: Color,
+    val accent: Color,
+    val positive: Color,
+    val warning: Color,
+    val danger: Color,
+    val trackBg: Color
+) {
+    companion object {
+        fun from(isNightMode: Boolean): TeslaCockpitPalette = if (isNightMode) {
+            TeslaCockpitPalette(
+                isNight = true,
+                bg = DarkBackground,
+                cardBg = DarkSurface,
+                innerBg = DarkSurfaceElevated,
+                border = DarkBorder,
+                primaryText = TextPrimary,
+                secondaryText = TextSecondary,
+                mutedText = TextTertiary,
+                accent = TechCyan,
+                positive = TechEmerald,
+                warning = TechAmber,
+                danger = TechRose,
+                trackBg = DarkProgressTrack
+            )
+        } else {
+            TeslaCockpitPalette(
+                isNight = false,
+                bg = InkBackground,
+                cardBg = InkSurface,
+                innerBg = InkSurfaceElevated,
+                border = InkBorder,
+                primaryText = InkTextPrimary,
+                secondaryText = InkTextSecondary,
+                mutedText = InkTextTertiary,
+                accent = Color(0xFF0284C7),
+                positive = InkStatusGreen,
+                warning = InkWarningAmber,
+                danger = InkWarningRed,
+                trackBg = InkProgressTrack
+            )
+        }
+    }
+}
 
 @Composable
 fun TeslaScreen(
@@ -103,7 +161,6 @@ fun TeslaScreen(
     onVisibilityChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // 监听页面进入与离开，按需管理轮询生命周期
     DisposableEffect(Unit) {
         onVisibilityChanged(true)
         onDispose {
@@ -111,18 +168,13 @@ fun TeslaScreen(
         }
     }
 
-    val bgColor = if (isNightMode) DarkBackground else InkBackground
-    val cardBg = if (isNightMode) DarkSurface else InkSurface
-    val cardBorder = if (isNightMode) DarkBorder else InkBorder
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-
+    val palette = remember(isNightMode) { TeslaCockpitPalette.from(isNightMode) }
     val context = LocalContext.current
-    var showTirePressureDetail by remember { mutableStateOf(false) } // 默认展示写实实车模型，点击切换四轮胎压俯视详情
-    var renderView by remember { mutableStateOf(TeslaVehicleRenderLoader.VIEW_STUD_3QTR) }
+
     var renderReloadTrigger by remember { mutableIntStateOf(0) }
     var showLocationMapDialog by remember { mutableStateOf(false) }
     var photoReloadTrigger by remember { mutableIntStateOf(0) }
+
     val customPhotoBitmap = remember(settings.dataSourceUid, settings.carId, photoReloadTrigger) {
         TeslaPhotoManager.loadScaledBitmap(context, settings.dataSourceUid, settings.carId)
     }
@@ -151,6 +203,7 @@ fun TeslaScreen(
         else -> Color(0xFFDC2626)
     }
 
+    val renderView = TeslaVehicleRenderLoader.VIEW_STUD_3QTR
     var vehicleRenderBitmap by remember(resolvedModel, resolvedColor, renderView) {
         mutableStateOf(
             TeslaVehicleRenderLoader.loadCachedBitmap(context, resolvedModel, resolvedColor, renderView)
@@ -194,8 +247,7 @@ fun TeslaScreen(
                     TeslaPhotoManager.savePhoto(context, settings.dataSourceUid, settings.carId, stream)
                 }
                 photoReloadTrigger++
-                showTirePressureDetail = false
-                Toast.makeText(context, "车辆照片已更新", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "车辆实拍已更新", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "照片保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -205,41 +257,40 @@ fun TeslaScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(bgColor)
+            .background(palette.bg)
             .padding(
-                start = if (isCompact) 14.dp else 20.dp,
-                end = if (isCompact) 14.dp else 20.dp,
+                start = if (isCompact) 12.dp else 18.dp,
+                end = if (isCompact) 12.dp else 18.dp,
                 top = if (isCompact) 6.dp else 10.dp,
                 bottom = if (isCompact) 16.dp else 20.dp
             )
     ) {
-        // ================= 顶栏：车辆名称 + 状态徽标 + 小时钟 + 同步时间与控制胶囊 =================
-        TeslaTopBar(
+        TeslaCockpitTopBar(
             carName = snapshot.car?.displayName ?: settings.carName.takeIf { it.isNotBlank() } ?: "Tesla",
-            state = snapshot.state.displayState,
-            isCharging = snapshot.state.isCharging,
-            isAsleep = snapshot.state.isAsleep,
+            modelAndColor = "$resolvedModel · $colorDisplayLabel",
+            paintDotColor = paintDotColor,
+            state = snapshot.state,
+            chargerPowerKw = snapshot.charging.chargerPower,
             isLoading = snapshot.connectionState.isLoading,
             sampledTime = snapshot.snapshot.formattedSampledTime,
             lastSyncTime = snapshot.connectionState.formattedLastSuccessTime,
             currentTimeString = currentTimeString,
-            isNightMode = isNightMode,
+            palette = palette,
             isCompact = isCompact,
             onRefresh = onRefresh,
             onOpenSettings = onOpenSettings
         )
 
-        Spacer(modifier = Modifier.height(if (isCompact) 4.dp else 8.dp))
+        Spacer(modifier = Modifier.height(if (isCompact) 6.dp else 10.dp))
 
-        // ================= 未配置时的优雅指引卡片 =================
         if (!settings.isConfigured) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(14.dp)),
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(palette.cardBg)
+                    .border(1.dp, palette.border, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -249,37 +300,33 @@ fun TeslaScreen(
                     Icon(
                         imageVector = Icons.Default.DirectionsCar,
                         contentDescription = null,
-                        tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                        modifier = Modifier.size(36.dp)
+                        tint = palette.accent,
+                        modifier = Modifier.size(34.dp)
                     )
                     Text(
-                        text = "未配置 TeslaMate 车辆监控",
-                        color = primaryText,
+                        text = "尚未连接 TeslaMate 数据源",
+                        color = palette.primaryText,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "在设置中绑定 TeslaMate 即可查看车辆状态\n通过 Grafana API 直连本地数据源，只读采集车辆状态（不唤醒车辆）",
-                        color = secondaryText,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 17.sp
+                        text = "只读接入 Grafana PostgreSQL，实时展示车型车况、中文定位与最近行程",
+                        color = palette.secondaryText,
+                        fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Box(
                         modifier = Modifier
-                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isNightMode) TechCyan.copy(alpha = 0.15f) else Color(0xFFE0F2FE))
-                            .border(1.dp, if (isNightMode) TechCyan else Color(0xFF0284C7), RoundedCornerShape(8.dp))
+                            .background(palette.accent)
                             .clickable { onOpenSettings() }
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .padding(horizontal = 16.dp, vertical = 9.dp)
                     ) {
                         Text(
-                            text = "前往设置配置连接",
-                            color = if (isNightMode) TechCyan else Color(0xFF0369A1),
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = "前往配置 TeslaMate / Grafana",
+                            color = if (isNightMode) Color.Black else Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -287,482 +334,216 @@ fun TeslaScreen(
             return
         }
 
-        // ================= 主体区域：横向三列排版 (~60% 高度) =================
+        // 双栏非对称驾驶舱主体：左展台车模 + 续航电量 + 四轮数值，右可扩展模块化信息网格
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1.35f),
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 8.dp else 12.dp)
         ) {
-            // 左列：电量 SOC 大字 + 续航 + 充电功率与充入电量
-            Box(
+            // ================= 左栏：展台级车模 + 电量/续航 + 四轮数字胎压 =================
+            TeslaShowroomHeroCard(
+                customPhotoBitmap = customPhotoBitmap,
+                vehicleRenderBitmap = vehicleRenderBitmap,
+                isLoadingRender = isLoadingRender,
+                renderLoadFailed = renderLoadFailed,
+                resolvedModel = resolvedModel,
+                batteryLevel = snapshot.snapshot.batteryLevel,
+                ratedRangeKm = snapshot.snapshot.ratedBatteryRangeKm,
+                estRangeKm = snapshot.snapshot.estBatteryRangeKm,
+                isCharging = snapshot.state.isCharging,
+                chargerPower = snapshot.charging.chargerPower,
+                chargeAdded = snapshot.charging.chargeEnergyAdded,
+                fl = snapshot.snapshot.tpmsPressureFl,
+                fr = snapshot.snapshot.tpmsPressureFr,
+                rl = snapshot.snapshot.tpmsPressureRl,
+                rr = snapshot.snapshot.tpmsPressureRr,
+                palette = palette,
+                isCompact = isCompact,
+                onPickPhoto = { photoPickerLauncher.launch("image/*") },
+                onRestoreModel = {
+                    TeslaPhotoManager.deletePhoto(context, settings.dataSourceUid, settings.carId)
+                    photoReloadTrigger++
+                    Toast.makeText(context, "已恢复 3D 车辆模型", Toast.LENGTH_SHORT).show()
+                },
+                onRetryRender = { renderReloadTrigger++ },
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(if (isCompact) 0.43f else 0.42f)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 10.dp else 14.dp)
-            ) {
-                TeslaBatteryCardContent(
-                    snapshot = snapshot,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact
-                )
-            }
+            )
 
-            // 中列：默认写实 3D 实车模型 / 自定义照片，支持一键切换独立无遮挡的四轮胎压俯视图
-            Box(
+            // ================= 右栏：可扩展模块化 Bento 指标矩阵 =================
+            Column(
                 modifier = Modifier
-                    .weight(1.25f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 7.dp else 10.dp),
-                contentAlignment = Alignment.Center
+                    .weight(if (isCompact) 0.57f else 0.58f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
             ) {
-                val actionBg = if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
-                val actionBorder = if (isNightMode) DarkBorder else InkBorder
-                val accentTint = if (isNightMode) TechCyan else Color(0xFF0284C7)
-
-                if (!showTirePressureDetail) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.SpaceBetween,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                // 第一行：最后上报位置（中文） + 最后行驶里程（新增）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1.04f),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                ) {
+                    TeslaModuleCard(
+                        palette = palette,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .weight(1.12f)
+                            .fillMaxHeight()
+                            .clickable(enabled = snapshot.location.isValid) {
+                                showLocationMapDialog = true
+                            }
                     ) {
-                        // 顶部独立操作行：左侧车型+车漆徽标，右侧零遮挡小胶囊
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(RoundedCornerShape(3.5.dp))
-                                        .background(paintDotColor)
-                                        .border(0.6.dp, cardBorder, RoundedCornerShape(3.5.dp))
-                                )
-                                Text(
-                                    text = "$resolvedModel · $colorDisplayLabel",
-                                    color = primaryText,
-                                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (customPhotoBitmap != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(actionBg)
-                                            .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
-                                            .clickable {
-                                                TeslaPhotoManager.deletePhoto(context, settings.dataSourceUid, settings.carId)
-                                                photoReloadTrigger++
-                                                Toast.makeText(context, "已恢复 3D 实车模型", Toast.LENGTH_SHORT).show()
-                                            }
-                                            .padding(horizontal = 5.dp, vertical = 2.5.dp)
-                                    ) {
-                                        Text(
-                                            text = if (isCompact) "实车" else "恢复实车",
-                                            color = secondaryText,
-                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(actionBg)
-                                            .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
-                                            .clickable {
-                                                renderView = if (renderView == TeslaVehicleRenderLoader.VIEW_STUD_3QTR) {
-                                                    TeslaVehicleRenderLoader.VIEW_SIDE
-                                                } else {
-                                                    TeslaVehicleRenderLoader.VIEW_STUD_3QTR
-                                                }
-                                            }
-                                            .padding(horizontal = 5.dp, vertical = 2.5.dp)
-                                    ) {
-                                        Text(
-                                            text = if (renderView == TeslaVehicleRenderLoader.VIEW_STUD_3QTR) "侧面" else "3/4",
-                                            color = secondaryText,
-                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(actionBg)
-                                        .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
-                                        .clickable { showTirePressureDetail = true }
-                                        .padding(horizontal = 5.dp, vertical = 2.5.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.SwapHoriz,
-                                            contentDescription = "查看四轮胎压",
-                                            tint = accentTint,
-                                            modifier = Modifier.size(10.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Text(
-                                            text = "胎压",
-                                            color = primaryText,
-                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(actionBg)
-                                        .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
-                                        .clickable { photoPickerLauncher.launch("image/*") }
-                                        .padding(horizontal = 5.dp, vertical = 2.5.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Image,
-                                            contentDescription = "自定义车辆照片",
-                                            tint = accentTint,
-                                            modifier = Modifier.size(10.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Text(
-                                            text = if (isCompact) "照片" else "换照片",
-                                            color = primaryText,
-                                            fontSize = if (isCompact) 8.5.sp else 9.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // 中央实车渲染展示区
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .padding(vertical = if (isCompact) 2.dp else 4.dp)
-                                .then(
-                                    if (isNightMode) {
-                                        Modifier.background(
-                                            brush = Brush.radialGradient(
-                                                colors = listOf(
-                                                    Color(0xFF1E3A5F).copy(alpha = 0.55f),
-                                                    Color(0xFF0F223D).copy(alpha = 0.25f),
-                                                    Color.Transparent
-                                                )
-                                            ),
-                                            shape = RoundedCornerShape(10.dp)
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            when {
-                                customPhotoBitmap != null -> {
-                                    Image(
-                                        bitmap = customPhotoBitmap,
-                                        contentDescription = "车辆自定义照片",
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { showTirePressureDetail = true }
-                                    )
-                                }
-                                vehicleRenderBitmap != null -> {
-                                    Image(
-                                        bitmap = vehicleRenderBitmap!!,
-                                        contentDescription = "$resolvedModel $colorDisplayLabel 实车模型",
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clickable {
-                                                renderView = if (renderView == TeslaVehicleRenderLoader.VIEW_STUD_3QTR) {
-                                                    TeslaVehicleRenderLoader.VIEW_SIDE
-                                                } else {
-                                                    TeslaVehicleRenderLoader.VIEW_STUD_3QTR
-                                                }
-                                            }
-                                    )
-                                }
-                                else -> {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        VehicleSilhouetteCanvas(
-                                            model = snapshot.car?.model,
-                                            isNightMode = isNightMode,
-                                            isCompact = isCompact,
-                                            accentBodyColor = paintDotColor
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomCenter)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(actionBg.copy(alpha = 0.9f))
-                                                .clickable(enabled = renderLoadFailed) { renderReloadTrigger++ }
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = if (isLoadingRender) "正在加载实车模型…" else "离线轮廓 · 点击重试加载实车",
-                                                color = if (renderLoadFailed) accentTint else secondaryText,
-                                                fontSize = 8.5.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 底部紧凑四轮胎压摘要条
-                        CompactTpmsSummaryBar(
-                            fl = snapshot.snapshot.tpmsPressureFl,
-                            fr = snapshot.snapshot.tpmsPressureFr,
-                            rl = snapshot.snapshot.tpmsPressureRl,
-                            rr = snapshot.snapshot.tpmsPressureRr,
-                            isNightMode = isNightMode,
-                            isCompact = isCompact,
-                            onClick = { showTirePressureDetail = true }
+                        LastLocationModuleContent(
+                            location = snapshot.location,
+                            vehicleState = snapshot.state,
+                            palette = palette,
+                            isCompact = isCompact
                         )
                     }
-                } else {
-                    // 俯视四轮胎压图：顶部独立操作条，完全消除旧版按钮遮挡右前胎压的缺陷
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.SpaceBetween,
-                        horizontalAlignment = Alignment.CenterHorizontally
+
+                    TeslaModuleCard(
+                        palette = palette,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .weight(0.88f)
+                            .fillMaxHeight()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(actionBg)
-                                    .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
-                                    .clickable { showTirePressureDetail = false }
-                                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.SwapHoriz,
-                                        contentDescription = "返回实车模型",
-                                        tint = accentTint,
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = if (customPhotoBitmap != null) "返回照片" else "返回实车",
-                                        color = primaryText,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(actionBg)
-                                    .border(0.8.dp, actionBorder, RoundedCornerShape(4.dp))
-                                    .clickable { photoPickerLauncher.launch("image/*") }
-                                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Image,
-                                        contentDescription = "自定义照片",
-                                        tint = accentTint,
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = if (customPhotoBitmap != null) "换照片" else "自定义照片",
-                                        color = primaryText,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            TirePressureDiagram(
-                                snapshot = snapshot.snapshot,
-                                isNightMode = isNightMode,
-                                isCompact = isCompact
-                            )
-                        }
+                        LastDriveModuleContent(
+                            lastDrive = snapshot.drives.lastDrive,
+                            palette = palette,
+                            isCompact = isCompact
+                        )
                     }
                 }
-            }
 
-            // 右列：总里程 + 今日行驶 + 今日平均能耗 + 今日行程数
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 10.dp else 14.dp)
-            ) {
-                TeslaOdometerAndTodayContent(
-                    snapshot = snapshot,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(if (isCompact) 6.dp else 9.dp))
-
-        // ================= 底部辅助区域：4 块数据统计与位置卡片 (~40% 高度) =================
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.9f),
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
-        ) {
-            // 底部 1：近 7 天能耗趋势
-            Box(
-                modifier = Modifier
-                    .weight(1.05f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 7.dp else 10.dp)
-            ) {
-                Recent7DaysEnergyCard(
-                    items = snapshot.drives.recent7DaysDrives,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact
-                )
-            }
-
-            // 底部 2：本月行驶与充入电量
-            Box(
-                modifier = Modifier
-                    .weight(0.95f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 7.dp else 10.dp)
-            ) {
-                MonthlySummaryCard(
-                    monthDistance = snapshot.drives.monthDistanceKm,
-                    monthTrips = snapshot.drives.monthTrips,
-                    monthCharge = snapshot.charging.monthCharge,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact
-                )
-            }
-
-            // 底部 3：车内车外温控环境
-            Box(
-                modifier = Modifier
-                    .weight(0.95f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(if (isCompact) 7.dp else 10.dp)
-            ) {
-                ClimateSummaryCard(
-                    insideTemp = snapshot.snapshot.insideTemp,
-                    outsideTemp = snapshot.snapshot.outsideTemp,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact
-                )
-            }
-
-            // 底部 4：最后有效位置与地图导航
-            Box(
-                modifier = Modifier
-                    .weight(1.05f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .clickable(enabled = snapshot.location.isValid) {
-                        showLocationMapDialog = true
+                // 第二行：今日行驶与均耗 + 累计里程与座舱温控
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(0.92f),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                ) {
+                    TeslaModuleCard(
+                        palette = palette,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
+                        TodayDriveModuleContent(
+                            todayDist = snapshot.drives.todayDistanceKm,
+                            todayTrips = snapshot.drives.todayTrips,
+                            todayWhKm = snapshot.drives.todayEstimatedWhPerKm,
+                            todayChargeKwh = snapshot.charging.todayCharge,
+                            palette = palette,
+                            isCompact = isCompact
+                        )
                     }
-                    .padding(if (isCompact) 7.dp else 10.dp)
-            ) {
-                TeslaLocationCard(
-                    location = snapshot.location,
-                    vehicleState = snapshot.state,
-                    isNightMode = isNightMode,
-                    isCompact = isCompact,
-                    onOpenMap = { showLocationMapDialog = true }
-                )
+
+                    TeslaModuleCard(
+                        palette = palette,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
+                        OdometerAndClimateModuleContent(
+                            odometer = snapshot.snapshot.odometer,
+                            insideTemp = snapshot.snapshot.insideTemp,
+                            outsideTemp = snapshot.snapshot.outsideTemp,
+                            palette = palette,
+                            isCompact = isCompact
+                        )
+                    }
+                }
+
+                // 第三行：近 7 天里程趋势 + 本月汇总
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1.04f),
+                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                ) {
+                    TeslaModuleCard(
+                        palette = palette,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .weight(1.12f)
+                            .fillMaxHeight()
+                    ) {
+                        Recent7DaysTrendModuleContent(
+                            items = snapshot.drives.recent7DaysDrives,
+                            palette = palette,
+                            isCompact = isCompact
+                        )
+                    }
+
+                    TeslaModuleCard(
+                        palette = palette,
+                        isCompact = isCompact,
+                        modifier = Modifier
+                            .weight(0.88f)
+                            .fillMaxHeight()
+                    ) {
+                        MonthlySummaryModuleContent(
+                            monthDistance = snapshot.drives.monthDistanceKm,
+                            monthTrips = snapshot.drives.monthTrips,
+                            monthCharge = snapshot.charging.monthCharge,
+                            palette = palette,
+                            isCompact = isCompact
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/**
- * 屏幕顶栏：车辆名称 + 状态 + 小时钟 + 同步时间与控制胶囊
- */
 @Composable
-private fun TeslaTopBar(
+private fun TeslaModuleCard(
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 12.dp else 14.dp))
+            .background(palette.cardBg)
+            .border(1.dp, palette.border, RoundedCornerShape(if (isCompact) 12.dp else 14.dp))
+            .padding(horizontal = if (isCompact) 9.dp else 12.dp, vertical = if (isCompact) 7.dp else 10.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+        content = content
+    )
+}
+
+@Composable
+private fun TeslaCockpitTopBar(
     carName: String,
-    state: String,
-    isCharging: Boolean,
-    isAsleep: Boolean,
+    modelAndColor: String,
+    paintDotColor: Color,
+    state: VehicleState,
+    chargerPowerKw: Double?,
     isLoading: Boolean,
     sampledTime: String?,
     lastSyncTime: String,
     currentTimeString: String,
-    isNightMode: Boolean,
+    palette: TeslaCockpitPalette,
     isCompact: Boolean,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val buttonBg = if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
-    val buttonBorder = if (isNightMode) DarkBorder else InkBorder
-
     val (badgeText, badgeColor) = when {
-        isCharging -> "充电中" to (if (isNightMode) TechCyan else Color(0xFF0284C7))
-        isAsleep -> "休眠" to (if (isNightMode) TextTertiary else InkTextTertiary)
-        state == "行驶中" -> "行驶中" to (if (isNightMode) TechEmerald else Color(0xFF16A34A))
-        else -> state to (if (isNightMode) TechEmerald else Color(0xFF16A34A))
+        state.isCharging -> {
+            val kw = chargerPowerKw?.takeIf { it > 0 }?.let { " ${String.format(Locale.US, "%.1f", it)}kW" } ?: ""
+            "充电中$kw" to palette.accent
+        }
+        state.isDriving -> "行驶中" to palette.positive
+        state.isAsleep -> "休眠停靠" to palette.mutedText
+        else -> state.displayState to palette.positive
     }
 
     Row(
@@ -770,456 +551,471 @@ private fun TeslaTopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 左侧：车辆名称与当前状态
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp),
+            modifier = Modifier.weight(1.2f, fill = false)
         ) {
-            Icon(
-                imageVector = Icons.Default.DirectionsCar,
-                contentDescription = null,
-                tint = if (isNightMode) TechCyan else InkTextPrimary,
-                modifier = Modifier.size(if (isCompact) 18.dp else 22.dp)
+            Box(
+                modifier = Modifier
+                    .size(if (isCompact) 8.dp else 10.dp)
+                    .clip(CircleShape)
+                    .background(badgeColor)
             )
             Text(
                 text = carName,
-                color = primaryText,
-                fontSize = if (isCompact) 14.5.sp else 17.sp,
-                fontWeight = FontWeight.Bold
+                color = palette.primaryText,
+                fontSize = if (isCompact) 15.sp else 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(badgeColor.copy(alpha = 0.15f))
-                    .border(0.8.dp, badgeColor.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(badgeColor.copy(alpha = 0.14f))
+                    .border(0.8.dp, badgeColor.copy(alpha = 0.45f), RoundedCornerShape(5.dp))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = badgeText,
                     color = badgeColor,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = if (isCompact) 9.sp else 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
                 )
+            }
+            if (!isCompact) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(palette.innerBg)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(paintDotColor)
+                    )
+                    Text(
+                        text = modelAndColor,
+                        color = palette.secondaryText,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
             }
         }
 
-        // 中间：小尺寸数字时钟
         Text(
             text = currentTimeString,
-            color = if (isNightMode) TechCyan else InkTextPrimary,
-            fontSize = if (isCompact) 13.sp else 15.sp,
+            color = palette.accent,
+            fontSize = if (isCompact) 12.5.sp else 15.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace
         )
 
-        // 右侧：明确区分「车辆上报于」与「同步于」及操作按钮
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 8.dp)
         ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "车辆上报于 ${sampledTime ?: "—"}",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "同步于 $lastSyncTime",
-                    color = secondaryText.copy(alpha = 0.85f),
-                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+            Text(
+                text = if (sampledTime != null) "上报 $sampledTime" else "同步 $lastSyncTime",
+                color = palette.mutedText,
+                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
 
-            // 刷新按钮
-            val infiniteTransition = rememberInfiniteTransition(label = "spin")
-            val spinAngle by infiniteTransition.animateFloat(
+            val infiniteTransition = rememberInfiniteTransition(label = "teslaRefresh")
+            val spin by infiniteTransition.animateFloat(
                 initialValue = 0f,
                 targetValue = 360f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 900, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "spinAngle"
+                animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing), RepeatMode.Restart),
+                label = "teslaRefreshAngle"
             )
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                    .clickable { onRefresh() }
-                    .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.dp else 4.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "刷新",
-                        tint = if (isNightMode) TechCyan else InkTextPrimary,
-                        modifier = Modifier
-                            .size(if (isCompact) 11.dp else 12.dp)
-                            .then(if (isLoading) Modifier.rotate(spinAngle) else Modifier)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "刷新",
-                        color = primaryText,
-                        fontSize = if (isCompact) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            // 设置按钮
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(buttonBg)
-                    .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                    .clickable { onOpenSettings() }
-                    .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.dp else 4.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "设置",
-                        tint = if (isNightMode) TechCyan else InkTextPrimary,
-                        modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "设置",
-                        color = primaryText,
-                        fontSize = if (isCompact) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 左列：电量 SOC 大字 + 续航 + 充电功率
- */
-@Composable
-private fun TeslaBatteryCardContent(
-    snapshot: TeslaFullSnapshot,
-    isNightMode: Boolean,
-    isCompact: Boolean
-) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val battery = snapshot.snapshot.batteryLevel
-    val ratedKm = snapshot.snapshot.ratedBatteryRangeKm
-    val estKm = snapshot.snapshot.estBatteryRangeKm
-    val isCharging = snapshot.state.isCharging
-    val chargerPower = snapshot.charging.chargerPower
-    val energyAdded = snapshot.charging.chargeEnergyAdded
-
-    val progressColor = if (isNightMode) {
-        when {
-            battery == null -> TechCyan
-            battery <= 15 -> TechRose
-            battery <= 30 -> TechAmber
-            else -> TechEmerald
-        }
-    } else {
-        when {
-            battery == null -> Color(0xFF0284C7)
-            battery <= 15 -> Color(0xFFDC2626)
-            battery <= 30 -> Color(0xFFD97706)
-            else -> Color(0xFF16A34A)
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "剩余电量",
-                color = secondaryText,
-                fontSize = if (isCompact) 11.sp else 12.5.sp,
-                fontWeight = FontWeight.Medium
-            )
-            if (isCharging) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Bolt,
-                        contentDescription = null,
-                        tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = if (chargerPower != null) "${chargerPower.toInt()} kW" else "充电中",
-                        color = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        // 大号 SOC 数字
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = if (battery != null) "$battery" else "—",
-                color = primaryText,
-                fontSize = if (isCompact) 42.sp else 50.sp,
-                fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = if (isCompact) 42.sp else 50.sp
-            )
-            Text(
-                text = "%",
-                color = secondaryText,
-                fontSize = if (isCompact) 18.sp else 22.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-        }
-
-        // 电量水平进度条
-        LinearProgressIndicator(
-            progress = { ((battery ?: 0) / 100f).coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isCompact) 6.dp else 8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = progressColor,
-            trackColor = if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated
-        )
-
-        // 额定续航与预估续航
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "额定续航",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                )
-                Text(
-                    text = if (ratedKm != null) "${ratedKm.toInt()} km" else "— km",
-                    color = primaryText,
-                    fontSize = if (isCompact) 13.sp else 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            if (isCharging && energyAdded != null) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "充入电量",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                    )
-                    Text(
-                        text = String.format("+%.1f kWh", energyAdded),
-                        color = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                        fontSize = if (isCompact) 13.sp else 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            } else if (estKm != null) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "预估续航",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                    )
-                    Text(
-                        text = "${estKm.toInt()} km",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 13.sp else 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * 右列：总里程 + 今日已完成行驶 + 今日平均能耗
- */
-@Composable
-private fun TeslaOdometerAndTodayContent(
-    snapshot: TeslaFullSnapshot,
-    isNightMode: Boolean,
-    isCompact: Boolean
-) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-    val odometer = snapshot.snapshot.odometer
-    val todayDist = snapshot.drives.todayDistanceKm
-    val todayWhKm = snapshot.drives.todayEstimatedWhPerKm
-    val todayTrips = snapshot.drives.todayTrips ?: 0
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        // 总里程
-        Column {
-            Text(
-                text = "累计总里程",
-                color = secondaryText,
-                fontSize = if (isCompact) 10.5.sp else 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (odometer != null) String.format("%,.1f km", odometer) else "— km",
-                color = primaryText,
-                fontSize = if (isCompact) 17.sp else 20.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-
-        // 今日已完成行程
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "今日行驶",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 10.sp else 11.5.sp
-                )
-                Text(
-                    text = "${todayTrips}次行程",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (todayDist != null) String.format("%.1f km", todayDist) else "0.0 km",
-                color = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                fontSize = if (isCompact) 17.sp else 20.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-
-        // 今日平均能耗 (估算)
-        Column {
-            Text(
-                text = "今日平均能耗 (估算)",
-                color = secondaryText,
-                fontSize = if (isCompact) 10.sp else 11.5.sp
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (todayWhKm != null && todayWhKm > 0) "${todayWhKm.toInt()} Wh/km" else "— Wh/km",
-                color = primaryText,
-                fontSize = if (isCompact) 14.sp else 16.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-    }
-}
-
-/**
- * 底部卡片 1：近 7 天能耗趋势
- */
-@Composable
-private fun Recent7DaysEnergyCard(
-    items: List<DailyDriveItem>,
-    isNightMode: Boolean,
-    isCompact: Boolean
-) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "近 7 天行驶里程",
-                color = primaryText,
-                fontSize = if (isCompact) 10.5.sp else 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            val total7Dist = items.sumOf { it.distanceKm }
-            val totalText = if (items.isEmpty()) "—" else if (total7Dist == 0.0) "0 km" else String.format("%.1f km", total7Dist)
-            Text(
-                text = "累计 $totalText",
-                color = secondaryText,
-                fontSize = if (isCompact) 9.5.sp else 10.5.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.height(if (isCompact) 4.dp else 6.dp))
-
-        if (items.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
+                    .sizeIn(minWidth = 42.dp, minHeight = 36.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(palette.innerBg)
+                    .border(1.dp, palette.border, RoundedCornerShape(7.dp))
+                    .clickable(enabled = !isLoading) { onRefresh() }
+                    .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 4.dp else 5.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "近 7 天行驶里程: —",
-                    color = secondaryText,
-                    fontSize = 11.sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "刷新车辆",
+                        tint = palette.accent,
+                        modifier = Modifier
+                            .size(if (isCompact) 11.dp else 13.dp)
+                            .rotate(if (isLoading) spin else 0f)
+                    )
+                    Text(
+                        text = if (isLoading) "同步中" else "刷新",
+                        color = palette.primaryText,
+                        fontSize = if (isCompact) 9.5.sp else 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
-        } else {
+
+            Box(
+                modifier = Modifier
+                    .sizeIn(minWidth = 42.dp, minHeight = 36.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(palette.innerBg)
+                    .border(1.dp, palette.border, RoundedCornerShape(7.dp))
+                    .clickable { onOpenSettings() }
+                    .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 4.dp else 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "车辆设置",
+                        tint = palette.secondaryText,
+                        modifier = Modifier.size(if (isCompact) 11.dp else 13.dp)
+                    )
+                    Text(
+                        text = "设置",
+                        color = palette.primaryText,
+                        fontSize = if (isCompact) 9.5.sp else 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeslaShowroomHeroCard(
+    customPhotoBitmap: androidx.compose.ui.graphics.ImageBitmap?,
+    vehicleRenderBitmap: androidx.compose.ui.graphics.ImageBitmap?,
+    isLoadingRender: Boolean,
+    renderLoadFailed: Boolean,
+    resolvedModel: String,
+    batteryLevel: Int?,
+    ratedRangeKm: Double?,
+    estRangeKm: Double?,
+    isCharging: Boolean,
+    chargerPower: Double?,
+    chargeAdded: Double?,
+    fl: Double?,
+    fr: Double?,
+    rl: Double?,
+    rr: Double?,
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean,
+    onPickPhoto: () -> Unit,
+    onRestoreModel: () -> Unit,
+    onRetryRender: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val soc = batteryLevel ?: 0
+    val socColor = when {
+        isCharging -> palette.accent
+        batteryLevel == null -> palette.secondaryText
+        soc <= 10 -> palette.danger
+        soc <= 20 -> palette.warning
+        else -> palette.positive
+    }
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(if (isCompact) 13.dp else 16.dp))
+            .background(palette.cardBg)
+            .border(1.dp, palette.border, RoundedCornerShape(if (isCompact) 13.dp else 16.dp))
+            .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 8.dp else 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // 顶部精简操作行（无 SVG 切换按钮，仅保留自定义实拍更换入口）
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (customPhotoBitmap != null) "$resolvedModel · 实拍照片" else "$resolvedModel · 数字车展",
+                color = palette.mutedText,
+                fontSize = if (isCompact) 9.sp else 10.5.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (customPhotoBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(palette.innerBg)
+                            .border(0.6.dp, palette.border, RoundedCornerShape(5.dp))
+                            .clickable { onRestoreModel() }
+                            .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    ) {
+                        Text(
+                            text = "恢复车模",
+                            color = palette.secondaryText,
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(palette.innerBg)
+                        .border(0.6.dp, palette.border, RoundedCornerShape(5.dp))
+                        .clickable { onPickPhoto() }
+                        .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = palette.accent,
+                            modifier = Modifier.size(if (isCompact) 9.dp else 11.dp)
+                        )
+                        Text(
+                            text = if (customPhotoBitmap != null) "更换" else "换实拍",
+                            color = palette.primaryText,
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // 中部：高清 3D 车辆模型或实拍图（带地台光影，完全移除 SVG）
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(vertical = if (isCompact) 2.dp else 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (customPhotoBitmap != null) {
+                Image(
+                    bitmap = customPhotoBitmap,
+                    contentDescription = "车辆实拍照片",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(10.dp))
+                )
+            } else {
+                // 地台光影氛围
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.62f)
+                    if (palette.isNight) {
+                        drawOval(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color(0xFF1D4ED8).copy(alpha = 0.22f), Color.Transparent),
+                                center = center,
+                                radius = size.width * 0.56f
+                            )
+                        )
+                    } else {
+                        drawOval(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color(0xFF0F172A).copy(alpha = 0.08f), Color.Transparent),
+                                center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.78f),
+                                radius = size.width * 0.45f
+                            )
+                        )
+                    }
+                }
+
+                when {
+                    vehicleRenderBitmap != null -> {
+                        Image(
+                            bitmap = vehicleRenderBitmap,
+                            contentDescription = "$resolvedModel 3D 车模",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = if (isCompact) 4.dp else 6.dp)
+                        )
+                    }
+                    isLoadingRender -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = palette.accent
+                            )
+                            Text(
+                                text = "正在加载高清车模…",
+                                color = palette.mutedText,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                    else -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.innerBg)
+                                .clickable { onRetryRender() }
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsCar,
+                                contentDescription = null,
+                                tint = palette.accent,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Text(
+                                text = if (renderLoadFailed) "车模加载失败 · 点击重试" else "点击加载车模",
+                                color = palette.secondaryText,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 车模下方核心焦点：剩余电量 % + 额定续航 km + 进度条
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp)) {
             Row(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                val maxDist = (items.maxOfOrNull { it.distanceKm } ?: 1.0).coerceAtLeast(10.0)
-                items.takeLast(7).forEach { item ->
-                    val ratio = (item.distanceKm / maxDist).toFloat().coerceIn(0.08f, 1f)
-                    val barColor = if (isNightMode) TechCyan else Color(0xFF0284C7)
+                // 左侧大号电量百分比
+                Row(
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = if (batteryLevel != null) "$batteryLevel" else "—",
+                        color = socColor,
+                        fontSize = if (isCompact) 26.sp else 33.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = if (isCompact) 28.sp else 35.sp
+                    )
+                    Column(modifier = Modifier.padding(bottom = 3.dp)) {
+                        Text(
+                            text = "%",
+                            color = socColor,
+                            fontSize = if (isCompact) 11.sp else 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "剩余电量",
+                            color = palette.mutedText,
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                        )
+                    }
+                }
 
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.weight(1f)
+                // 右侧合理大号额定续航里程
+                Column(horizontalAlignment = Alignment.End) {
+                    if (isCharging && chargerPower != null && chargerPower > 0) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = palette.accent,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            val addedStr = chargeAdded?.let { " · +${String.format(Locale.US, "%.1f", it)}kWh" } ?: ""
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", chargerPower)}kW$addedStr",
+                                color = palette.accent,
+                                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (ratedRangeKm != null) "${ratedRangeKm.toInt()} km" else "— km",
+                        color = palette.primaryText,
+                        fontSize = if (isCompact) 19.sp else 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    val estLabel = estRangeKm?.let { "预估 ${it.toInt()} km" } ?: "额定续航"
+                    Text(
+                        text = estLabel,
+                        color = palette.mutedText,
+                        fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                    )
+                }
+            }
+
+            // 电量填充条
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isCompact) 5.5.dp else 7.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(palette.trackBg)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth((soc / 100f).coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(socColor)
+                )
+            }
+
+            // 底部精简四轮胎压纯数字条（bar，无 SVG 示意图）
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(palette.innerBg)
+                    .padding(horizontal = if (isCompact) 6.dp else 10.dp, vertical = if (isCompact) 4.dp else 5.5.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("左前" to fl, "右前" to fr, "左后" to rl, "右后" to rr).forEach { (wheel, value) ->
+                    val abnormal = value != null && (value < 2.50 || value > 3.30)
+                    val vColor = when {
+                        value == null -> palette.mutedText
+                        abnormal -> palette.warning
+                        else -> palette.positive
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = if (item.distanceKm > 0) "${item.distanceKm.toInt()}" else "0",
-                            color = secondaryText,
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace
+                            text = wheel,
+                            color = palette.secondaryText,
+                            fontSize = if (isCompact) 8.sp else 9.5.sp
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Box(
-                            modifier = Modifier
-                                .width(if (isCompact) 8.dp else 12.dp)
-                                .fillMaxHeight(ratio * 0.7f)
-                                .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                                .background(barColor)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = item.dateString.takeLast(2), // 仅显示日期 22, 23
-                            color = secondaryText,
-                            fontSize = 8.5.sp,
+                            text = if (value != null) String.format(Locale.US, "%.2f", value) else "--",
+                            color = vColor,
+                            fontSize = if (isCompact) 8.5.sp else 10.sp,
+                            fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
                     }
@@ -1229,337 +1025,446 @@ private fun Recent7DaysEnergyCard(
     }
 }
 
-/**
- * 底部卡片 2：本月行驶与充入电量
- */
 @Composable
-private fun MonthlySummaryCard(
-    monthDistance: Double?,
-    monthTrips: Int?,
-    monthCharge: Double?,
-    isNightMode: Boolean,
-    isCompact: Boolean
-) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = "本月汇总",
-            color = primaryText,
-            fontSize = if (isCompact) 10.5.sp else 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "本月里程",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                )
-                Text(
-                    text = if (monthDistance != null) String.format("%.1f km", monthDistance) else "0.0 km",
-                    color = primaryText,
-                    fontSize = if (isCompact) 13.sp else 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "本月充入",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                )
-                Text(
-                    text = if (monthCharge != null) String.format("%.1f kWh", monthCharge) else "0.0 kWh",
-                    color = if (isNightMode) TechEmerald else Color(0xFF16A34A),
-                    fontSize = if (isCompact) 13.sp else 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-
-        Text(
-            text = "累计完成 ${monthTrips ?: 0} 次行程",
-            color = secondaryText,
-            fontSize = if (isCompact) 9.sp else 10.sp
-        )
-    }
-}
-
-/**
- * 底部卡片 3：车内车外温控环境
- */
-@Composable
-private fun ClimateSummaryCard(
-    insideTemp: Double?,
-    outsideTemp: Double?,
-    isNightMode: Boolean,
-    isCompact: Boolean
-) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "车辆温控",
-                color = primaryText,
-                fontSize = if (isCompact) 10.5.sp else 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Icon(
-                imageVector = Icons.Default.Thermostat,
-                contentDescription = null,
-                tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                modifier = Modifier.size(14.dp)
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "车内温度",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                )
-                Text(
-                    text = if (insideTemp != null) String.format("%.1f°C", insideTemp) else "—°C",
-                    color = primaryText,
-                    fontSize = if (isCompact) 13.5.sp else 15.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "车外温度",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 9.5.sp else 10.5.sp
-                )
-                Text(
-                    text = if (outsideTemp != null) String.format("%.1f°C", outsideTemp) else "—°C",
-                    color = secondaryText,
-                    fontSize = if (isCompact) 13.5.sp else 15.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-
-        Text(
-            text = "由 positions 表最近采样",
-            color = secondaryText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp
-        )
-    }
-}
-
-/**
- * 底部卡片 4：最后有效位置与地图导航
- */
-@Composable
-private fun TeslaLocationCard(
+private fun ColumnScope.LastLocationModuleContent(
     location: VehicleLocation,
     vehicleState: VehicleState,
-    isNightMode: Boolean,
-    isCompact: Boolean,
-    onOpenMap: () -> Unit
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean
 ) {
-    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-
     val (statusLabel, statusColor) = when {
-        vehicleState.isDriving -> "行驶中" to (if (isNightMode) TechEmerald else Color(0xFF16A34A))
-        vehicleState.isAsleep -> "休眠停靠" to (if (isNightMode) TextTertiary else InkTextTertiary)
-        vehicleState.isCharging -> "充电中" to (if (isNightMode) TechCyan else Color(0xFF0284C7))
-        else -> "停泊点" to secondaryText
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                    modifier = Modifier.size(13.dp)
-                )
-                Text(
-                    text = "最后上报位置",
-                    color = primaryText,
-                    fontSize = if (isCompact) 10.5.sp else 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(statusColor.copy(alpha = 0.18f))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = statusLabel,
-                    color = statusColor,
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        // 围栏名称 / 匹配地名与坐标副标题
-        Column {
-            Text(
-                text = location.primaryPlaceName,
-                color = primaryText,
-                fontSize = if (isCompact) 11.5.sp else 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(1.dp))
-            Text(
-                text = location.secondaryPlaceDetail,
-                color = secondaryText,
-                fontSize = if (isCompact) 9.sp else 10.sp,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        // 采样时间与查看地图预览弹窗入口
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (location.formattedSampledTime != null) "采样于 ${location.formattedSampledTime}" else "时间未知",
-                color = secondaryText,
-                fontSize = if (isCompact) 8.5.sp else 9.5.sp
-            )
-
-            if (location.isValid) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { onOpenMap() }
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "查看地图 >",
-                        color = if (isNightMode) TechCyan else Color(0xFF0284C7),
-                        fontSize = if (isCompact) 9.sp else 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompactTpmsSummaryBar(
-    fl: Double?,
-    fr: Double?,
-    rl: Double?,
-    rr: Double?,
-    isNightMode: Boolean,
-    isCompact: Boolean,
-    onClick: () -> Unit
-) {
-    val hasAny = fl != null || fr != null || rl != null || rr != null
-    val bg = if (isNightMode) DarkSurfaceElevated.copy(alpha = 0.72f) else InkSurfaceElevated.copy(alpha = 0.8f)
-    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
-
-    fun fmt(v: Double?): String = if (v != null) String.format(Locale.US, "%.2f", v) else "—"
-    fun tone(v: Double?): Color = when {
-        v == null -> secondaryText
-        v < 2.4 -> if (isNightMode) TechRose else Color(0xFFDC2626)
-        v > 3.2 -> if (isNightMode) TechAmber else Color(0xFFD97706)
-        else -> if (isNightMode) TechEmerald else Color(0xFF16A34A)
+        vehicleState.isDriving -> "行驶中" to palette.positive
+        vehicleState.isCharging -> "充电中" to palette.accent
+        vehicleState.isAsleep -> "休眠" to palette.mutedText
+        else -> "停泊" to palette.secondaryText
     }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(bg)
-            .clickable { onClick() }
-            .padding(horizontal = if (isCompact) 6.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!hasAny) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.LocationOn,
+                contentDescription = null,
+                tint = palette.accent,
+                modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
+            )
             Text(
-                text = "点击查看四轮胎压 (暂无采样)",
-                color = secondaryText,
-                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                text = "最后上报位置",
+                color = palette.secondaryText,
+                fontSize = if (isCompact) 10.sp else 11.5.sp,
+                fontWeight = FontWeight.SemiBold
             )
-        } else {
-            val items = listOf(
-                (if (isCompact) "前左" else "左前") to fl,
-                (if (isCompact) "前右" else "右前") to fr,
-                (if (isCompact) "后左" else "左后") to rl,
-                (if (isCompact) "后右" else "右后") to rr
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(statusColor.copy(alpha = 0.14f))
+                .padding(horizontal = 5.dp, vertical = 1.dp)
+        ) {
+            Text(
+                text = statusLabel,
+                color = statusColor,
+                fontSize = if (isCompact) 8.sp else 9.sp,
+                fontWeight = FontWeight.SemiBold
             )
-            items.forEach { (label, valP) ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+        }
+    }
+
+    Column {
+        Text(
+            text = location.primaryPlaceName,
+            color = palette.primaryText,
+            fontSize = if (isCompact) 12.sp else 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = if (isCompact) 15.sp else 18.sp
+        )
+        Text(
+            text = location.secondaryPlaceDetail,
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = location.formattedSampledTime?.let { "采样于 $it" } ?: "采样时间未知",
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+        )
+        if (location.isValid) {
+            Text(
+                text = "查看地图 >",
+                color = palette.accent,
+                fontSize = if (isCompact) 9.sp else 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.LastDriveModuleContent(
+    lastDrive: LastDriveInfo?,
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Route,
+                contentDescription = null,
+                tint = palette.accent,
+                modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
+            )
+            Text(
+                text = "最后行驶里程",
+                color = palette.secondaryText,
+                fontSize = if (isCompact) 10.sp else 11.5.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        val tagText = when {
+            lastDrive == null -> "暂无"
+            lastDrive.isOngoing -> "行驶中"
+            else -> lastDrive.formattedTime ?: "最近"
+        }
+        Text(
+            text = tagText,
+            color = if (lastDrive?.isOngoing == true) palette.positive else palette.mutedText,
+            fontSize = if (isCompact) 8.sp else 9.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = lastDrive?.formattedDistanceKm ?: "—",
+            color = if (lastDrive != null) palette.accent else palette.mutedText,
+            fontSize = if (isCompact) 18.sp else 23.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = "km",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 9.5.sp else 11.sp,
+            modifier = Modifier.padding(bottom = 2.dp)
+        )
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        val dur = lastDrive?.formattedDuration ?: "—"
+        val whKm = lastDrive?.estimatedWhPerKm?.takeIf { it > 0 }?.let { "${it.toInt()} Wh/km" } ?: "— Wh/km"
+        Text(
+            text = "耗时 $dur",
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+        )
+        Text(
+            text = whKm,
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.TodayDriveModuleContent(
+    todayDist: Double?,
+    todayTrips: Int?,
+    todayWhKm: Double?,
+    todayChargeKwh: Double?,
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "今日行驶",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 10.sp else 11.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "${todayTrips ?: 0} 次行程",
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+        )
+    }
+
+    Text(
+        text = if (todayDist != null) String.format(Locale.US, "%.1f km", todayDist) else "0.0 km",
+        color = palette.primaryText,
+        fontSize = if (isCompact) 16.5.sp else 20.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = FontFamily.Monospace
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val whStr = if (todayWhKm != null && todayWhKm > 0) "${todayWhKm.toInt()} Wh/km" else "— Wh/km"
+        Text(
+            text = "均耗 $whStr",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        if (todayChargeKwh != null && todayChargeKwh > 0.05) {
+            Text(
+                text = "+${String.format(Locale.US, "%.1f", todayChargeKwh)} kWh",
+                color = palette.positive,
+                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.OdometerAndClimateModuleContent(
+    odometer: Double?,
+    insideTemp: Double?,
+    outsideTemp: Double?,
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "总里程与温控",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 10.sp else 11.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Icon(
+            imageVector = Icons.Default.Thermostat,
+            contentDescription = null,
+            tint = palette.accent,
+            modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
+        )
+    }
+
+    Text(
+        text = if (odometer != null) String.format(Locale.US, "%,.1f km", odometer) else "— km",
+        color = palette.primaryText,
+        fontSize = if (isCompact) 15.5.sp else 19.sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = FontFamily.Monospace,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "车内 ${insideTemp?.let { String.format(Locale.US, "%.1f°C", it) } ?: "—"}",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = "车外 ${outsideTemp?.let { String.format(Locale.US, "%.1f°C", it) } ?: "—"}",
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.Recent7DaysTrendModuleContent(
+    items: List<DailyDriveItem>,
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "近 7 天里程趋势",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 10.sp else 11.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        val total7Dist = items.sumOf { it.distanceKm }
+        val totalText = if (items.isEmpty()) "—" else String.format(Locale.US, "累计 %.1f km", total7Dist)
+        Text(
+            text = totalText,
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+        )
+    }
+
+    if (items.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "近 7 天暂无行程记录",
+                color = palette.mutedText,
+                fontSize = 10.sp
+            )
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            val maxDist = (items.maxOfOrNull { it.distanceKm } ?: 1.0).coerceAtLeast(10.0)
+            items.takeLast(7).forEach { item ->
+                val ratio = (item.distanceKm / maxDist).toFloat().coerceIn(0.08f, 1f)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom,
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = label,
-                        color = secondaryText,
-                        fontSize = if (isCompact) 8.sp else 9.sp,
-                        maxLines = 1,
-                        softWrap = false
+                        text = if (item.distanceKm > 0) "${item.distanceKm.toInt()}" else "0",
+                        color = palette.mutedText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                        fontFamily = FontFamily.Monospace
                     )
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(if (isCompact) 7.dp else 11.dp)
+                            .fillMaxHeight(ratio * 0.62f)
+                            .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                            .background(palette.accent)
+                    )
+                    Spacer(modifier = Modifier.height(1.dp))
                     Text(
-                        text = fmt(valP),
-                        color = tone(valP),
-                        fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
-                        softWrap = false
+                        text = item.dateString.takeLast(2),
+                        color = palette.secondaryText,
+                        fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                        fontFamily = FontFamily.Monospace
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ColumnScope.MonthlySummaryModuleContent(
+    monthDistance: Double?,
+    monthTrips: Int?,
+    monthCharge: Double?,
+    palette: TeslaCockpitPalette,
+    isCompact: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "本月汇总",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 10.sp else 11.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "${monthTrips ?: 0} 次行程",
+            color = palette.mutedText,
+            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+        )
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Column {
+            Text(
+                text = "行驶里程",
+                color = palette.mutedText,
+                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+            )
+            Text(
+                text = if (monthDistance != null) String.format(Locale.US, "%.0f km", monthDistance) else "0 km",
+                color = palette.primaryText,
+                fontSize = if (isCompact) 13.5.sp else 16.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = "本月充入",
+                color = palette.mutedText,
+                fontSize = if (isCompact) 8.5.sp else 9.5.sp
+            )
+            Text(
+                text = if (monthCharge != null) "+${String.format(Locale.US, "%.1f", monthCharge)} kWh" else "0.0 kWh",
+                color = palette.positive,
+                fontSize = if (isCompact) 12.sp else 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+
+    val avgTripStr = if (monthTrips != null && monthTrips > 0 && monthDistance != null && monthDistance > 0) {
+        String.format(Locale.US, "单程均值 %.1f km/次", monthDistance / monthTrips)
+    } else {
+        "按配置时区统计当月行程与补能"
+    }
+    Text(
+        text = avgTripStr,
+        color = palette.mutedText,
+        fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }

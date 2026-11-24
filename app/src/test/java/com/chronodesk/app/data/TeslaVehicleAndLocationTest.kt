@@ -306,4 +306,85 @@ class TeslaVehicleAndLocationTest {
         val teslaDefaults = TeslaSettings()
         assertEquals("AUTO", teslaDefaults.vehicleColor)
     }
+
+    @Test
+    fun testFetchVehicleSnapshot_parsesLastDriveInfoAndMinimalSchemaFallback() = runBlocking {
+        // 1. 完整 drives 列（含 duration_min 与能耗估算）
+        val fullServer = MockWebServer()
+        fullServer.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val sql = request.body.readUtf8()
+                return when {
+                    sql.contains("duration_min") -> grafanaFrameJson(
+                        """[{"name":"distance_km"},{"name":"duration_min"},{"name":"event_epoch_ms"},{"name":"is_ongoing"},{"name":"estimated_wh_per_km"}]""",
+                        """[[18.46],[24],[1795415440951],[0],[138.2]]"""
+                    )
+                    sql.contains("SELECT date, latitude, longitude") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"latitude"},{"name":"longitude"}]""",
+                        """[[1795415440951],[31.9367],[120.9431]]"""
+                    )
+                    sql.contains("FROM positions") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"battery_level"}]""",
+                        """[[1795415440951],[62]]"""
+                    )
+                    sql.contains("FROM states") -> grafanaFrameJson(
+                        """[{"name":"state"},{"name":"start_date"}]""",
+                        """[["online"],["2026-11-24T08:00:00Z"]]"""
+                    )
+                    else -> grafanaFrameJson("[]", "[]")
+                }
+            }
+        }
+        fullServer.start()
+        try {
+            val provider = TeslaDataProvider(GrafanaApiClient())
+            val settings = TeslaSettings(true, fullServer.url("/").toString(), "ds_test", carId = 1, allowHttp = true)
+            val snap = provider.fetchVehicleSnapshot(settings, "token")
+            val lastDrive = snap.drives.lastDrive
+            assertNotNull("应解析出最近一次行驶里程", lastDrive)
+            assertEquals("18.5", lastDrive!!.formattedDistanceKm)
+            assertEquals("24分钟", lastDrive.formattedDuration)
+            assertEquals(138.2, lastDrive.estimatedWhPerKm ?: 0.0, 0.01)
+            assertFalse(lastDrive.isOngoing)
+            assertNotNull(lastDrive.formattedTime)
+        } finally {
+            fullServer.shutdown()
+        }
+
+        // 2. 精简表结构回退（缺 duration_min 列时降级仅查 distance / start_date / end_date）
+        val minServer = MockWebServer()
+        minServer.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val sql = request.body.readUtf8()
+                return when {
+                    sql.contains("duration_min") -> MockResponse().setResponseCode(400).setBody("""{"message":"column d.duration_min does not exist"}""")
+                    sql.contains("SELECT distance AS distance_km") -> grafanaFrameJson(
+                        """[{"name":"distance_km"},{"name":"end_date"},{"name":"start_date"}]""",
+                        """[[7.23],["2026-11-24T01:15:00Z"],["2026-11-24T01:02:00Z"]]"""
+                    )
+                    sql.contains("FROM positions") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"battery_level"}]""",
+                        """[[1795415440951],[60]]"""
+                    )
+                    sql.contains("FROM states") -> grafanaFrameJson(
+                        """[{"name":"state"},{"name":"start_date"}]""",
+                        """[["online"],["2026-11-24T01:00:00Z"]]"""
+                    )
+                    else -> grafanaFrameJson("[]", "[]")
+                }
+            }
+        }
+        minServer.start()
+        try {
+            val provider = TeslaDataProvider(GrafanaApiClient())
+            val settings = TeslaSettings(true, minServer.url("/").toString(), "ds_test", carId = 1, allowHttp = true)
+            val snap = provider.fetchVehicleSnapshot(settings, "token")
+            val lastDrive = snap.drives.lastDrive
+            assertNotNull("精简表回退仍应读出最后行驶里程", lastDrive)
+            assertEquals("7.2", lastDrive!!.formattedDistanceKm)
+            assertNull(lastDrive.durationMin)
+        } finally {
+            minServer.shutdown()
+        }
+    }
 }

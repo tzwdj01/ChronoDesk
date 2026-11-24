@@ -769,4 +769,41 @@ object ChinaCityDatabase {
         }
         return s
     }
+
+    /**
+     * 按坐标查找距离最近的中国城市或区县（用于无网络或外网逆地理编码不可用时的纯本地中文保底展示）。
+     */
+    fun findNearestChineseArea(lat: Double, lng: Double, maxDistKm: Double = 65.0): String? {
+        if (!lat.isFinite() || !lng.isFinite()) return null
+        var bestRecord: CityRecord? = null
+        var bestDistKm = Double.MAX_VALUE
+        for (rec in records) {
+            if (rec.country != "中国" && rec.importanceRank > 4) continue
+            val dist = haversineKm(lat, lng, rec.latitude, rec.longitude)
+            if (dist < bestDistKm) {
+                bestDistKm = dist
+                bestRecord = rec
+            }
+        }
+        val match = bestRecord ?: return null
+        if (bestDistKm > maxDistKm) return null
+        val cityOrCounty = match.admin2?.takeIf { it.isNotBlank() }
+            ?: if (match.name.endsWith("市") || match.name.endsWith("区") || match.name.endsWith("县")) match.name else "${match.name}市"
+        val parts = listOfNotNull(
+            match.admin1.takeIf { it.isNotBlank() && it != cityOrCounty },
+            cityOrCounty
+        ).distinct()
+        return if (parts.isNotEmpty()) "${parts.joinToString(" · ")}附近" else null
+    }
+
+    private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+            kotlin.math.sin(dLng / 2) * kotlin.math.sin(dLng / 2)
+        val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+        return r * c
+    }
 }

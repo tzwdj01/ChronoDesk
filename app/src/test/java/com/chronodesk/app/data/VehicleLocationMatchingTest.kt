@@ -13,6 +13,7 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -250,6 +251,72 @@ class VehicleLocationMatchingTest {
         } finally {
             failingNom.shutdown()
             bdcServer.shutdown()
+        }
+    }
+
+    @Test
+    fun testGreaterChinaLocation_rejectsEnglishAndResolvesChinese() = runBlocking {
+        // 1. TeslaDataProvider 在国内坐标下若 addresses 表返回纯英文，应放弃该英文值交由中文逆地理解析器处理
+        val serverEng = MockWebServer()
+        serverEng.dispatcher = createProviderDispatcher {
+            grafanaFrameJson(
+                """[{"name":"name"},{"name":"road"},{"name":"neighbourhood"},{"name":"city"},{"name":"county"},{"name":"state"},{"name":"display_name"},{"name":"latitude"},{"name":"longitude"}]""",
+                """[["Hongxing Road"],["Hongxing Road"],["Xinkai"],["Chongchuan District"],["Nantong"],["Jiangsu"],["Chongchuan District, Nantong"],[31.9369],[120.9433]]"""
+            )
+        }
+        serverEng.start()
+        try {
+            val provider = TeslaDataProvider(GrafanaApiClient())
+            val settings = TeslaSettings(true, serverEng.url("/").toString(), "ds", carId = 1, allowHttp = true)
+            val snap = provider.fetchVehicleSnapshot(settings, "token")
+            assertNull("中国境内英文地址不应直接落库展示", snap.location.resolvedAddress)
+        } finally {
+            serverEng.shutdown()
+        }
+
+        // 2. Nominatim 将区放在 address.city 而地级市放在 display_name 时，仍正确拼接为「南通市 · 崇川区 · 宏兴路」
+        val nomServer = MockWebServer()
+        nomServer.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"display_name":"宏兴路, 新开街道, 崇川区, 南通市, 江苏省, 中国","address":{"road":"宏兴路","suburb":"新开街道","city":"崇川区","state":"江苏省"}}"""
+            )
+        )
+        nomServer.start()
+        val unusedBdc = MockWebServer()
+        unusedBdc.start()
+        try {
+            val resolver = VehicleLocationResolver(
+                context = null,
+                nominatimBaseUrl = nomServer.url("/").toString(),
+                bigDataCloudBaseUrl = unusedBdc.url("/").toString()
+            )
+            val resolved = resolver.resolveAddress(31.9367, 120.9431, fallbackAddress = "Chongchuan District · Hongxing Road")
+            assertEquals("南通市 · 崇川区 · 宏兴路", resolved)
+        } finally {
+            nomServer.shutdown()
+            unusedBdc.shutdown()
+        }
+
+        // 3. 在线接口全失败且兜底仍为英文时，中国境内使用离线 ChinaCityDatabase 返回纯中文大概地点
+        val downNom = MockWebServer()
+        downNom.enqueue(MockResponse().setResponseCode(503))
+        downNom.start()
+        val downBdc = MockWebServer()
+        downBdc.enqueue(MockResponse().setResponseCode(503))
+        downBdc.start()
+        try {
+            val offlineResolver = VehicleLocationResolver(
+                context = null,
+                nominatimBaseUrl = downNom.url("/").toString(),
+                bigDataCloudBaseUrl = downBdc.url("/").toString()
+            )
+            val resolved = offlineResolver.resolveAddress(31.9367, 120.9431, fallbackAddress = "Chongchuan District")
+            assertNotNull(resolved)
+            assertTrue("离线中国境内坐标兜底必须含中文: $resolved", VehicleLocationResolver.containsChinese(resolved))
+            assertTrue("应匹配江苏南通附近: $resolved", resolved!!.contains("南通"))
+        } finally {
+            downNom.shutdown()
+            downBdc.shutdown()
         }
     }
 }

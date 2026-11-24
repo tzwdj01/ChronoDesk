@@ -153,6 +153,59 @@ data class DailyDriveItem(
 )
 
 /**
+ * 最近一次行驶记录（来自 drives 表）
+ */
+data class LastDriveInfo(
+    val distanceKm: Double,
+    val durationMin: Int? = null,
+    val eventEpochMs: Long? = null,
+    val rawEndDate: String? = null,
+    val estimatedWhPerKm: Double? = null,
+    val isOngoing: Boolean = false
+) {
+    val formattedDistanceKm: String
+        get() = String.format(Locale.US, "%.1f", distanceKm)
+
+    val formattedDuration: String?
+        get() = durationMin?.takeIf { it >= 0 }?.let { mins ->
+            if (mins >= 60) "${mins / 60}小时${mins % 60}分" else "${mins}分钟"
+        }
+
+    val formattedTime: String?
+        get() {
+            if (eventEpochMs != null && eventEpochMs > 0L) {
+                val ms = if (eventEpochMs < 100_000_000_000L) eventEpochMs * 1000L else eventEpochMs
+                return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(ms))
+            }
+            return formatDriveDateFallback(rawEndDate)
+        }
+}
+
+private fun formatDriveDateFallback(rawDate: String?): String? {
+    val trimmed = rawDate?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val numMs = trimmed.toLongOrNull() ?: trimmed.toDoubleOrNull()?.takeIf { it.isFinite() }?.toLong()
+    if (numMs != null && numMs > 0L) {
+        val actualMs = if (numMs < 100_000_000_000L) numMs * 1000L else numMs
+        return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(actualMs))
+    }
+    val formats = listOf(
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+    )
+    for (fmt in formats) {
+        try {
+            val parsed = fmt.parse(trimmed)
+            if (parsed != null) {
+                return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(parsed)
+            }
+        } catch (_: Exception) {}
+    }
+    return formatSampledTime(trimmed)
+}
+
+/**
  * 行程与能耗统计汇总
  */
 data class DriveSummary(
@@ -162,7 +215,8 @@ data class DriveSummary(
     val todayEnergyKwh: Double? = null,        // 今日行驶净耗电估算 (kWh)
     val monthDistanceKm: Double? = null,       // 本月已完成行程总里程 (km)
     val monthTrips: Int? = null,               // 本月行程总数
-    val recent7DaysDrives: List<DailyDriveItem> = emptyList() // 近7天能耗趋势数据
+    val recent7DaysDrives: List<DailyDriveItem> = emptyList(), // 近7天能耗趋势数据
+    val lastDrive: LastDriveInfo? = null       // 最近一次行驶里程详情
 )
 
 /**

@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,14 @@ import com.chronodesk.app.data.provider.TokenResult
 import com.chronodesk.app.ui.theme.DarkBorder
 import com.chronodesk.app.ui.theme.DarkSurface
 import com.chronodesk.app.ui.theme.DarkSurfaceElevated
+import com.chronodesk.app.ui.theme.InkBackground
+import com.chronodesk.app.ui.theme.InkBorder
+import com.chronodesk.app.ui.theme.InkSurface
+import com.chronodesk.app.ui.theme.InkSurfaceElevated
+import com.chronodesk.app.ui.theme.InkTextPrimary
+import com.chronodesk.app.ui.theme.InkTextSecondary
+import com.chronodesk.app.ui.theme.InkTextTertiary
+import com.chronodesk.app.ui.theme.InkWarningRed
 import com.chronodesk.app.ui.theme.TechCyan
 import com.chronodesk.app.ui.theme.TechEmerald
 import com.chronodesk.app.ui.theme.TechRose
@@ -68,9 +77,19 @@ import kotlinx.coroutines.launch
 @Composable
 fun DeviceAuthDialog(
     slot: Int,
+    isNightMode: Boolean = false,
     onDismiss: () -> Unit,
     onSuccess: (account: CodexAccount, refreshToken: String, accessToken: String?) -> Boolean
 ) {
+    val dialogBg = if (isNightMode) DarkSurface else InkBackground
+    val cardBg = if (isNightMode) DarkSurfaceElevated else InkSurface
+    val borderColor = if (isNightMode) DarkBorder else InkBorder
+    val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
+    val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
+    val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val accentColor = if (isNightMode) TechCyan else Color(0xFF0284C7)
+    val onAccentColor = if (isNightMode) Color.Black else Color.White
+    val errorColor = if (isNightMode) TechRose else InkWarningRed
     val context = LocalContext.current
     val provider = remember { RealCodexUsageProvider() }
 
@@ -168,8 +187,8 @@ fun DeviceAuthDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(DarkSurface)
-                .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                .background(dialogBg)
+                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
                 .padding(20.dp)
         ) {
             Column(
@@ -178,14 +197,14 @@ fun DeviceAuthDialog(
             ) {
                 Text(
                     text = "绑定 ChatGPT / Codex 账号",
-                    color = TextPrimary,
+                    color = primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     text = "使用 OpenAI 官方设备码授权流程。请点击下方按钮在浏览器中完成登录并确认授权。",
-                    color = TextSecondary,
+                    color = secondaryText,
                     fontSize = 12.sp,
                     lineHeight = 18.sp
                 )
@@ -196,18 +215,19 @@ fun DeviceAuthDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(DarkSurfaceElevated)
+                            .background(cardBg)
+                            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                             .padding(14.dp)
                     ) {
                         Text(
                             text = "用户设备码",
-                            color = TextTertiary,
+                            color = mutedText,
                             fontSize = 11.sp
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = userCode ?: "",
-                            color = TechCyan,
+                            color = accentColor,
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
@@ -228,15 +248,17 @@ fun DeviceAuthDialog(
                                 Toast.makeText(context, "已复制授权码", Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, borderColor)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,
                                 contentDescription = null,
+                                tint = secondaryText,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "复制", fontSize = 12.sp)
+                            Text(text = "复制", fontSize = 12.sp, color = secondaryText)
                         }
 
                         // 打开浏览器
@@ -248,7 +270,7 @@ fun DeviceAuthDialog(
                             },
                             modifier = Modifier.weight(2f),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = TechCyan, contentColor = Color.Black)
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = onAccentColor)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.OpenInBrowser,
@@ -269,7 +291,7 @@ fun DeviceAuthDialog(
                 ) {
                     if (isPolling) {
                         CircularProgressIndicator(
-                            color = TechCyan,
+                            color = accentColor,
                             strokeWidth = 2.dp,
                             modifier = Modifier.size(14.dp)
                         )
@@ -277,7 +299,7 @@ fun DeviceAuthDialog(
                     }
                     Text(
                         text = statusText,
-                        color = if (errorMessage != null) TechRose else TextSecondary,
+                        color = if (errorMessage != null) errorColor else secondaryText,
                         fontSize = 12.sp
                     )
                 }
@@ -285,7 +307,7 @@ fun DeviceAuthDialog(
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage ?: "",
-                        color = TechRose,
+                        color = errorColor,
                         fontSize = 11.sp
                     )
                 }
@@ -293,9 +315,10 @@ fun DeviceAuthDialog(
                 OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, borderColor)
                 ) {
-                    Text(text = "取消", color = TextSecondary)
+                    Text(text = "取消", color = secondaryText)
                 }
             }
         }

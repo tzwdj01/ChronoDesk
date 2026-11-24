@@ -5,6 +5,7 @@ import android.location.Address
 import android.location.Geocoder
 import android.os.Build
 import android.util.Log
+import com.chronodesk.app.data.model.ChinaCityDatabase
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -39,12 +40,22 @@ class VehicleLocationResolver @JvmOverloads constructor(
     private val tag = "VehicleLocationResolver"
     private val gridCache = ConcurrentHashMap<String, String>()
 
+    companion object {
+        fun containsChinese(text: String?): Boolean =
+            text?.any { it.code in 0x4E00..0x9FFF } == true
+
+        fun isInGreaterChina(lat: Double, lng: Double): Boolean =
+            lat in 17.5..54.0 && lng in 73.0..135.5
+    }
+
     fun gridKey(lat: Double, lng: Double): String =
         String.format(Locale.US, "%.3f_%.3f", lat, lng)
 
     fun getCachedAddress(lat: Double, lng: Double): String? {
         if (!lat.isFinite() || !lng.isFinite()) return null
-        return gridCache[gridKey(lat, lng)]
+        val cached = gridCache[gridKey(lat, lng)] ?: return null
+        if (isInGreaterChina(lat, lng) && !containsChinese(cached)) return null
+        return cached
     }
 
     suspend fun resolveAddress(
@@ -54,19 +65,47 @@ class VehicleLocationResolver @JvmOverloads constructor(
     ): String? {
         if (!lat.isFinite() || !lng.isFinite()) return fallbackAddress
         val key = gridKey(lat, lng)
-        gridCache[key]?.let { return it }
-
-        val resolved = withContext(Dispatchers.IO) {
-            tryAndroidGeocoder(lat, lng)
-                ?: tryNominatim(lat, lng)
-                ?: tryBigDataCloud(lat, lng)
+        val requireChinese = isInGreaterChina(lat, lng)
+        gridCache[key]?.let { cached ->
+            if (!requireChinese || containsChinese(cached)) {
+                return cached
+            }
         }
 
-        if (!resolved.isNullOrBlank()) {
-            if (!resolved.endsWith("附近")) {
-                gridCache[key] = resolved
+        val (androidAddr, nomAddr, bdcAddr) = withContext(Dispatchers.IO) {
+            val a = tryAndroidGeocoder(lat, lng)
+            if (!a.isNullOrBlank() && (!requireChinese || containsChinese(a))) {
+                return@withContext Triple(a, null, null)
             }
-            return resolved
+            val n = tryNominatim(lat, lng)
+            if (!n.isNullOrBlank() && (!requireChinese || containsChinese(n))) {
+                return@withContext Triple(a, n, null)
+            }
+            val b = tryBigDataCloud(lat, lng)
+            Triple(a, n, b)
+        }
+
+        val preferred = listOf(androidAddr, nomAddr, bdcAddr).firstOrNull { candidate ->
+            !candidate.isNullOrBlank() && (!requireChinese || containsChinese(candidate))
+        }
+        if (!preferred.isNullOrBlank()) {
+            if (!preferred.endsWith("附近")) {
+                gridCache[key] = preferred
+            }
+            return preferred
+        }
+
+        if (requireChinese) {
+            fallbackAddress?.takeIf { containsChinese(it) }?.let { return it }
+            ChinaCityDatabase.findNearestChineseArea(lat, lng)?.let { return it }
+        }
+
+        val anyAvailable = androidAddr ?: nomAddr ?: bdcAddr
+        if (!anyAvailable.isNullOrBlank()) {
+            if (!requireChinese && !anyAvailable.endsWith("附近")) {
+                gridCache[key] = anyAvailable
+            }
+            return anyAvailable
         }
 
         return fallbackAddress?.takeIf { it.isNotBlank() }
@@ -76,7 +115,7 @@ class VehicleLocationResolver @JvmOverloads constructor(
         val ctx = context ?: return null
         return try {
             if (!Geocoder.isPresent()) return null
-            val geocoder = Geocoder(ctx, Locale.CHINESE)
+            val geocoder = Geocoder(ctx, Locale.SIMPLIFIED_CHINESE)
             val addr: Address? = withTimeoutOrNull(4000L) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     suspendCancellableCoroutine { cont ->
@@ -124,7 +163,7 @@ class VehicleLocationResolver @JvmOverloads constructor(
             val base = nominatimBaseUrl.trimEnd('/')
             val url = String.format(
                 Locale.US,
-                "%s/reverse?format=jsonv2&lat=%.6f&lon=%.6f&zoom=16&accept-language=zh-CN",
+                "%s/reverse?format=jsonv2&lat=%.6f&lon=%.6f&zoom=16&accept-language=zh-CN,zh;q=0.9",
                 base,
                 lat,
                 lng
@@ -132,17 +171,19 @@ class VehicleLocationResolver @JvmOverloads constructor(
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", "ChronoDesk-Android/1.0")
+                .header("Accept-Language", "zh-CN,zh;q=0.9")
                 .build()
             okHttpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return null
                 val body = resp.body?.string() ?: return null
                 val root = JsonParser.parseString(body).asJsonObject
                 val addressObj = root.getAsJsonObject("address")
-                val formatted = addressObj?.let { extractNominatimParts(it) }
+                val rawDisplayName = root.getStringOrNull("display_name")
+                val formatted = addressObj?.let { extractNominatimParts(it, rawDisplayName) }
                 if (!formatted.isNullOrBlank()) {
                     formatted
                 } else {
-                    root.getStringOrNull("display_name")
+                    rawDisplayName
                         ?.split(",", "，")
                         ?.map { it.trim() }
                         ?.filter { it.isNotBlank() }
@@ -158,10 +199,25 @@ class VehicleLocationResolver @JvmOverloads constructor(
         }
     }
 
-    private fun extractNominatimParts(addressObj: JsonObject): String? {
-        val city = firstNonBlank(addressObj, "city", "town", "village", "municipality", "state")
-        val district = firstNonBlank(addressObj, "county", "district", "city_district", "suburb")
-        val street = firstNonBlank(addressObj, "road", "neighbourhood", "amenity", "pedestrian")
+    private fun extractNominatimParts(addressObj: JsonObject, displayName: String? = null): String? {
+        val rawCity = firstNonBlank(addressObj, "city", "town", "village", "municipality", "state")
+        val cityLooksLikeDistrict = rawCity != null && (rawCity.endsWith("区") || rawCity.endsWith("县"))
+        val cityFromDisplay = if (cityLooksLikeDistrict && !displayName.isNullOrBlank()) {
+            displayName.split(",", "，")
+                .map { it.trim() }
+                .firstOrNull { seg ->
+                    containsChinese(seg) &&
+                        seg.endsWith("市") &&
+                        !seg.endsWith("超市") &&
+                        !seg.endsWith("夜市")
+                }
+        } else null
+
+        val city = cityFromDisplay ?: if (!cityLooksLikeDistrict) rawCity else firstNonBlank(addressObj, "state")
+        val district = firstNonBlank(addressObj, "county", "district", "city_district")
+            ?: if (cityLooksLikeDistrict) rawCity else firstNonBlank(addressObj, "suburb")
+        val street = firstNonBlank(addressObj, "road", "neighbourhood", "city_block", "amenity", "pedestrian")
+            ?: firstNonBlank(addressObj, "suburb")?.takeIf { it != district }
         val parts = listOfNotNull(city, district, street)
             .map { it.trim() }
             .filter { it.isNotBlank() }

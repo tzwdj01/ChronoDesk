@@ -1,0 +1,82 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.78"
+        android:scaleY="0.78">
+
+    <!-- 左侧翻牌卡 (安全区 x: 25..50, y: 31..65) -->
+    <!-- 卡牌微阴影 -->
+    <path
+        android:fillColor="#44000000"
+        android:pathData="M29,33 L46,33 A4,4 0 0 1 50,37 L50,63 A4,4 0 0 1 46,67 L29,67 A4,4 0 0 1 25,63 L25,37 A4,4 0 0 1 29,33 Z" />
+    <!-- 上半翻牌 (#F8FAFC) -->
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M29,31 L46,31 A4,4 0 0 1 50,35 L50,47.2 L25,47.2 L25,35 A4,4 0 0 1 29,31 Z" />
+    <!-- 下半翻牌 (#E2E8F0) -->
+    <path
+        android:fillColor="#FFE2E8F0"
+        android:pathData="M25,48.8 L50,48.8 L50,61 A4,4 0 0 1 46,65 L29,65 A4,4 0 0 1 25,61 Z" />
+    <!-- 左侧数字 '0' 清晰几何轮廓 -->
+    <path
+        android:fillColor="#FF0F172A"
+        android:fillType="evenOdd"
+        android:pathData="M34.5,37 C32.0,37 30.8,38.4 30.8,41 L30.8,55 C30.8,57.6 32.0,59 34.5,59 L40.5,59 C43.0,59 44.2,57.6 44.2,55 L44.2,41 C44.2,38.4 43.0,37 40.5,37 Z M35.3,40.4 L39.7,40.4 C40.5,40.4 40.8,40.8 40.8,41.8 L40.8,54.2 C40.8,55.2 40.5,55.6 39.7,55.6 L35.3,55.6 C34.5,55.6 34.2,55.2 34.2,54.2 L34.2,41.8 C34.2,40.8 34.5,40.4 35.3,40.4 Z" />
+    <!-- 左卡机械中缝 -->
+    <path
+        android:fillColor="#FF0B1324"
+        android:pathData="M25,47.2 L50,47.2 L50,48.8 L25,48.8 Z" />
+
+    <!-- 中间冒号点 (Cyan Glow) -->
+    <path
+        android:fillColor="#FF22D3EE"
+        android:pathData="M54,41 m-2.1,0 a2.1,2.1 0 1,0 4.2,0 a2.1,2.1 0 1,0 -4.2,0" />
+    <path
+        android:fillColor="#FF22D3EE"
+        android:pathData="M54,55 m-2.1,0 a2.1,2.1 0 1,0 4.2,0 a2.1,2.1 0 1,0 -4.2,0" />
+
+    <!-- 右侧翻牌卡 (安全区 x: 58..83, y: 31..65) -->
+    <path
+        android:fillColor="#44000000"
+        android:pathData="M62,33 L79,33 A4,4 0 0 1 83,37 L83,63 A4,4 0 0 1 79,67 L62,67 A4,4 0 0 1 58,63 L58,37 A4,4 0 0 1 62,33 Z" />
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M62,31 L79,31 A4,4 0 0 1 83,35 L83,47.2 L58,47.2 L58,35 A4,4 0 0 1 62,31 Z" />
+    <path
+        android:fillColor="#FFE2E8F0"
+        android:pathData="M58,48.8 L83,48.8 L83,61 A4,4 0 0 1 79,65 L62,65 A4,4 0 0 1 58,61 Z" />
+    <!-- 右侧数字 '9' (突出 '24'/'09' 视觉辨识) -> 采用精准 '9' 或 '8'，这里画清晰现代数字 '8' 避免中缝割裂字形 -->
+    <path
+        android:fillColor="#FF0F172A"
+        android:fillType="evenOdd"
+        android:pathData="M67.5,37 C65.1,37 64.0,38.2 64.0,40.4 L64.0,45.5 C64.0,46.8 64.6,47.5 65.5,48.0 C64.5,48.5 63.8,49.4 63.8,50.8 L63.8,55.5 C63.8,57.8 65.1,59.0 67.5,59.0 L73.5,59.0 C75.9,59.0 77.2,57.8 77.2,55.5 L77.2,50.8 C77.2,49.4 76.5,48.5 75.5,48.0 C76.4,47.5 77.0,46.8 77.0,45.5 L77.0,40.4 C77.0,38.2 75.9,37.0 73.5,37.0 Z M68.2,40.2 L72.8,40.2 C73.4,40.2 73.7,40.6 73.7,41.4 L73.7,45.2 C73.7,46.0 73.4,46.3 72.8,46.3 L68.2,46.3 C67.6,46.3 67.3,46.0 67.3,45.2 L67.3,41.4 C67.3,40.6 67.6,40.2 68.2,40.2 Z M68.1,49.7 L72.9,49.7 C73.5,49.7 73.8,50.1 73.8,51.0 L73.8,54.6 C73.8,55.4 73.5,55.8 72.9,55.8 L68.1,55.8 C67.5,55.8 67.2,55.4 67.2,54.6 L67.2,51.0 C67.2,50.1 67.5,49.7 68.1,49.7 Z" />
+    <!-- 右卡机械中缝 -->
+    <path
+        android:fillColor="#FF0B1324"
+        android:pathData="M58,47.2 L83,47.2 L83,48.8 L58,48.8 Z" />
+
+    <!-- 底部额度/续航状态能量条 (安全区 x: 25..83, y: 71..77) -->
+    <path
+        android:fillColor="#FF1E293B"
+        android:pathData="M28,71 L80,71 A3,3 0 0 1 83,74 L83,74 A3,3 0 0 1 80,77 L28,77 A3,3 0 0 1 25,74 L25,74 A3,3 0 0 1 28,71 Z" />
+    <path android:pathData="M28,71 L69,71 A3,3 0 0 1 72,74 L72,74 A3,3 0 0 1 69,77 L28,77 A3,3 0 0 1 25,74 L25,74 A3,3 0 0 1 28,71 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="25"
+                android:startY="74"
+                android:endX="72"
+                android:endY="74">
+                <item android:offset="0.0" android:color="#FF06B6D4" />
+                <item android:offset="1.0" android:color="#FF10B981" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    </group>
+</vector>

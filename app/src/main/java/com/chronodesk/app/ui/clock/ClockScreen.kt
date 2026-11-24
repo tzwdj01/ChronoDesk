@@ -2,11 +2,16 @@ package com.chronodesk.app.ui.clock
 
 import android.content.res.Configuration
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,6 +64,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,8 +83,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.chronodesk.app.data.model.CodexAccount
-import com.chronodesk.app.ui.settings.AccountManagerDialog
-import com.chronodesk.app.ui.settings.DeviceAuthDialog
 import com.chronodesk.app.ui.settings.SettingsDialog
 import com.chronodesk.app.ui.settings.SettingsTab
 import com.chronodesk.app.ui.theme.DarkBackground
@@ -166,8 +170,22 @@ fun ClockScreen(
     }
 
     var areControlsVisible by remember { mutableStateOf(false) }
+    var controlsRevealTick by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(areControlsVisible) {
+    val toggleControlsVisibility: () -> Unit = {
+        if (areControlsVisible) {
+            areControlsVisible = false
+        } else {
+            areControlsVisible = true
+            controlsRevealTick++
+        }
+    }
+    val revealControls: () -> Unit = {
+        areControlsVisible = true
+        controlsRevealTick++
+    }
+
+    LaunchedEffect(areControlsVisible, controlsRevealTick) {
         if (areControlsVisible) {
             delay(6000L)
             areControlsVisible = false
@@ -176,9 +194,8 @@ fun ClockScreen(
 
     var showSettingsDialog by remember { mutableStateOf(false) }
     var settingsInitialTab by remember { mutableStateOf(SettingsTab.DISPLAY) }
+    var settingsInitialAccountId by remember { mutableStateOf<String?>(null) }
     var showTeslaSettingsDialog by remember { mutableStateOf(false) }
-    var selectedAccountToManage by remember { mutableStateOf<CodexAccount?>(null) }
-    var showDeviceAuthDialogForAccount by remember { mutableStateOf<CodexAccount?>(null) }
 
     // 首页已开启 Tesla 时，若冷启动尚无缓存快照则单次补拉一次，让首页续航胶囊即时展示（不改变后台/熄屏轮询规则）
     LaunchedEffect(teslaSettings.enabled, teslaSettings.isConfigured) {
@@ -199,12 +216,41 @@ fun ClockScreen(
     }
 
     if (showSettingsDialog) {
+        val chatGptAccs = accounts.filter { it.modelProvider == "CHATGPT" }
         SettingsDialog(
             currentSettings = settings,
             isNightMode = isNightMode,
             initialTab = settingsInitialTab,
             teslaStatusSummary = teslaSummaryText,
-            onDismiss = { showSettingsDialog = false },
+            accounts = accounts,
+            initialAccountId = settingsInitialAccountId,
+            getDeepSeekApiKey = { id -> viewModel.getDeepSeekApiKey(id) },
+            getAntigravityApiKey = { id -> viewModel.getAntigravityApiKey(id) },
+            onSaveCodexAccount = { slot, acc, ref, accTok ->
+                viewModel.saveAccount(slot, acc, ref, accTok)
+            },
+            onRemoveCodexAccount = { slot -> viewModel.removeAccount(slot) },
+            onUpdateCodexAlias = { slot, alias ->
+                val targetAcc = chatGptAccs.getOrNull(slot)
+                if (targetAcc != null) {
+                    viewModel.updateAccountAliasById(targetAcc.id, alias)
+                } else {
+                    viewModel.updateAccountAlias(slot, alias)
+                }
+            },
+            onSaveDeepSeekAccount = { id, key, alias -> viewModel.saveDeepSeekAccount(id, key, alias) },
+            onAddDeepSeekAccount = { viewModel.addDeepSeekAccount() },
+            onRemoveDeepSeekAccount = { id -> viewModel.removeDeepSeekAccount(id) },
+            onSaveAntigravityAccount = { id, key, alias -> viewModel.saveAntigravityAccount(id, key, alias) },
+            onAddAntigravityAccount = { viewModel.addAntigravityAccount() },
+            onRemoveAntigravityAccount = { id -> viewModel.removeAntigravityAccount(id) },
+            onUpdateAccountVisibility = { accId, showMain, showSecond, isPinned ->
+                viewModel.updateAccountVisibility(accId, showMain, showSecond, isPinned)
+            },
+            onDismiss = {
+                showSettingsDialog = false
+                settingsInitialAccountId = null
+            },
             onSave = { updated -> viewModel.updateSettings(updated) },
             onOpenTeslaSettings = {
                 showSettingsDialog = false
@@ -226,119 +272,6 @@ fun ClockScreen(
         )
     }
 
-    selectedAccountToManage?.let { account ->
-        val chatGptAccs = accounts.filter { it.modelProvider == "CHATGPT" || it.modelProvider == null }
-        val deepSeekAccs = accounts.filter { it.modelProvider == "DEEPSEEK" }
-        val antigravityAccs = accounts.filter { it.modelProvider == "ANTIGRAVITY" }
-        val slotIdx = when (account.modelProvider) {
-            "ANTIGRAVITY" -> 2 + deepSeekAccs.size + antigravityAccs.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
-            "DEEPSEEK" -> 2 + deepSeekAccs.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
-            else -> if (chatGptAccs.indexOfFirst { it.id == account.id } == 1) 1 else 0
-        }
-
-        AccountManagerDialog(
-            initialSlot = slotIdx,
-            initialAccountId = account.id,
-            accountA = chatGptAccs.getOrNull(0),
-            accountB = chatGptAccs.getOrNull(1),
-            deepSeekAccounts = deepSeekAccs,
-            getDeepSeekApiKey = { id -> viewModel.getDeepSeekApiKey(id) },
-            antigravityAccounts = antigravityAccs,
-            getAntigravityApiKey = { id -> viewModel.getAntigravityApiKey(id) },
-            onDismiss = { selectedAccountToManage = null },
-            onSaveAccount = { slot, acc, ref, accTok ->
-                val saved = viewModel.saveAccount(slot, acc, ref, accTok)
-                if (saved) {
-                    selectedAccountToManage = null
-                }
-                saved
-            },
-            onRemoveAccount = { slot ->
-                viewModel.removeAccount(slot)
-                selectedAccountToManage = null
-            },
-            onUpdateAlias = { slot, alias ->
-                val targetAcc = if (slot == 0) chatGptAccs.getOrNull(0) else chatGptAccs.getOrNull(1)
-                if (targetAcc != null) {
-                    viewModel.updateAccountAliasById(targetAcc.id, alias)
-                } else {
-                    viewModel.updateAccountAlias(slot, alias)
-                }
-            },
-            onSaveDeepSeekAccount = { accId, key, alias ->
-                val saved = viewModel.saveDeepSeekAccount(accId, key, alias)
-                if (saved) {
-                    selectedAccountToManage = null
-                }
-                saved
-            },
-            onAddDeepSeekAccount = {
-                viewModel.addDeepSeekAccount()
-            },
-            onRemoveDeepSeekAccount = { accId ->
-                viewModel.removeDeepSeekAccount(accId)
-                selectedAccountToManage = null
-            },
-            currentDeepSeekApiKey = viewModel.getDeepSeekApiKey(),
-            onSaveDeepSeekApiKey = { key ->
-                val saved = viewModel.saveDeepSeekApiKey(key)
-                if (saved) {
-                    selectedAccountToManage = null
-                    Toast.makeText(context, "DeepSeek API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_SHORT).show()
-                }
-                saved
-            },
-            onSaveAntigravityAccount = { accId, key, alias ->
-                val saved = viewModel.saveAntigravityAccount(accId, key, alias)
-                if (saved) {
-                    selectedAccountToManage = null
-                }
-                saved
-            },
-            onAddAntigravityAccount = {
-                viewModel.addAntigravityAccount()
-            },
-            onRemoveAntigravityAccount = { accId ->
-                viewModel.removeAntigravityAccount(accId)
-                selectedAccountToManage = null
-            },
-            currentAntigravityApiKey = viewModel.getAntigravityApiKey(),
-            onSaveAntigravityApiKey = { key ->
-                val saved = viewModel.saveAntigravityAccount("acc_antigravity", key, "Google Antigravity")
-                if (saved) {
-                    selectedAccountToManage = null
-                    Toast.makeText(context, "Google Antigravity API Key 已更新并触发验证", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_SHORT).show()
-                }
-                saved
-            },
-            onUpdateAccountVisibility = { accId, showMain, showSecond, isPinned ->
-                viewModel.updateAccountVisibility(accId, showMain, showSecond, isPinned)
-            }
-        )
-    }
-
-    showDeviceAuthDialogForAccount?.let { account ->
-        val slotIndex = accounts.indexOfFirst { it.id == account.id }.coerceAtLeast(0)
-        DeviceAuthDialog(
-            slot = slotIndex,
-            onDismiss = { showDeviceAuthDialogForAccount = null },
-            onSuccess = { updatedAcc, refreshToken, accessToken ->
-                val saved = viewModel.saveAccount(slotIndex, updatedAcc.copy(id = account.id), refreshToken, accessToken)
-                if (saved) {
-                    showDeviceAuthDialogForAccount = null
-                    Toast.makeText(context, "账号授权成功！", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_SHORT).show()
-                }
-                saved
-            }
-        )
-    }
-
     // 主题色彩体系自适应
     val bgColor = if (isNightMode) DarkBackground else InkBackground
 
@@ -350,7 +283,7 @@ fun ClockScreen(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                areControlsVisible = !areControlsVisible
+                toggleControlsVisibility()
             }
             .offset {
                 IntOffset(burnInShift.first.roundToInt(), burnInShift.second.roundToInt())
@@ -485,7 +418,7 @@ fun ClockScreen(
                                         scale = settings.clockScale,
                                         maxWidthDp = leftColWidthDp - 4f,
                                         maxHeightDp = maxClockHeightDp,
-                                        onClick = { areControlsVisible = !areControlsVisible },
+                                        onClick = toggleControlsVisibility,
                                         onToggleSeconds = {
                                             val newState = viewModel.toggleShowSeconds()
                                             val tip = if (newState) "已开启秒钟显示" else "已隐藏秒钟（可在设置中重新开启）"
@@ -636,12 +569,11 @@ fun ClockScreen(
                                 }
                             }
 
-                            // 右侧：多模型/多账号 AI 额度监控看板（顶部避让悬浮控制条）
+                            // 右侧：多模型/多账号 AI 额度监控看板（与左侧翻牌时钟完全居中对称，不留顶栏死区）
                             Column(
                                 modifier = Modifier
                                     .weight(quotaFraction)
-                                    .fillMaxHeight()
-                                    .padding(top = if (isCompactHeight) 40.dp else 46.dp),
+                                    .fillMaxHeight(),
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 MultiAccountQuotaSection(
@@ -656,9 +588,17 @@ fun ClockScreen(
                                     isMockMode = settings.useMockData,
                                     refreshIntervalMinutes = settings.autoRefreshIntervalMinutes,
                                     cardDensity = settings.quotaCardDensity,
-                                    onAddAccount = { viewModel.addAccount() },
-                                    onRefreshAccount = { id -> viewModel.refreshAccount(id) },
+                                    onAddAccount = {
+                                        settingsInitialTab = SettingsTab.ACCOUNTS
+                                        settingsInitialAccountId = null
+                                        showSettingsDialog = true
+                                    },
+                                    onRefreshAccount = { id ->
+                                        revealControls()
+                                        viewModel.refreshAccount(id)
+                                    },
                                     onDeleteAccount = { id ->
+                                        revealControls()
                                         val acc = accounts.find { it.id == id }
                                         if (acc?.modelProvider == "DEEPSEEK") {
                                             viewModel.removeDeepSeekAccount(id)
@@ -669,16 +609,22 @@ fun ClockScreen(
                                         }
                                     },
                                     onAccountClick = { acc ->
-                                        if (!acc.isConfigured && acc.modelProvider == "CHATGPT") {
-                                            showDeviceAuthDialogForAccount = acc
-                                        } else {
-                                            selectedAccountToManage = acc
-                                        }
+                                        settingsInitialTab = SettingsTab.ACCOUNTS
+                                        settingsInitialAccountId = acc.id
+                                        showSettingsDialog = true
                                     },
-                                    onRefreshAll = { viewModel.refreshAll() },
-                                    onToggleNightMode = { viewModel.toggleNightMode() },
+                                    onRevealControls = revealControls,
+                                    onRefreshAll = {
+                                        revealControls()
+                                        viewModel.refreshAll()
+                                    },
+                                    onToggleNightMode = {
+                                        revealControls()
+                                        viewModel.toggleNightMode()
+                                    },
                                     onSettingsClick = {
-                                        settingsInitialTab = SettingsTab.DISPLAY
+                                        settingsInitialTab = SettingsTab.ACCOUNTS
+                                        settingsInitialAccountId = null
                                         showSettingsDialog = true
                                     },
                                     modifier = Modifier.fillMaxWidth()
@@ -748,8 +694,21 @@ fun ClockScreen(
                                 areControlsVisible = areControlsVisible,
                                 isMockMode = settings.useMockData,
                                 refreshIntervalMinutes = settings.autoRefreshIntervalMinutes,
-                                onAddAccount = { viewModel.addAccount() },
-                                onRefreshAccount = { id -> viewModel.refreshAccount(id) },
+                                onAddAccount = {
+                                    settingsInitialTab = SettingsTab.ACCOUNTS
+                                    settingsInitialAccountId = null
+                                    showSettingsDialog = true
+                                },
+                                onAccountClick = { acc ->
+                                    settingsInitialTab = SettingsTab.ACCOUNTS
+                                    settingsInitialAccountId = acc.id
+                                    showSettingsDialog = true
+                                },
+                                onRevealControls = revealControls,
+                                onRefreshAccount = { id ->
+                                    revealControls()
+                                    viewModel.refreshAccount(id)
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -772,18 +731,20 @@ fun ClockScreen(
                         },
                         onOpenSettings = {
                             settingsInitialTab = SettingsTab.DISPLAY
+                            settingsInitialAccountId = null
                             showSettingsDialog = true
                         },
                         onManageAccount = {
-                            selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                            settingsInitialTab = SettingsTab.ACCOUNTS
+                            settingsInitialAccountId = accounts.firstOrNull()?.id
+                            showSettingsDialog = true
                         },
                         onAccountClick = { acc ->
-                            if (!acc.isConfigured && acc.modelProvider == "CHATGPT") {
-                                showDeviceAuthDialogForAccount = acc
-                            } else {
-                                selectedAccountToManage = acc
-                            }
+                            settingsInitialTab = SettingsTab.ACCOUNTS
+                            settingsInitialAccountId = acc.id
+                            showSettingsDialog = true
                         },
+                        onToggleControls = toggleControlsVisibility,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (page == 2) {
@@ -807,17 +768,27 @@ fun ClockScreen(
                 }
             }
 
-            // ================= 顶部悬浮导航控制栏 (页面 0 与 页面 1 右上角，不压低左侧时钟空间) =================
-            if (pagerState.currentPage != 2) {
+            // ================= 顶部默认隐藏悬浮控制栏：轻触屏幕/卡片后平滑显现，6秒无操作自动隐去 =================
+            AnimatedVisibility(
+                visible = areControlsVisible && pagerState.currentPage != 2,
+                enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { -it / 2 },
+                exit = fadeOut(tween(220)) + slideOutVertically(tween(220)) { -it / 2 },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = if (isCompactHeight) 6.dp else 10.dp, end = if (isCompactHeight) 12.dp else 18.dp)
+            ) {
                 ClockTopBar(
                     isNightMode = isNightMode,
                     accountCount = accounts.count { it.modelProvider in listOf("CHATGPT", "DEEPSEEK", "ANTIGRAVITY") },
-                    nightModeOption = settings.nightModeOption,
                     isCompact = isCompactHeight,
                     onAddAccount = {
-                        selectedAccountToManage = accounts.firstOrNull() ?: CodexAccount.createPlaceholder()
+                        areControlsVisible = false
+                        settingsInitialTab = SettingsTab.ACCOUNTS
+                        settingsInitialAccountId = null
+                        showSettingsDialog = true
                     },
                     onRefreshAll = {
+                        revealControls()
                         viewModel.refreshAll()
                         if (teslaSettings.enabled && teslaSettings.isConfigured) {
                             teslaViewModel.refreshNow()
@@ -825,17 +796,17 @@ fun ClockScreen(
                         Toast.makeText(context, "已触发全量数据刷新", Toast.LENGTH_SHORT).show()
                     },
                     onToggleNightMode = {
+                        revealControls()
                         val next = viewModel.toggleNightMode()
                         val msg = if (next == "FORCE_NIGHT") "已切换为：深色科技模式" else "已切换为：水墨墨水屏模式"
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     },
                     onOpenSettings = {
+                        areControlsVisible = false
                         settingsInitialTab = SettingsTab.DISPLAY
+                        settingsInitialAccountId = null
                         showSettingsDialog = true
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 2.dp)
+                    }
                 )
             }
 
@@ -890,13 +861,12 @@ fun ClockScreen(
 }
 
 /**
- * 屏幕顶栏：左侧品牌标语，右侧控制胶囊按钮
+ * 默认隐藏的悬浮控制胶囊：轻触画面唤醒，整合账号接口、刷新、日夜切换与系统设置，不影响常规看板对称布局。
  */
 @Composable
 private fun ClockTopBar(
     isNightMode: Boolean,
     accountCount: Int,
-    nightModeOption: String,
     isCompact: Boolean = false,
     onAddAccount: () -> Unit,
     onRefreshAll: () -> Unit,
@@ -904,155 +874,118 @@ private fun ClockTopBar(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val buttonBg = if (isNightMode) DarkSurface else InkSurface
-    val buttonBorder = if (isNightMode) DarkBorder else InkBorder
+    val capsuleBg = (if (isNightMode) DarkSurface else InkSurface).copy(alpha = 0.95f)
+    val capsuleBorder = if (isNightMode) DarkBorder else InkBorder
     val buttonText = if (isNightMode) TextPrimary else InkTextPrimary
+    val themeIcon = if (isNightMode) Icons.Default.LightMode else Icons.Default.DarkMode
 
     Row(
         modifier = modifier
-            .padding(end = if (isCompact) 12.dp else 18.dp),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically
+            .clip(RoundedCornerShape(12.dp))
+            .background(capsuleBg)
+            .border(1.dp, capsuleBorder, RoundedCornerShape(12.dp))
+            .padding(horizontal = if (isCompact) 4.dp else 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.dp)
     ) {
-        // 右侧操作按钮组 (具备 >=48dp 无障碍触控热区与读屏语义)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp)
+        // 账号接口设置入口
+        Box(
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .semantics { contentDescription = "账号与接口管理" }
+                .clickable(role = Role.Button, onClickLabel = "账号与接口管理") { onAddAccount() }
+                .padding(horizontal = if (isCompact) 6.dp else 8.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // 账号管理按钮
-            Box(
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .semantics { contentDescription = "添加账号与管理" }
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = "添加与管理账号"
-                    ) { onAddAccount() },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(buttonBg)
-                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = if (isNightMode) TechCyan else InkTextPrimary,
-                            modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "账号管理 ($accountCount)",
-                            color = buttonText,
-                            fontSize = if (isCompact) 10.sp else 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = if (isNightMode) TechCyan else Color(0xFF0284C7),
+                    modifier = Modifier.size(if (isCompact) 12.dp else 13.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = "账号接口($accountCount)",
+                    color = buttonText,
+                    fontSize = if (isCompact) 10.sp else 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
+        }
 
-            // 全部刷新按钮
-            Box(
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .semantics { contentDescription = "刷新全部数据" }
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = "刷新全部数据"
-                    ) { onRefreshAll() },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(buttonBg)
-                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = if (isCompact) 7.dp else 9.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            tint = buttonText,
-                            modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "刷新",
-                            color = buttonText,
-                            fontSize = if (isCompact) 10.sp else 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+        Box(modifier = Modifier.width(1.dp).height(16.dp).background(capsuleBorder))
+
+        // 全部刷新按钮
+        Box(
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .semantics { contentDescription = "刷新全部数据" }
+                .clickable(role = Role.Button, onClickLabel = "刷新全部数据") { onRefreshAll() }
+                .padding(horizontal = if (isCompact) 6.dp else 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    tint = buttonText,
+                    modifier = Modifier.size(if (isCompact) 12.dp else 13.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = "刷新",
+                    color = buttonText,
+                    fontSize = if (isCompact) 10.sp else 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
+        }
 
-            // 日夜/水墨主题切换按钮
-            val themeIcon = if (isNightMode) Icons.Default.LightMode else Icons.Default.DarkMode
-            Box(
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .semantics { contentDescription = "日夜主题切换" }
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = "日夜主题切换"
-                    ) { onToggleNightMode() },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(buttonBg)
-                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
-                ) {
-                    Icon(
-                        imageVector = themeIcon,
-                        contentDescription = null,
-                        tint = if (isNightMode) TechAmber else InkTextPrimary,
-                        modifier = Modifier.size(if (isCompact) 11.5.dp else 12.5.dp)
-                    )
-                }
-            }
+        Box(modifier = Modifier.width(1.dp).height(16.dp).background(capsuleBorder))
 
-            // 设置按钮
-            Box(
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .semantics { contentDescription = "系统设置" }
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = "系统设置"
-                    ) { onOpenSettings() },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(buttonBg)
-                        .border(1.dp, buttonBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = if (isCompact) 8.dp else 10.dp, vertical = if (isCompact) 3.dp else 4.5.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = null,
-                            tint = buttonText,
-                            modifier = Modifier.size(if (isCompact) 11.dp else 12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "设置",
-                            color = buttonText,
-                            fontSize = if (isCompact) 10.sp else 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
+        // 日夜/水墨切换
+        Box(
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .semantics { contentDescription = "日夜主题切换" }
+                .clickable(role = Role.Button, onClickLabel = "日夜主题切换") { onToggleNightMode() }
+                .padding(horizontal = if (isCompact) 6.dp else 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = themeIcon,
+                contentDescription = null,
+                tint = if (isNightMode) TechAmber else InkTextPrimary,
+                modifier = Modifier.size(if (isCompact) 13.dp else 14.dp)
+            )
+        }
+
+        Box(modifier = Modifier.width(1.dp).height(16.dp).background(capsuleBorder))
+
+        // 系统设置按钮
+        Box(
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                .semantics { contentDescription = "系统设置" }
+                .clickable(role = Role.Button, onClickLabel = "系统设置") { onOpenSettings() }
+                .padding(horizontal = if (isCompact) 6.dp else 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = buttonText,
+                    modifier = Modifier.size(if (isCompact) 12.dp else 13.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = "设置",
+                    color = buttonText,
+                    fontSize = if (isCompact) 10.sp else 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
