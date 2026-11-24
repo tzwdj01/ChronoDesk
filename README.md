@@ -7,7 +7,7 @@
 专为闲置旗舰与经典小屏 Android 设备（小米 11 / 小米 6 等）打造的常亮桌面伴侣
 
 <p>
-  <a href="https://github.com/tzwdj01/ChronoDesk/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/Release-v2.0.0-2563EB?style=for-the-badge&logo=github" alt="Release v2.0.0" /></a>
+  <a href="https://github.com/tzwdj01/ChronoDesk/releases/tag/v2.0.1"><img src="https://img.shields.io/badge/Release-v2.0.1-2563EB?style=for-the-badge&logo=github" alt="Release v2.0.1" /></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android 8.0+" />
   <img src="https://img.shields.io/badge/Kotlin-100%25-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin 100%" />
   <img src="https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
@@ -178,17 +178,17 @@ app/src/main/java/com/chronodesk/app/
 ## 📦 快速安装与构建
 
 ### 方式一：直接下载预编译安装包 (推荐)
-前往 [**GitHub Releases · v2.0.0**](https://github.com/tzwdj01/ChronoDesk/releases/tag/v2.0.0) 下载：
-- `ChronoDesk-v2.0.0-release.apk` — 正式发布签名版（包名 `com.chronodesk.app`，移除调试钩子、体积更轻量）
-- `ChronoDesk-v2.0.0-debug.apk` — 开发调试版（包名 `com.chronodesk.app.debug`，支持 ADB 调试与视图检查，可与正式版共存）
+前往 [**GitHub Releases · v2.0.1**](https://github.com/tzwdj01/ChronoDesk/releases/tag/v2.0.1) 下载：
+- `ChronoDesk-v2.0.1-release.apk` — 正式发布签名版（包名 `com.chronodesk.app`，移除调试钩子、体积更轻量）
+- `ChronoDesk-v2.0.1-debug.apk` — 开发调试版（包名 `com.chronodesk.app.debug`，支持 ADB 调试与视图检查，可与正式版共存）
 - `SHA256SUMS.txt` — 所有 APK 安装包的 SHA-256 完整性校验摘要
 
 ```bash
 # 通过 ADB 安装正式版
-adb install -r ChronoDesk-v2.0.0-release.apk
+adb install -r ChronoDesk-v2.0.1-release.apk
 
 # 验证签名与完整性
-apksigner verify --print-certs ChronoDesk-v2.0.0-release.apk
+apksigner verify --print-certs ChronoDesk-v2.0.1-release.apk
 shasum -a 256 -c SHA256SUMS.txt
 ```
 
