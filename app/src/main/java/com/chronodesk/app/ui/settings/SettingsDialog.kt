@@ -209,6 +209,17 @@ fun SettingsDialog(
     onAddDeepSeekAccount: () -> CodexAccount? = { null },
     onRemoveDeepSeekAccount: (accountId: String) -> Unit = {},
     onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Boolean = { _, _, _ -> false },
+    onSaveAntigravityOAuthAccount: (
+        accountId: String,
+        alias: String?,
+        email: String?,
+        refreshToken: String?,
+        accessToken: String?,
+        expiresInSeconds: Long,
+        idToken: String?,
+        providerType: String
+    ) -> Boolean = { _, _, _, _, _, _, _, _ -> false },
+    onUpdateAntigravityAlias: (accountId: String, newAlias: String) -> Unit = { _, _ -> },
     onAddAntigravityAccount: () -> CodexAccount? = { null },
     onRemoveAntigravityAccount: (accountId: String) -> Unit = {},
     onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit = { _, _, _, _ -> },
@@ -594,6 +605,8 @@ fun SettingsDialog(
                                     onAddDeepSeekAccount = onAddDeepSeekAccount,
                                     onRemoveDeepSeekAccount = onRemoveDeepSeekAccount,
                                     onSaveAntigravityAccount = onSaveAntigravityAccount,
+                                    onSaveAntigravityOAuthAccount = onSaveAntigravityOAuthAccount,
+                                    onUpdateAntigravityAlias = onUpdateAntigravityAlias,
                                     onAddAntigravityAccount = onAddAntigravityAccount,
                                     onRemoveAntigravityAccount = onRemoveAntigravityAccount,
                                     onUpdateAccountVisibility = onUpdateAccountVisibility
@@ -1600,6 +1613,17 @@ private fun AccountsSettingsTabContent(
     onAddDeepSeekAccount: () -> CodexAccount?,
     onRemoveDeepSeekAccount: (accountId: String) -> Unit,
     onSaveAntigravityAccount: (accountId: String, apiKey: String, alias: String) -> Boolean,
+    onSaveAntigravityOAuthAccount: (
+        accountId: String,
+        alias: String?,
+        email: String?,
+        refreshToken: String?,
+        accessToken: String?,
+        expiresInSeconds: Long,
+        idToken: String?,
+        providerType: String
+    ) -> Boolean,
+    onUpdateAntigravityAlias: (accountId: String, newAlias: String) -> Unit,
     onAddAntigravityAccount: () -> CodexAccount?,
     onRemoveAntigravityAccount: (accountId: String) -> Unit,
     onUpdateAccountVisibility: (accountId: String, showOnMain: Boolean, showOnSecond: Boolean, isPinnedMain: Boolean) -> Unit
@@ -1619,7 +1643,7 @@ private fun AccountsSettingsTabContent(
     var localGemini by remember(accounts) {
         mutableStateOf(
             accounts.filter { it.modelProvider == "ANTIGRAVITY" }.ifEmpty {
-                listOf(CodexAccount(id = "acc_antigravity", alias = "Google Antigravity", modelProvider = "ANTIGRAVITY"))
+                listOf(CodexAccount(id = "acc_antigravity", alias = "Antigravity", modelProvider = "ANTIGRAVITY", providerType = "OAUTH_PKCE"))
             }
         )
     }
@@ -1648,6 +1672,8 @@ private fun AccountsSettingsTabContent(
 
     var showDeviceAuthDialog by remember { mutableStateOf(false) }
     var showDirectTokenDialog by remember { mutableStateOf(false) }
+    var showAgyOAuthDialog by remember { mutableStateOf(false) }
+    var showAgyTokenDialog by remember { mutableStateOf(false) }
 
     val activeCodexAcc = chatGptAccounts.getOrNull(selectedChatGptSlot)
     if (showDeviceAuthDialog) {
@@ -1685,6 +1711,73 @@ private fun AccountsSettingsTabContent(
         )
     }
 
+    val activeAgAcc = localGemini.getOrNull(selectedGeminiIdx.coerceIn(0, localGemini.lastIndex))
+    if (showAgyOAuthDialog && activeAgAcc != null) {
+        AntigravityOAuthDialog(
+            currentAccount = activeAgAcc,
+            isNightMode = isNightMode,
+            onDismiss = { showAgyOAuthDialog = false },
+            onSuccess = { email, refresh, access, expSec, idTok ->
+                val saved = onSaveAntigravityOAuthAccount(
+                    activeAgAcc.id,
+                    null,
+                    email,
+                    refresh,
+                    access,
+                    expSec,
+                    idTok,
+                    "OAUTH_PKCE"
+                )
+                if (saved) {
+                    localGemini = localGemini.map { item ->
+                        if (item.id == activeAgAcc.id) item.copy(
+                            email = email ?: item.email,
+                            credentialStatus = CredentialStatus.VALID,
+                            providerType = "OAUTH_PKCE"
+                        ) else item
+                    }
+                    showAgyOAuthDialog = false
+                    Toast.makeText(context, "Antigravity 授权成功并正在同步额度", Toast.LENGTH_SHORT).show()
+                }
+                saved
+            }
+        )
+    }
+
+    if (showAgyTokenDialog && activeAgAcc != null) {
+        AntigravityTokenDialog(
+            currentAccount = activeAgAcc,
+            isNightMode = isNightMode,
+            onDismiss = { showAgyTokenDialog = false },
+            onSave = { alias, email, refresh, access, expSec, idTok ->
+                val pType = if (!refresh.isNullOrBlank()) "OAUTH_PKCE" else "DIRECT_TOKEN"
+                val saved = onSaveAntigravityOAuthAccount(
+                    activeAgAcc.id,
+                    alias,
+                    email,
+                    refresh,
+                    access,
+                    expSec,
+                    idTok,
+                    pType
+                )
+                if (saved) {
+                    localGemini = localGemini.map { item ->
+                        if (item.id == activeAgAcc.id) item.copy(
+                            alias = alias.ifBlank { "Antigravity" },
+                            email = email ?: item.email,
+                            credentialStatus = CredentialStatus.VALID,
+                            providerType = pType
+                        ) else item
+                    }
+                    showAgyTokenDialog = false
+                    Toast.makeText(context, "Antigravity 凭据已保存并开始查询额度", Toast.LENGTH_SHORT).show()
+                }
+                saved
+            }
+        )
+    }
+
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = palette.primaryText,
         unfocusedTextColor = palette.primaryText,
@@ -1697,7 +1790,7 @@ private fun AccountsSettingsTabContent(
     // 1. 平台切换 + 账号槽位选择器
     SettingsGroupCard(
         title = "AI 平台与账号管理",
-        subtitle = "统一配置 ChatGPT (OAuth)、DeepSeek 余额及 Gemini API 连接凭据",
+        subtitle = "统一配置 ChatGPT (OAuth)、DeepSeek 余额及 Antigravity 订阅额度",
         palette = palette
     ) {
         Row(
@@ -1707,7 +1800,7 @@ private fun AccountsSettingsTabContent(
             listOf(
                 AiModelProvider.CHATGPT to "ChatGPT",
                 AiModelProvider.DEEPSEEK to "DeepSeek",
-                AiModelProvider.ANTIGRAVITY to "Gemini API"
+                AiModelProvider.ANTIGRAVITY to "Antigravity"
             ).forEach { (provider, label) ->
                 val isSel = selectedProvider == provider
                 Row(
@@ -1857,7 +1950,7 @@ private fun AccountsSettingsTabContent(
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = "+ 新增 Gemini",
+                                text = "+ 新增 Antigravity",
                                 color = palette.accent,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
@@ -2085,10 +2178,15 @@ private fun AccountsSettingsTabContent(
         AiModelProvider.ANTIGRAVITY -> {
             val safeIdx = selectedGeminiIdx.coerceIn(0, localGemini.lastIndex)
             val agAcc = localGemini[safeIdx]
-            var agKey by remember(agAcc.id) { mutableStateOf(getAntigravityApiKey(agAcc.id) ?: "") }
             var agAlias by remember(agAcc.id, agAcc.alias) {
                 mutableStateOf(
-                    if (agAcc.alias != "Google Antigravity" && agAcc.alias != "Gemini API" && !agAcc.alias.startsWith("Gemini API ")) agAcc.alias else ""
+                    if (agAcc.alias != "Google Antigravity" &&
+                        agAcc.alias != "Gemini API" &&
+                        agAcc.alias != "Antigravity" &&
+                        !agAcc.alias.startsWith("Gemini API ") &&
+                        !agAcc.alias.startsWith("Antigravity ") &&
+                        agAcc.alias != agAcc.email
+                    ) agAcc.alias else ""
                 )
             }
             var showMain by remember(agAcc.id, agAcc.isVisibleOnMain) { mutableStateOf(agAcc.isVisibleOnMain) }
@@ -2096,35 +2194,49 @@ private fun AccountsSettingsTabContent(
             var isPinned by remember(agAcc.id, agAcc.isPinnedMain) { mutableStateOf(agAcc.isPinnedMain) }
 
             val statusLabel = when {
-                agAcc.credentialStatus == CredentialStatus.EXPIRED -> "Key 失效" to palette.danger
-                agAcc.credentialStatus == CredentialStatus.VALID && agKey.isNotBlank() -> "已配置" to palette.positive
-                else -> "待配置" to palette.mutedText
+                agAcc.credentialStatus == CredentialStatus.EXPIRED -> "凭据失效" to palette.danger
+                agAcc.isConfigured -> "已授权" to palette.positive
+                else -> "未授权" to palette.mutedText
             }
 
             SettingsGroupCard(
-                title = "Gemini API 连接配置",
-                subtitle = "直连官方 Generative Language API 验证模型接口状态",
+                title = if (localGemini.size > 1) "Antigravity 槽位 ${safeIdx + 1} 配置" else "Antigravity 官方账号配置",
+                subtitle = agAcc.maskedEmail?.let { "绑定邮箱：$it · Google OAuth 2.0 PKCE" }
+                    ?: "使用 Google 账号授权或导入 CC Switch 凭据查询实时额度",
                 palette = palette,
                 headerTrailing = {
                     Text(text = statusLabel.first, color = statusLabel.second, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             ) {
-                OutlinedTextField(
-                    value = agAlias,
-                    onValueChange = { agAlias = it },
-                    placeholder = { Text("自定义名称（例如：工作主号）", fontSize = 11.sp, color = palette.mutedText) },
-                    singleLine = true,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = fieldColors
-                )
-                OutlinedTextField(
-                    value = agKey,
-                    onValueChange = { agKey = it },
-                    placeholder = { Text("Gemini API Key (AIzaSy...)", fontSize = 11.sp, color = palette.mutedText) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = fieldColors
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = agAlias,
+                        onValueChange = { agAlias = it },
+                        placeholder = { Text("自定义显示名称（留空展示脱敏邮箱）", fontSize = 11.sp, color = palette.mutedText) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        colors = fieldColors
+                    )
+                    Button(
+                        onClick = {
+                            val cleanAlias = agAlias.trim()
+                            onUpdateAntigravityAlias(agAcc.id, cleanAlias)
+                            localGemini = localGemini.mapIndexed { idx, item ->
+                                if (idx == safeIdx) item.copy(alias = cleanAlias.ifBlank { "Antigravity" }) else item
+                            }
+                            Toast.makeText(context, "已更新显示名称", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.onAccent)
+                    ) {
+                        Text("保存名称", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
                 AccountVisibilityChipsRow(
                     showOnMain = showMain,
                     showOnSecond = showSecond,
@@ -2135,48 +2247,58 @@ private fun AccountsSettingsTabContent(
                         onUpdateAccountVisibility(agAcc.id, m, s, p)
                     }
                 )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = {
-                            val cleanAlias = agAlias.trim()
-                            val saved = onSaveAntigravityAccount(agAcc.id, agKey.trim(), cleanAlias)
-                            if (saved) {
-                                localGemini = localGemini.mapIndexed { idx, item ->
-                                    if (idx == safeIdx) item.copy(
-                                        alias = cleanAlias.ifBlank { "Gemini API" },
-                                        credentialStatus = CredentialStatus.VALID
-                                    ) else item
-                                }
-                                Toast.makeText(context, "Gemini API Key 已保存并触发验证", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
-                            }
-                        },
+                        onClick = { showAgyOAuthDialog = true },
+                        modifier = Modifier.weight(1.2f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.onAccent)
+                    ) {
+                        Icon(Icons.Default.Devices, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Google 账号授权", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { showAgyTokenDialog = true },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.positive, contentColor = palette.onAccent)
+                        border = BorderStroke(1.dp, palette.border)
                     ) {
-                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("保存并验证连接", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Key, contentDescription = null, tint = palette.primaryText, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("导入凭据", fontSize = 11.5.sp, color = palette.primaryText)
                     }
-                    if (localGemini.size > 1) {
+
+                    if (agAcc.isConfigured || localGemini.size > 1) {
                         OutlinedButton(
                             onClick = {
                                 onRemoveAntigravityAccount(agAcc.id)
-                                localGemini = localGemini.filterNot { it.id == agAcc.id }
-                                selectedGeminiIdx = 0
-                                Toast.makeText(context, "已删除 Gemini 账号", Toast.LENGTH_SHORT).show()
+                                if (localGemini.size > 1) {
+                                    localGemini = localGemini.filterNot { it.id == agAcc.id }
+                                    selectedGeminiIdx = 0
+                                    Toast.makeText(context, "已删除 Antigravity 账号", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    localGemini = localGemini.map { item ->
+                                        if (item.id == agAcc.id) item.copy(
+                                            alias = "Antigravity",
+                                            email = null,
+                                            credentialStatus = CredentialStatus.NOT_LOGGED_IN
+                                        ) else item
+                                    }
+                                    Toast.makeText(context, "已清除 Antigravity 账号凭据", Toast.LENGTH_SHORT).show()
+                                }
                             },
                             shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(1.dp, palette.danger.copy(alpha = 0.6f))
                         ) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = palette.danger, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("删除", fontSize = 12.sp, color = palette.danger)
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(if (localGemini.size > 1) "删除" else "清除", fontSize = 11.5.sp, color = palette.danger)
                         }
                     }
                 }

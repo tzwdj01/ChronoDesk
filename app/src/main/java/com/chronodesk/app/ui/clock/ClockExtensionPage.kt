@@ -259,6 +259,7 @@ fun ClockExtensionPage(
                     .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
                     .clickable {
                         val firstDs = deepSeekAccounts.firstOrNull()
+                            ?: accounts.firstOrNull { it.modelProvider == "DEEPSEEK" }
                         if (firstDs != null) onAccountClick(firstDs) else onManageAccount()
                     }
                     .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
@@ -370,7 +371,7 @@ fun ClockExtensionPage(
                 }
             }
 
-            // 右侧：Gemini API 精简状态 + 系统简要状态
+            // 右侧：Antigravity 精简额度摘要
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -379,10 +380,13 @@ fun ClockExtensionPage(
                     .border(1.dp, cardBorder, RoundedCornerShape(if (isCompact) 9.dp else 11.dp))
                     .clickable {
                         val agAcc = antigravityAccounts.firstOrNull()
-                        if (agAcc != null) onAccountClick(agAcc) else onOpenSettings()
+                            ?: accounts.firstOrNull { it.modelProvider == "ANTIGRAVITY" }
+                        if (agAcc != null) onAccountClick(agAcc) else onManageAccount()
                     }
                     .padding(horizontal = if (isCompact) 10.dp else 12.dp, vertical = if (isCompact) 6.dp else 8.dp)
             ) {
+                val agAcc = antigravityAccounts.firstOrNull()
+                val agSnap = agAcc?.let { snapshots[it.id] }
                 Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -399,57 +403,66 @@ fun ClockExtensionPage(
                                 isNightMode = isNightMode
                             )
                             Text(
-                                text = "Gemini API",
+                                text = "Antigravity",
                                 color = secondaryText,
                                 fontSize = if (isCompact) 10.5.sp else 11.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
                         Text(
-                            text = "${settings.autoRefreshIntervalMinutes}分钟同步",
+                            text = agSnap?.planName?.takeIf { it.isNotBlank() }
+                                ?: "${settings.autoRefreshIntervalMinutes}分钟同步",
                             color = mutedText,
-                            fontSize = if (isCompact) 8.5.sp else 9.5.sp
+                            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
 
-                    if (antigravityAccounts.isEmpty()) {
+                    if (agAcc == null || agSnap == null) {
                         Text(
-                            text = "尚未绑定 Key · 常亮与自动夜间已就绪",
+                            text = "尚未授权账号 · 点击连接 Antigravity",
                             color = mutedText,
                             fontSize = if (isCompact) 9.5.sp else 10.5.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     } else {
-                        val agAcc = antigravityAccounts.first()
-                        val agSnap = snapshots[agAcc.id]
-                        val agStatus = agSnap?.computeStatus(
+                        val agStatus = agSnap.computeStatus(
                             isConfigured = agAcc.isConfigured,
                             isRefreshing = loadingMap[agAcc.id] == true,
                             refreshIntervalMinutes = settings.autoRefreshIntervalMinutes
-                        ) ?: if (agAcc.isConfigured) QuotaSyncStatus.AWAITING_SYNC else QuotaSyncStatus.NOT_CONFIGURED
-                        val isAgDemo = agSnap?.isMock == true && agSnap.errorMessage == "暂无演示数据"
-                        val agStatusText = if (isAgDemo) "暂无演示数据" else when (agStatus) {
-                            QuotaSyncStatus.NOT_CONFIGURED -> "待配置 Key"
-                            QuotaSyncStatus.AWAITING_SYNC -> "等待同步"
-                            QuotaSyncStatus.SYNCING -> "同步中"
-                            QuotaSyncStatus.UPDATED -> "连接正常"
-                            QuotaSyncStatus.CACHED_STALE -> "缓存 · 连接异常"
-                            QuotaSyncStatus.CACHE_EXPIRED -> "缓存已过期"
-                            QuotaSyncStatus.AUTH_EXPIRED -> "Key失效"
-                            QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
-                            QuotaSyncStatus.DATA_FORMAT_ERROR -> "数据格式异常"
+                        )
+                        val isAgDemo = agSnap.isMock && agSnap.errorMessage == "暂无演示数据"
+                        val agTiers = agSnap.quotaWindows.orEmpty()
+                        val hasQuotaData = agSnap.primaryWindow != null || agSnap.secondaryWindow != null || agTiers.isNotEmpty()
+                        val minRem = listOfNotNull(
+                            agSnap.primaryWindow?.remainingPercent,
+                            agSnap.secondaryWindow?.remainingPercent
+                        ).minOrNull()
+
+                        val agDisplayText = when {
+                            isAgDemo -> "暂无演示数据"
+                            agStatus == QuotaSyncStatus.NOT_CONFIGURED -> "待授权账号"
+                            agStatus == QuotaSyncStatus.AUTH_EXPIRED -> "登录失效"
+                            hasQuotaData -> {
+                                val pStr = agSnap.primaryWindow?.formattedRemaining() ?: "—"
+                                val sStr = agSnap.secondaryWindow?.formattedRemaining() ?: "—"
+                                if (isCompact) "G:$pStr · C:$sStr" else "Gem $pStr · Claude $sStr"
+                            }
+                            agStatus == QuotaSyncStatus.SYNCING -> "同步中"
+                            agStatus == QuotaSyncStatus.CACHED_STALE -> agSnap.errorMessage?.take(10) ?: "缓存异常"
+                            agStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE -> "暂不可用"
+                            else -> "等待同步"
                         }
-                        val agColor = when (agStatus) {
-                            QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
-                            QuotaSyncStatus.AUTH_EXPIRED, QuotaSyncStatus.CACHE_EXPIRED -> if (isNightMode) TechRose else InkWarningRed
-                            QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+                        val agColor = when {
+                            agStatus == QuotaSyncStatus.AUTH_EXPIRED || agStatus == QuotaSyncStatus.CACHE_EXPIRED || (minRem != null && minRem <= 0.0) ->
+                                if (isNightMode) TechRose else InkWarningRed
+                            agStatus == QuotaSyncStatus.NOT_CONFIGURED -> mutedText
+                            minRem != null && minRem <= 15.0 -> if (isNightMode) TechAmber else InkWarningAmber
+                            hasQuotaData && agStatus == QuotaSyncStatus.UPDATED -> if (isNightMode) TechEmerald else InkStatusGreen
                             else -> if (isNightMode) TechAmber else InkWarningAmber
                         }
-                        val verifiedTime = agSnap?.formattedVerifiedTime ?: agSnap?.formattedQueriedAt
-                        val detailSuffix = if (agStatus != QuotaSyncStatus.NOT_CONFIGURED && agStatus != QuotaSyncStatus.AUTH_EXPIRED && verifiedTime != null) {
-                            " · 验证于 $verifiedTime"
-                        } else ""
 
                         Row(
                             modifier = Modifier
@@ -469,11 +482,13 @@ fun ClockExtensionPage(
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                             Text(
-                                text = "$agStatusText$detailSuffix",
+                                text = agDisplayText,
                                 color = agColor,
                                 fontSize = if (isCompact) 9.5.sp else 11.sp,
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }

@@ -50,7 +50,20 @@ data class CodexAccount(
                 if (alias.isNotBlank()) alias else "DeepSeek"
             }
             modelProvider == "ANTIGRAVITY" -> {
-                if (alias.isNotBlank() && alias != "Google Antigravity") alias else "Gemini API"
+                val cleanAlias = alias.trim()
+                val isDefaultPlaceholder = cleanAlias.isBlank() ||
+                    cleanAlias == email ||
+                    cleanAlias == "Google Antigravity" ||
+                    cleanAlias == "Gemini API" ||
+                    cleanAlias == "Antigravity" ||
+                    cleanAlias.startsWith("Google Antigravity ") ||
+                    cleanAlias.startsWith("Gemini API ") ||
+                    cleanAlias.startsWith("Antigravity ")
+                when {
+                    !isDefaultPlaceholder -> cleanAlias
+                    !maskedEmail.isNullOrBlank() -> maskedEmail!!
+                    else -> "Antigravity"
+                }
             }
             alias.isNotBlank() && alias != email -> alias
             !maskedEmail.isNullOrBlank() -> maskedEmail!!

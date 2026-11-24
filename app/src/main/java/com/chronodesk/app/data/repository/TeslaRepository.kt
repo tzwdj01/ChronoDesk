@@ -174,13 +174,8 @@ class TeslaRepository(
                 val loc = finalSnapshot.location
                 val lat = loc.latitude
                 val lng = loc.longitude
-                val requireZh = lat != null && lng != null && VehicleLocationResolver.isInGreaterChina(lat, lng)
-                val needsGeoLookup = loc.isValid && lat != null && lng != null && (
-                    loc.resolvedAddress.isNullOrBlank() ||
-                        loc.resolvedAddress.endsWith("附近") ||
-                        (requireZh && !VehicleLocationResolver.containsChinese(loc.resolvedAddress))
-                    )
-                if (needsGeoLookup && lat != null && lng != null) {
+                if (needsZhAddressResolution(loc) && lat != null && lng != null) {
+                    val requireZh = VehicleLocationResolver.isInGreaterChina(lat, lng)
                     val cachedAddr = locationResolver?.getCachedAddress(lat, lng)
                     if (!cachedAddr.isNullOrBlank() && (!requireZh || VehicleLocationResolver.containsChinese(cachedAddr))) {
                         finalSnapshot = finalSnapshot.copy(
@@ -209,6 +204,83 @@ class TeslaRepository(
                     }
                 }
 
+                // 补全最近行程起点与终点的中文地址
+                val drive = finalSnapshot.drives.lastDrive
+                if (drive != null) {
+                    var updatedDrive = drive
+                    val startLoc = drive.startLocation
+                    if (needsZhAddressResolution(startLoc) && startLoc?.latitude != null && startLoc.longitude != null) {
+                        val sLat = startLoc.latitude
+                        val sLng = startLoc.longitude
+                        val reqZh = VehicleLocationResolver.isInGreaterChina(sLat, sLng)
+                        val cached = locationResolver?.getCachedAddress(sLat, sLng)
+                        if (!cached.isNullOrBlank() && (!reqZh || VehicleLocationResolver.containsChinese(cached))) {
+                            updatedDrive = updatedDrive.copy(startLocation = startLoc.copy(resolvedAddress = cached))
+                        } else {
+                            val sGrid = startLoc.coordinateGridKey
+                            val sFallback = startLoc.resolvedAddress
+                            scope.launch {
+                                val resolved = locationResolver?.resolveAddress(sLat, sLng, sFallback)
+                                if (!resolved.isNullOrBlank() && (!reqZh || VehicleLocationResolver.containsChinese(resolved))) {
+                                    val cur = _snapshotFlow.value
+                                    val curDrive = cur.drives.lastDrive
+                                    val curStart = curDrive?.startLocation
+                                    if (curDrive != null && curStart != null && curStart.coordinateGridKey == sGrid) {
+                                        val next = cur.copy(
+                                            drives = cur.drives.copy(
+                                                lastDrive = curDrive.copy(
+                                                    startLocation = curStart.copy(resolvedAddress = resolved)
+                                                )
+                                            )
+                                        )
+                                        _snapshotFlow.value = next
+                                        saveCachedSnapshot(next)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val endLoc = updatedDrive.endLocation
+                    if (needsZhAddressResolution(endLoc) && endLoc?.latitude != null && endLoc.longitude != null) {
+                        val eLat = endLoc.latitude
+                        val eLng = endLoc.longitude
+                        val reqZh = VehicleLocationResolver.isInGreaterChina(eLat, eLng)
+                        val cached = locationResolver?.getCachedAddress(eLat, eLng)
+                        if (!cached.isNullOrBlank() && (!reqZh || VehicleLocationResolver.containsChinese(cached))) {
+                            updatedDrive = updatedDrive.copy(endLocation = endLoc.copy(resolvedAddress = cached))
+                        } else {
+                            val eGrid = endLoc.coordinateGridKey
+                            val eFallback = endLoc.resolvedAddress
+                            scope.launch {
+                                val resolved = locationResolver?.resolveAddress(eLat, eLng, eFallback)
+                                if (!resolved.isNullOrBlank() && (!reqZh || VehicleLocationResolver.containsChinese(resolved))) {
+                                    val cur = _snapshotFlow.value
+                                    val curDrive = cur.drives.lastDrive
+                                    val curEnd = curDrive?.endLocation
+                                    if (curDrive != null && curEnd != null && curEnd.coordinateGridKey == eGrid) {
+                                        val next = cur.copy(
+                                            drives = cur.drives.copy(
+                                                lastDrive = curDrive.copy(
+                                                    endLocation = curEnd.copy(resolvedAddress = resolved)
+                                                )
+                                            )
+                                        )
+                                        _snapshotFlow.value = next
+                                        saveCachedSnapshot(next)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (updatedDrive != drive) {
+                        finalSnapshot = finalSnapshot.copy(
+                            drives = finalSnapshot.drives.copy(lastDrive = updatedDrive)
+                        )
+                    }
+                }
+
                 _snapshotFlow.value = finalSnapshot
                 lastSuccessFetchTime = System.currentTimeMillis()
                 saveCachedSnapshot(finalSnapshot)
@@ -224,6 +296,16 @@ class TeslaRepository(
                 false
             }
         }
+    }
+
+    private fun needsZhAddressResolution(loc: com.chronodesk.app.data.model.VehicleLocation?): Boolean {
+        if (loc == null || !loc.isValid) return false
+        val lat = loc.latitude ?: return false
+        val lng = loc.longitude ?: return false
+        val requireZh = VehicleLocationResolver.isInGreaterChina(lat, lng)
+        return loc.resolvedAddress.isNullOrBlank() ||
+            loc.resolvedAddress.endsWith("附近") ||
+            (requireZh && !VehicleLocationResolver.containsChinese(loc.resolvedAddress))
     }
 
     fun onAppForeground() {

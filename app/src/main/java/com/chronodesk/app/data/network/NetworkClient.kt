@@ -25,7 +25,7 @@ object NetworkClient {
     private val smartProxySelector = object : ProxySelector() {
         override fun select(uri: URI?): List<Proxy> {
             val host = uri?.host ?: ""
-            if (host.contains("openai.com") || host.contains("chatgpt.com")) {
+            if (host.contains("openai.com") || host.contains("chatgpt.com") || host.contains("googleapis.com")) {
                 return listOf(
                     Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 1082)),
                     Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 7890)),
@@ -84,6 +84,19 @@ object NetworkClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(GeocodingApi::class.java)
+    }
+
+    /**
+     * 用于 Antigravity OAuth 与额度查询的客户端（自动探测代理与 20s 超时）
+     */
+    val antigravityHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .proxySelector(smartProxySelector)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(AuthLoggingInterceptor())
+            .build()
     }
 
     /**

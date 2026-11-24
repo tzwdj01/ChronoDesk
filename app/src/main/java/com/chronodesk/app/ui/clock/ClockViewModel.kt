@@ -365,6 +365,37 @@ class ClockViewModel @JvmOverloads constructor(
         return accountRepo.getDeepSeekApiKey()
     }
 
+    fun saveAntigravityOAuthAccount(
+        accountId: String,
+        alias: String?,
+        email: String?,
+        refreshToken: String?,
+        accessToken: String?,
+        expiresInSeconds: Long = 3599L,
+        idToken: String? = null,
+        providerType: String = "OAUTH_PKCE"
+    ): Boolean {
+        val saved = accountRepo.saveAntigravityOAuthAccount(
+            accountId = accountId,
+            alias = alias,
+            email = email,
+            refreshToken = refreshToken,
+            accessToken = accessToken,
+            expiresInSeconds = expiresInSeconds,
+            idToken = idToken,
+            providerType = providerType
+        )
+        if (saved && (!refreshToken.isNullOrBlank() || !accessToken.isNullOrBlank())) {
+            refreshAccount(accountId)
+        }
+        return saved
+    }
+
+    fun updateAntigravityAlias(accountId: String, alias: String) {
+        val clean = alias.trim().ifBlank { "Antigravity" }
+        accountRepo.updateAccountAlias(accountId, clean)
+    }
+
     fun saveAntigravityAccount(accountId: String, apiKey: String, alias: String): Boolean {
         val saved = accountRepo.saveAntigravityApiKey(accountId, apiKey, alias)
         if (saved) {

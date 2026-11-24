@@ -72,8 +72,10 @@ class TeslaSnapshotTest {
     fun testDriveSummaryAggregation() {
         val summary = DriveSummary(
             todayDistanceKm = 42.5,
+            todayDurationMin = 75,
             todayTrips = 3,
             todayEstimatedWhPerKm = 145.2,
+            todayEnergyKwh = 6.17,
             monthDistanceKm = 380.0,
             recent7DaysDrives = listOf(
                 DailyDriveItem("2026-11-20", 25.0, 142.0),
@@ -82,7 +84,10 @@ class TeslaSnapshotTest {
         )
 
         assertEquals(42.5, summary.todayDistanceKm ?: 0.0, 0.01)
+        assertEquals(75, summary.todayDurationMin)
+        assertEquals("1小时15分", summary.formattedTodayDuration)
         assertEquals(3, summary.todayTrips)
+        assertEquals(6.17, summary.todayEnergyKwh ?: 0.0, 0.01)
         assertEquals(2, summary.recent7DaysDrives.size)
     }
 }

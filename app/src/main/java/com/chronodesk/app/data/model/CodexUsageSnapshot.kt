@@ -39,6 +39,7 @@ data class CodexUsageSnapshot(
     val email: String? = null,
     val primaryWindow: CodexUsageWindow? = null,    // 上游第一额度窗口
     val secondaryWindow: CodexUsageWindow? = null,  // 上游第二额度窗口
+    val quotaWindows: List<CodexUsageWindow>? = null, // 多桶明细额度窗口 (如 Antigravity)
     val creditsBalance: Double? = null,             // 账户总余额 (DeepSeek 等)
     val grantedBalance: Double? = null,             // 真实赠送金额
     val toppedUpBalance: Double? = null,           // 真实充值金额
@@ -112,7 +113,7 @@ data class CodexUsageSnapshot(
         }
 
         val successTime = lastSuccessTime ?: if (!isLastGood && queriedAt != null) queriedAt else null
-        val hasData = (primaryWindow != null || secondaryWindow != null || creditsBalance != null || isAvailable == true)
+        val hasData = (primaryWindow != null || secondaryWindow != null || !quotaWindows.isNullOrEmpty() || creditsBalance != null || isAvailable == true)
 
         if (successTime != null) {
             val intervalMs = refreshIntervalMinutes * 60 * 1000L
@@ -212,6 +213,7 @@ data class CodexUsageSnapshot(
                     credentialStatus = CredentialStatus.EXPIRED,
                     primaryWindow = null,
                     secondaryWindow = null,
+                    quotaWindows = null,
                     creditsBalance = null,
                     balanceList = null,
                     queriedAt = null,

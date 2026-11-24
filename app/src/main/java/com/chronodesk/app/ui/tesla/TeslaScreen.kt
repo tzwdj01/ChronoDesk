@@ -233,6 +233,7 @@ fun TeslaScreen(
             location = snapshot.location,
             vehicleName = snapshot.car?.displayName ?: settings.carName.takeIf { it.isNotBlank() } ?: "Tesla",
             vehicleState = snapshot.state,
+            lastDrive = snapshot.drives.lastDrive,
             isNightMode = isNightMode,
             onDismiss = { showLocationMapDialog = false }
         )
@@ -379,65 +380,46 @@ fun TeslaScreen(
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
             ) {
-                // 第一行：最后上报位置（中文） + 最后行驶里程（新增）
-                Row(
+                // 第一行：最近行程（合并最后行驶里程与最后上报位置，展示起点与终点）
+                TeslaModuleCard(
+                    palette = palette,
+                    isCompact = isCompact,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1.04f),
-                    horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
+                        .weight(1.08f)
+                        .clickable(enabled = snapshot.location.isValid) {
+                            showLocationMapDialog = true
+                        }
                 ) {
-                    TeslaModuleCard(
+                    RecentTripModuleContent(
+                        lastDrive = snapshot.drives.lastDrive,
+                        currentLocation = snapshot.location,
+                        vehicleState = snapshot.state,
                         palette = palette,
-                        isCompact = isCompact,
-                        modifier = Modifier
-                            .weight(1.12f)
-                            .fillMaxHeight()
-                            .clickable(enabled = snapshot.location.isValid) {
-                                showLocationMapDialog = true
-                            }
-                    ) {
-                        LastLocationModuleContent(
-                            location = snapshot.location,
-                            vehicleState = snapshot.state,
-                            palette = palette,
-                            isCompact = isCompact
-                        )
-                    }
-
-                    TeslaModuleCard(
-                        palette = palette,
-                        isCompact = isCompact,
-                        modifier = Modifier
-                            .weight(0.88f)
-                            .fillMaxHeight()
-                    ) {
-                        LastDriveModuleContent(
-                            lastDrive = snapshot.drives.lastDrive,
-                            palette = palette,
-                            isCompact = isCompact
-                        )
-                    }
+                        isCompact = isCompact
+                    )
                 }
 
-                // 第二行：今日行驶与均耗 + 累计里程与座舱温控
+                // 第二行：今日看板（总里程 / 时长 / 能耗 / 耗电量 / 驾驶次数） + 总里程与温控
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.92f),
+                        .weight(0.94f),
                     horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 10.dp)
                 ) {
                     TeslaModuleCard(
                         palette = palette,
                         isCompact = isCompact,
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.26f)
                             .fillMaxHeight()
                     ) {
-                        TodayDriveModuleContent(
+                        TodayDashboardModuleContent(
                             todayDist = snapshot.drives.todayDistanceKm,
+                            todayDurationText = snapshot.drives.formattedTodayDuration,
                             todayTrips = snapshot.drives.todayTrips,
                             todayWhKm = snapshot.drives.todayEstimatedWhPerKm,
-                            todayChargeKwh = snapshot.charging.todayCharge,
+                            todayEnergyKwh = snapshot.drives.todayEnergyKwh,
                             palette = palette,
                             isCompact = isCompact
                         )
@@ -447,7 +429,7 @@ fun TeslaScreen(
                         palette = palette,
                         isCompact = isCompact,
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(0.74f)
                             .fillMaxHeight()
                     ) {
                         OdometerAndClimateModuleContent(
@@ -1026,8 +1008,9 @@ private fun TeslaShowroomHeroCard(
 }
 
 @Composable
-private fun ColumnScope.LastLocationModuleContent(
-    location: VehicleLocation,
+private fun ColumnScope.RecentTripModuleContent(
+    lastDrive: LastDriveInfo?,
+    currentLocation: VehicleLocation,
     vehicleState: VehicleState,
     palette: TeslaCockpitPalette,
     isCompact: Boolean
@@ -1039,6 +1022,7 @@ private fun ColumnScope.LastLocationModuleContent(
         else -> "停泊" to palette.secondaryText
     }
 
+    // 顶栏：模块标题 + 状态胶囊 + 里程/时长/能耗摘要 + 地图入口
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1046,91 +1030,8 @@ private fun ColumnScope.LastLocationModuleContent(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.LocationOn,
-                contentDescription = null,
-                tint = palette.accent,
-                modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
-            )
-            Text(
-                text = "最后上报位置",
-                color = palette.secondaryText,
-                fontSize = if (isCompact) 10.sp else 11.5.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(statusColor.copy(alpha = 0.14f))
-                .padding(horizontal = 5.dp, vertical = 1.dp)
-        ) {
-            Text(
-                text = statusLabel,
-                color = statusColor,
-                fontSize = if (isCompact) 8.sp else 9.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-
-    Column {
-        Text(
-            text = location.primaryPlaceName,
-            color = palette.primaryText,
-            fontSize = if (isCompact) 12.sp else 14.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = if (isCompact) 15.sp else 18.sp
-        )
-        Text(
-            text = location.secondaryPlaceDetail,
-            color = palette.mutedText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-            fontFamily = FontFamily.Monospace,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = location.formattedSampledTime?.let { "采样于 $it" } ?: "采样时间未知",
-            color = palette.mutedText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp
-        )
-        if (location.isValid) {
-            Text(
-                text = "查看地图 >",
-                color = palette.accent,
-                fontSize = if (isCompact) 9.sp else 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun ColumnScope.LastDriveModuleContent(
-    lastDrive: LastDriveInfo?,
-    palette: TeslaCockpitPalette,
-    isCompact: Boolean
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp),
+            modifier = Modifier.weight(1f, fill = false)
         ) {
             Icon(
                 imageVector = Icons.Default.Route,
@@ -1139,70 +1040,194 @@ private fun ColumnScope.LastDriveModuleContent(
                 modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
             )
             Text(
-                text = "最后行驶里程",
+                text = "最近行程",
                 color = palette.secondaryText,
                 fontSize = if (isCompact) 10.sp else 11.5.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(statusColor.copy(alpha = 0.14f))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = statusLabel,
+                    color = statusColor,
+                    fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 7.dp)
+        ) {
+            if (lastDrive != null) {
+                val durPart = lastDrive.formattedDuration?.let { " · $it" } ?: ""
+                val whPart = if (!isCompact && lastDrive.estimatedWhPerKm != null && lastDrive.estimatedWhPerKm > 0) {
+                    " · ${lastDrive.estimatedWhPerKm.toInt()} Wh/km"
+                } else ""
+                Text(
+                    text = "${lastDrive.formattedDistanceKm} km$durPart$whPart",
+                    color = palette.accent,
+                    fontSize = if (isCompact) 9.5.sp else 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            } else {
+                Text(
+                    text = "暂无行程",
+                    color = palette.mutedText,
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+
+            if (currentLocation.isValid) {
+                Text(
+                    text = "地图 >",
+                    color = palette.accent,
+                    fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+    }
+
+    // 主体起止路线容器：清晰展示起点和终点
+    val startPlace = lastDrive?.resolveStartPlace() ?: "暂无行程起点"
+    val endPlace = lastDrive?.resolveEndPlace(currentLocation) ?: currentLocation.primaryPlaceName
+    val startTimeText = lastDrive?.formattedStartClockTime ?: "—"
+    val endTimeText = lastDrive?.formattedEndClockTime
+        ?: currentLocation.formattedSampledTime?.let { "上报 $it" }
+        ?: "—"
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(palette.innerBg)
+            .padding(horizontal = if (isCompact) 7.dp else 10.dp, vertical = if (isCompact) 4.5.dp else 6.5.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 5.dp)
+    ) {
+        // 起点行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 7.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(palette.positive.copy(alpha = 0.18f))
+                        .padding(horizontal = if (isCompact) 4.dp else 5.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "起",
+                        color = palette.positive,
+                        fontSize = if (isCompact) 8.sp else 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+                Text(
+                    text = startPlace,
+                    color = palette.primaryText,
+                    fontSize = if (isCompact) 10.sp else 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = startTimeText,
+                color = palette.mutedText,
+                fontSize = if (isCompact) 8.sp else 9.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
             )
         }
-        val tagText = when {
-            lastDrive == null -> "暂无"
-            lastDrive.isOngoing -> "行驶中"
-            else -> lastDrive.formattedTime ?: "最近"
+
+        // 终点行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 5.dp else 7.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                val endTagText = if (lastDrive?.isOngoing == true) "今" else "终"
+                val endTagColor = if (lastDrive?.isOngoing == true) palette.warning else palette.accent
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(endTagColor.copy(alpha = 0.18f))
+                        .padding(horizontal = if (isCompact) 4.dp else 5.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = endTagText,
+                        color = endTagColor,
+                        fontSize = if (isCompact) 8.sp else 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+                Text(
+                    text = endPlace,
+                    color = palette.primaryText,
+                    fontSize = if (isCompact) 10.sp else 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = endTimeText,
+                color = if (lastDrive?.isOngoing == true) palette.positive else palette.mutedText,
+                fontSize = if (isCompact) 8.sp else 9.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
+            )
         }
-        Text(
-            text = tagText,
-            color = if (lastDrive?.isOngoing == true) palette.positive else palette.mutedText,
-            fontSize = if (isCompact) 8.sp else 9.sp,
-            fontFamily = FontFamily.Monospace
-        )
-    }
-
-    Row(
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = lastDrive?.formattedDistanceKm ?: "—",
-            color = if (lastDrive != null) palette.accent else palette.mutedText,
-            fontSize = if (isCompact) 18.sp else 23.sp,
-            fontWeight = FontWeight.ExtraBold,
-            fontFamily = FontFamily.Monospace
-        )
-        Text(
-            text = "km",
-            color = palette.secondaryText,
-            fontSize = if (isCompact) 9.5.sp else 11.sp,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        val dur = lastDrive?.formattedDuration ?: "—"
-        val whKm = lastDrive?.estimatedWhPerKm?.takeIf { it > 0 }?.let { "${it.toInt()} Wh/km" } ?: "— Wh/km"
-        Text(
-            text = "耗时 $dur",
-            color = palette.mutedText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp
-        )
-        Text(
-            text = whKm,
-            color = palette.secondaryText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-            fontFamily = FontFamily.Monospace
-        )
     }
 }
 
 @Composable
-private fun ColumnScope.TodayDriveModuleContent(
+private fun ColumnScope.TodayDashboardModuleContent(
     todayDist: Double?,
+    todayDurationText: String,
     todayTrips: Int?,
     todayWhKm: Double?,
-    todayChargeKwh: Double?,
+    todayEnergyKwh: Double?,
     palette: TeslaCockpitPalette,
     isCompact: Boolean
 ) {
@@ -1212,47 +1237,105 @@ private fun ColumnScope.TodayDriveModuleContent(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "今日行驶",
+            text = "今日看板",
             color = palette.secondaryText,
             fontSize = if (isCompact) 10.sp else 11.5.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false
         )
-        Text(
-            text = "${todayTrips ?: 0} 次行程",
-            color = palette.mutedText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp
-        )
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(palette.innerBg)
+                .padding(horizontal = 5.dp, vertical = 1.dp)
+        ) {
+            Text(
+                text = "驾驶 ${todayTrips ?: 0} 次",
+                color = palette.accent,
+                fontSize = if (isCompact) 8.sp else 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
     }
-
-    Text(
-        text = if (todayDist != null) String.format(Locale.US, "%.1f km", todayDist) else "0.0 km",
-        color = palette.primaryText,
-        fontSize = if (isCompact) 16.5.sp else 20.sp,
-        fontWeight = FontWeight.Bold,
-        fontFamily = FontFamily.Monospace
-    )
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Column {
+            Text(
+                text = "今日总里程",
+                color = palette.mutedText,
+                fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                maxLines = 1,
+                softWrap = false
+            )
+            Text(
+                text = if (todayDist != null) String.format(Locale.US, "%.1f km", todayDist) else "0.0 km",
+                color = palette.primaryText,
+                fontSize = if (isCompact) 14.5.sp else 18.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = "时长",
+                color = palette.mutedText,
+                fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                maxLines = 1,
+                softWrap = false
+            )
+            Text(
+                text = todayDurationText,
+                color = palette.primaryText,
+                fontSize = if (isCompact) 11.5.sp else 13.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.innerBg)
+            .padding(horizontal = if (isCompact) 6.dp else 8.dp, vertical = if (isCompact) 2.5.dp else 3.5.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         val whStr = if (todayWhKm != null && todayWhKm > 0) "${todayWhKm.toInt()} Wh/km" else "— Wh/km"
-        Text(
-            text = "均耗 $whStr",
-            color = palette.secondaryText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-            fontFamily = FontFamily.Monospace
-        )
-        if (todayChargeKwh != null && todayChargeKwh > 0.05) {
-            Text(
-                text = "+${String.format(Locale.US, "%.1f", todayChargeKwh)} kWh",
-                color = palette.positive,
-                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace
-            )
+        val energyStr = when {
+            todayEnergyKwh != null && todayEnergyKwh >= 0.0 -> String.format(Locale.US, "%.1f kWh", todayEnergyKwh)
+            (todayTrips ?: 0) == 0 -> "0.0 kWh"
+            else -> "— kWh"
         }
+        Text(
+            text = "能耗 $whStr",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 8.sp else 9.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            softWrap = false
+        )
+        Text(
+            text = "耗电量 $energyStr",
+            color = palette.secondaryText,
+            fontSize = if (isCompact) 8.sp else 9.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
@@ -1272,24 +1355,27 @@ private fun ColumnScope.OdometerAndClimateModuleContent(
         Text(
             text = "总里程与温控",
             color = palette.secondaryText,
-            fontSize = if (isCompact) 10.sp else 11.5.sp,
-            fontWeight = FontWeight.SemiBold
+            fontSize = if (isCompact) 9.5.sp else 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false
         )
         Icon(
             imageVector = Icons.Default.Thermostat,
             contentDescription = null,
             tint = palette.accent,
-            modifier = Modifier.size(if (isCompact) 12.dp else 14.dp)
+            modifier = Modifier.size(if (isCompact) 11.dp else 13.dp)
         )
     }
 
     Text(
         text = if (odometer != null) String.format(Locale.US, "%,.1f km", odometer) else "— km",
         color = palette.primaryText,
-        fontSize = if (isCompact) 15.5.sp else 19.sp,
+        fontSize = if (isCompact) 13.5.sp else 16.5.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = FontFamily.Monospace,
         maxLines = 1,
+        softWrap = false,
         overflow = TextOverflow.Ellipsis
     )
 
@@ -1298,16 +1384,20 @@ private fun ColumnScope.OdometerAndClimateModuleContent(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = "车内 ${insideTemp?.let { String.format(Locale.US, "%.1f°C", it) } ?: "—"}",
+            text = "内 ${insideTemp?.let { String.format(Locale.US, "%.1f°", it) } ?: "—"}",
             color = palette.secondaryText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-            fontFamily = FontFamily.Monospace
+            fontSize = if (isCompact) 8.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            softWrap = false
         )
         Text(
-            text = "车外 ${outsideTemp?.let { String.format(Locale.US, "%.1f°C", it) } ?: "—"}",
+            text = "外 ${outsideTemp?.let { String.format(Locale.US, "%.1f°", it) } ?: "—"}",
             color = palette.mutedText,
-            fontSize = if (isCompact) 8.5.sp else 9.5.sp,
-            fontFamily = FontFamily.Monospace
+            fontSize = if (isCompact) 8.sp else 9.5.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

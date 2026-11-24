@@ -242,6 +242,10 @@ fun ClockScreen(
             onAddDeepSeekAccount = { viewModel.addDeepSeekAccount() },
             onRemoveDeepSeekAccount = { id -> viewModel.removeDeepSeekAccount(id) },
             onSaveAntigravityAccount = { id, key, alias -> viewModel.saveAntigravityAccount(id, key, alias) },
+            onSaveAntigravityOAuthAccount = { id, alias, email, refresh, access, expSec, idTok, pType ->
+                viewModel.saveAntigravityOAuthAccount(id, alias, email, refresh, access, expSec, idTok, pType)
+            },
+            onUpdateAntigravityAlias = { id, alias -> viewModel.updateAntigravityAlias(id, alias) },
             onAddAntigravityAccount = { viewModel.addAntigravityAccount() },
             onRemoveAntigravityAccount = { id -> viewModel.removeAntigravityAccount(id) },
             onUpdateAccountVisibility = { accId, showMain, showSecond, isPinned ->

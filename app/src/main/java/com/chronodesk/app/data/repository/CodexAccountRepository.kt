@@ -165,6 +165,47 @@ class CodexAccountRepository(
                         credentialStatus = status,
                         modelProvider = "CHATGPT"
                     )
+                } else if (acc.modelProvider == "ANTIGRAVITY") {
+                    val idToken = credentialStorage.getIdToken(acc.id)
+                    val access = credentialStorage.getAccessToken(acc.id)
+                    val refresh = credentialStorage.getRefreshToken(acc.id)
+                    val isLegacyApiKey = acc.providerType == "API_KEY" ||
+                        (refresh.isNullOrBlank() && access?.startsWith("AIza") == true)
+                    if (isLegacyApiKey) {
+                        credentialStorage.removeAccountCredentials(acc.id)
+                        prefs.edit().remove("snap_${acc.id}").apply()
+                        val migratedAlias = if (acc.alias == "Gemini API" || acc.alias == "Google Antigravity") {
+                            "Antigravity"
+                        } else {
+                            acc.alias
+                        }
+                        loadedList[i] = acc.copy(
+                            alias = migratedAlias,
+                            email = null,
+                            credentialStatus = CredentialStatus.NOT_LOGGED_IN,
+                            providerType = "OAUTH_PKCE"
+                        )
+                    } else {
+                        val hasCred = !refresh.isNullOrBlank() || !access.isNullOrBlank()
+                        val extracted = JwtUtils.extractEmail(idToken) ?: JwtUtils.extractEmail(access)
+                        val email = acc.email ?: extracted
+                        val migratedAlias = if (acc.alias == "Gemini API" || acc.alias == "Google Antigravity") {
+                            "Antigravity"
+                        } else {
+                            acc.alias
+                        }
+                        val status = when {
+                            !hasCred -> CredentialStatus.NOT_LOGGED_IN
+                            acc.credentialStatus == CredentialStatus.EXPIRED -> CredentialStatus.EXPIRED
+                            else -> CredentialStatus.VALID
+                        }
+                        loadedList[i] = acc.copy(
+                            email = email,
+                            alias = migratedAlias,
+                            credentialStatus = status,
+                            providerType = if (acc.providerType == "DIRECT_TOKEN") "DIRECT_TOKEN" else "OAUTH_PKCE"
+                        )
+                    }
                 }
             }
         } else {
@@ -184,28 +225,31 @@ class CodexAccountRepository(
             ))
         }
 
-        // 5.1 确保包含 Google Antigravity 账号
+        // 5.1 确保包含 Antigravity 账号
         if (loadedList.none { it.modelProvider == "ANTIGRAVITY" }) {
-            val agKey = if (credentialStorage.isStorageAvailable) credentialStorage.getAccessToken("acc_antigravity") else null
+            val agRefresh = if (credentialStorage.isStorageAvailable) credentialStorage.getRefreshToken("acc_antigravity") else null
+            val agAccess = if (credentialStorage.isStorageAvailable) credentialStorage.getAccessToken("acc_antigravity") else null
+            val hasAgCred = !agRefresh.isNullOrBlank() || (!agAccess.isNullOrBlank() && !agAccess.startsWith("AIza"))
             loadedList.add(CodexAccount(
                 id = "acc_antigravity",
-                alias = "Gemini API",
+                alias = "Antigravity",
                 email = null,
-                credentialStatus = if (!agKey.isNullOrBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
-                providerType = "API_KEY",
+                credentialStatus = if (hasAgCred) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
+                providerType = "OAUTH_PKCE",
                 modelProvider = "ANTIGRAVITY"
             ))
         }
 
-        // 6. 全局去重与清洗：移除重复的邮箱和无用占位，确保仅保留 2 个 ChatGPT 真实账号与 1 个 DeepSeek 账号
+        // 6. 全局去重与清洗：同提供商下按邮箱去重，允许同一邮箱分别绑定不同平台（如 ChatGPT 与 Antigravity）
         val cleanedList = mutableListOf<CodexAccount>()
         val seenEmails = mutableSetOf<String>()
         val seenIds = mutableSetOf<String>()
         for (acc in loadedList) {
             val emailKey = acc.email?.lowercase()?.trim()
             if (emailKey != null && emailKey.isNotBlank()) {
-                if (seenEmails.contains(emailKey)) continue
-                seenEmails.add(emailKey)
+                val scopedKey = "${acc.modelProvider ?: "CHATGPT"}:$emailKey"
+                if (seenEmails.contains(scopedKey)) continue
+                seenEmails.add(scopedKey)
             }
             if (seenIds.contains(acc.id)) continue
             seenIds.add(acc.id)
@@ -233,10 +277,21 @@ class CodexAccountRepository(
                 }
             }
 
-            val apiKey = if (acc.modelProvider == "DEEPSEEK" || acc.modelProvider == "ANTIGRAVITY") credentialStorage.getAccessToken(acc.id) else null
+            val apiKey = if (acc.modelProvider == "DEEPSEEK") credentialStorage.getAccessToken(acc.id) else null
+            val hasAgCred = if (acc.modelProvider == "ANTIGRAVITY") {
+                acc.isConfigured ||
+                    !credentialStorage.getRefreshToken(acc.id).isNullOrBlank() ||
+                    !credentialStorage.getAccessToken(acc.id).isNullOrBlank()
+            } else false
+            val isLegacyAgConnectionOnly = acc.modelProvider == "ANTIGRAVITY" &&
+                savedSnap != null &&
+                savedSnap.quotaWindows.isNullOrEmpty() &&
+                savedSnap.primaryWindow == null &&
+                savedSnap.secondaryWindow == null &&
+                savedSnap.errorMessage == null
             val isFakeOldSnap = savedSnap != null && (
                 (acc.modelProvider == "DEEPSEEK" && (savedSnap.planName == "V3" || savedSnap.planName == "Plus" || apiKey.isNullOrBlank())) ||
-                (acc.modelProvider == "ANTIGRAVITY" && apiKey.isNullOrBlank())
+                (acc.modelProvider == "ANTIGRAVITY" && (!hasAgCred || isLegacyAgConnectionOnly))
             )
 
             if (savedSnap != null && !isFakeOldSnap) {
@@ -251,8 +306,9 @@ class CodexAccountRepository(
                     }
                     "ANTIGRAVITY" -> {
                         initialSnaps[acc.id] = CodexUsageSnapshot.empty(acc.id, acc.displayTitle).copy(
-                            credentialStatus = if (apiKey.isNullOrBlank()) CredentialStatus.NOT_LOGGED_IN else CredentialStatus.VALID,
-                            planName = "Pro",
+                            email = acc.email,
+                            credentialStatus = acc.credentialStatus,
+                            planName = null,
                             modelProvider = "ANTIGRAVITY"
                         )
                     }
@@ -565,48 +621,142 @@ class CodexAccountRepository(
         return credentialStorage.getAccessToken(deepSeekAcc.id)
     }
 
-    fun saveAntigravityApiKey(accountId: String, apiKey: String, alias: String? = null): Boolean {
-        val clean = apiKey.trim()
+    fun saveAntigravityOAuthAccount(
+        accountId: String,
+        alias: String? = null,
+        email: String? = null,
+        refreshToken: String? = null,
+        accessToken: String? = null,
+        expiresInSeconds: Long = 3599L,
+        idToken: String? = null,
+        providerType: String = "OAUTH_PKCE"
+    ): Boolean {
+        val cleanRefresh = refreshToken?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanAccess = accessToken?.trim()?.takeIf { it.isNotEmpty() }
         val current = _accounts.value.firstOrNull { it.id == accountId }
-        val finalAlias = if (!alias.isNullOrBlank()) alias.trim() else current?.alias?.ifBlank { "Gemini API" } ?: "Gemini API"
+        val finalAlias = when {
+            alias != null && alias.trim().isNotEmpty() -> alias.trim()
+            alias != null -> "Antigravity"
+            else -> current?.alias?.ifBlank { "Antigravity" } ?: "Antigravity"
+        }
+        val detectedEmail = email?.trim()?.takeIf { it.contains("@") }
+            ?: JwtUtils.extractEmail(idToken)
+            ?: JwtUtils.extractEmail(cleanAccess)
+            ?: current?.email
         val target = current ?: CodexAccount(
             id = accountId,
             alias = finalAlias,
-            email = null,
-            credentialStatus = if (clean.isNotBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
-            providerType = "API_KEY",
+            email = detectedEmail,
+            credentialStatus = CredentialStatus.NOT_LOGGED_IN,
+            providerType = providerType,
             modelProvider = "ANTIGRAVITY"
         )
-        if (clean.isNotBlank()) {
+
+        if (cleanRefresh == null && cleanAccess == null) {
+            credentialStorage.removeAccountCredentials(target.id)
+            prefs.edit().remove("snap_${target.id}").apply()
+            val cleared = target.copy(
+                alias = finalAlias,
+                email = null,
+                providerType = "OAUTH_PKCE",
+                credentialStatus = CredentialStatus.NOT_LOGGED_IN
+            )
+            if (current != null) updateAccount(cleared) else addAccount(cleared)
+            putSnapshot(
+                target.id,
+                CodexUsageSnapshot.empty(target.id, cleared.displayTitle).copy(modelProvider = "ANTIGRAVITY")
+            )
+        } else {
             if (!credentialStorage.isStorageAvailable) {
                 Log.e(TAG, "设备安全存储不可用，凭据未保存")
                 return false
             }
-            val saved = credentialStorage.saveAccessToken(target.id, clean, Long.MAX_VALUE)
+            val expiresAtMs = if (cleanAccess != null) {
+                System.currentTimeMillis() + (expiresInSeconds.coerceAtLeast(120L) * 1000L)
+            } else {
+                0L
+            }
+            val saved = if (cleanRefresh != null) {
+                credentialStorage.saveCodexCredentials(
+                    accountId = target.id,
+                    refreshToken = cleanRefresh,
+                    accessToken = cleanAccess,
+                    expiresAtMs = expiresAtMs,
+                    idToken = idToken
+                )
+            } else {
+                credentialStorage.removeAccountCredentials(target.id)
+                credentialStorage.saveAccessToken(target.id, cleanAccess!!, expiresAtMs)
+            }
             if (!saved) {
                 Log.e(TAG, "设备安全存储不可用，凭据未保存")
                 return false
             }
+            val shouldAutoShow = !target.isConfigured
             val updated = target.copy(
                 alias = finalAlias,
-                providerType = "API_KEY",
-                credentialStatus = CredentialStatus.VALID
+                email = detectedEmail,
+                providerType = providerType,
+                credentialStatus = CredentialStatus.VALID,
+                authenticatedAt = System.currentTimeMillis(),
+                showOnMainScreen = if (shouldAutoShow) true else target.showOnMainScreen,
+                showOnSecondScreen = if (shouldAutoShow) true else target.showOnSecondScreen
             )
             if (current != null) updateAccount(updated) else addAccount(updated)
-        } else {
-            credentialStorage.removeAccountCredentials(target.id)
-            val updated = target.copy(
-                alias = finalAlias,
-                providerType = "API_KEY",
-                credentialStatus = CredentialStatus.NOT_LOGGED_IN
+            putSnapshot(
+                target.id,
+                CodexUsageSnapshot.empty(target.id, updated.displayTitle).copy(
+                    email = detectedEmail,
+                    credentialStatus = CredentialStatus.VALID,
+                    modelProvider = "ANTIGRAVITY"
+                )
             )
-            if (current != null) updateAccount(updated) else addAccount(updated)
-            putSnapshot(target.id, CodexUsageSnapshot.empty(target.id, finalAlias).copy(modelProvider = "ANTIGRAVITY"))
         }
+
         accountCredentialVersions.compute(target.id) { _, v -> (v ?: 0L) + 1L }
         retryAfterMap.remove(target.id)
         backoffAttempts.remove(target.id)
         return true
+    }
+
+    fun saveAntigravityApiKey(accountId: String, apiKey: String, alias: String? = null): Boolean {
+        val clean = apiKey.trim()
+        if (clean.isEmpty()) {
+            return saveAntigravityOAuthAccount(
+                accountId = accountId,
+                alias = alias,
+                email = null,
+                refreshToken = null,
+                accessToken = null
+            )
+        }
+        if (!credentialStorage.isStorageAvailable) {
+            Log.e(TAG, "设备安全存储不可用，凭据未保存")
+            return false
+        }
+        val parsed = com.chronodesk.app.data.provider.GoogleAntigravityUsageProvider.parseCredentialInput(clean)
+        return if (parsed != null) {
+            saveAntigravityOAuthAccount(
+                accountId = accountId,
+                alias = alias,
+                email = parsed.email,
+                refreshToken = parsed.refreshToken,
+                accessToken = parsed.accessToken,
+                expiresInSeconds = parsed.expiresInSeconds,
+                idToken = parsed.idToken,
+                providerType = if (!parsed.refreshToken.isNullOrBlank()) "OAUTH_PKCE" else "DIRECT_TOKEN"
+            )
+        } else {
+            saveAntigravityOAuthAccount(
+                accountId = accountId,
+                alias = alias,
+                email = null,
+                refreshToken = null,
+                accessToken = clean,
+                expiresInSeconds = 3600L,
+                providerType = "DIRECT_TOKEN"
+            )
+        }
     }
 
     fun saveAntigravityApiKey(apiKey: String): Boolean {
@@ -617,18 +767,31 @@ class CodexAccountRepository(
     fun addAntigravityAccount(alias: String = "", apiKey: String = ""): CodexAccount {
         val count = _accounts.value.count { it.modelProvider == "ANTIGRAVITY" } + 1
         val newId = "acc_antigravity_${java.util.UUID.randomUUID().toString().take(8)}"
-        val defaultAlias = if (alias.isNotBlank()) alias.trim() else "Google Antigravity $count"
+        val defaultAlias = if (alias.isNotBlank()) alias.trim() else "Antigravity $count"
         val clean = apiKey.trim()
+        val parsed = if (clean.isNotEmpty()) {
+            com.chronodesk.app.data.provider.GoogleAntigravityUsageProvider.parseCredentialInput(clean)
+        } else null
         val newAccount = CodexAccount(
             id = newId,
             alias = defaultAlias,
-            email = null,
+            email = parsed?.email,
             credentialStatus = if (clean.isNotBlank()) CredentialStatus.VALID else CredentialStatus.NOT_LOGGED_IN,
-            providerType = "API_KEY",
+            providerType = if (!parsed?.refreshToken.isNullOrBlank() || clean.isBlank()) "OAUTH_PKCE" else "DIRECT_TOKEN",
             modelProvider = "ANTIGRAVITY"
         )
         if (clean.isNotBlank()) {
-            val saved = credentialStorage.saveAccessToken(newId, clean, Long.MAX_VALUE)
+            val saved = if (parsed != null && !parsed.refreshToken.isNullOrBlank()) {
+                credentialStorage.saveCodexCredentials(
+                    accountId = newId,
+                    refreshToken = parsed.refreshToken,
+                    accessToken = parsed.accessToken,
+                    expiresAtMs = if (!parsed.accessToken.isNullOrBlank()) System.currentTimeMillis() + (parsed.expiresInSeconds * 1000L) else 0L,
+                    idToken = parsed.idToken
+                )
+            } else {
+                credentialStorage.saveAccessToken(newId, parsed?.accessToken ?: clean, System.currentTimeMillis() + 3600_000L)
+            }
             if (!saved) {
                 Log.e(TAG, "设备安全存储不可用，凭据未保存")
                 val unauthed = newAccount.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN)
@@ -643,7 +806,13 @@ class CodexAccountRepository(
     fun removeAntigravityAccount(accountId: String) {
         val agAccounts = _accounts.value.filter { it.modelProvider == "ANTIGRAVITY" }
         if (agAccounts.size <= 1) {
-            saveAntigravityApiKey(accountId, "", "Google Antigravity")
+            saveAntigravityOAuthAccount(
+                accountId = accountId,
+                alias = "Antigravity",
+                email = null,
+                refreshToken = null,
+                accessToken = null
+            )
         } else {
             removeAccountById(accountId)
         }
@@ -770,11 +939,139 @@ class CodexAccountRepository(
                     return
                 }
 
-                // 2. Gemini API 平台刷新
+                // 2. Antigravity OAuth 平台刷新（含令牌过期自动续期与 401 受控重试）
                 if (account.modelProvider == "ANTIGRAVITY") {
-                    val apiKey = credentialStorage.getAccessToken(account.id)
-                    val result = antigravityProvider.fetchUsage(account.id, account.displayTitle, apiKey)
-                    handleFetchResult(account, result, requestVersion)
+                    var currentAcc = account
+                    var agAccessToken = credentialStorage.getAccessToken(currentAcc.id)
+                    if (agAccessToken.isNullOrBlank()) {
+                        val agRefresh = credentialStorage.getRefreshToken(currentAcc.id)
+                        if (agRefresh.isNullOrBlank()) {
+                            val failedSnap = CodexUsageSnapshot.error(
+                                accountId = currentAcc.id,
+                                alias = currentAcc.displayTitle,
+                                status = CredentialStatus.NOT_LOGGED_IN,
+                                message = "未找到有效 Google Antigravity 登录凭据，请重新授权",
+                                lastGood = null,
+                                modelProvider = "ANTIGRAVITY",
+                                errorType = SyncErrorType.AUTH_FAILED
+                            )
+                            putSnapshot(accountId, failedSnap)
+                            updateAccount(currentAcc.copy(credentialStatus = CredentialStatus.NOT_LOGGED_IN))
+                            return
+                        }
+
+                        when (val refreshRes = antigravityProvider.refreshToken(agRefresh)) {
+                            is TokenResult.Success -> {
+                                val vNow = accountCredentialVersions[accountId] ?: 0L
+                                if (vNow == requestVersion && _accounts.value.any { it.id == accountId }) {
+                                    agAccessToken = refreshRes.accessToken
+                                    credentialStorage.saveAccessToken(
+                                        currentAcc.id,
+                                        refreshRes.accessToken,
+                                        System.currentTimeMillis() + (refreshRes.expiresInSeconds * 1000L)
+                                    )
+                                    if (!refreshRes.refreshToken.isNullOrBlank()) {
+                                        credentialStorage.saveRefreshToken(currentAcc.id, refreshRes.refreshToken)
+                                    }
+                                    if (!refreshRes.idToken.isNullOrBlank()) {
+                                        credentialStorage.saveIdToken(currentAcc.id, refreshRes.idToken)
+                                    }
+                                    val refreshedEmail = currentAcc.email
+                                        ?: JwtUtils.extractEmail(refreshRes.idToken)
+                                        ?: antigravityProvider.fetchIdentityEmail(refreshRes.accessToken, refreshRes.idToken)
+                                    currentAcc = currentAcc.copy(
+                                        email = refreshedEmail,
+                                        credentialStatus = CredentialStatus.VALID
+                                    )
+                                    updateAccount(currentAcc)
+                                } else {
+                                    return
+                                }
+                            }
+                            is TokenResult.ExpiredOrInvalid -> {
+                                val failedSnap = CodexUsageSnapshot.error(
+                                    accountId = currentAcc.id,
+                                    alias = currentAcc.displayTitle,
+                                    status = CredentialStatus.EXPIRED,
+                                    message = refreshRes.message,
+                                    lastGood = null,
+                                    modelProvider = "ANTIGRAVITY",
+                                    errorType = SyncErrorType.AUTH_FAILED
+                                )
+                                putSnapshot(accountId, failedSnap)
+                                updateAccount(currentAcc.copy(credentialStatus = CredentialStatus.EXPIRED))
+                                return
+                            }
+                            is TokenResult.TransientError -> {
+                                val failedSnap = CodexUsageSnapshot.error(
+                                    accountId = currentAcc.id,
+                                    alias = currentAcc.displayTitle,
+                                    status = currentAcc.credentialStatus,
+                                    message = "令牌续期超时，保留缓存: ${refreshRes.message}",
+                                    lastGood = _snapshots.value[currentAcc.id],
+                                    modelProvider = "ANTIGRAVITY",
+                                    errorType = SyncErrorType.NETWORK_TIMEOUT
+                                )
+                                putSnapshot(accountId, failedSnap)
+                                return
+                            }
+                        }
+                    }
+
+                    if (agAccessToken.isNullOrBlank()) {
+                        return
+                    }
+
+                    if (currentAcc.email.isNullOrBlank()) {
+                        val fetchedEmail = antigravityProvider.fetchIdentityEmail(agAccessToken)
+                        if (!fetchedEmail.isNullOrBlank()) {
+                            currentAcc = currentAcc.copy(email = fetchedEmail)
+                            updateAccount(currentAcc)
+                        }
+                    }
+
+                    var agResult = antigravityProvider.fetchUsage(
+                        accountId = currentAcc.id,
+                        accountAlias = currentAcc.displayTitle,
+                        accessToken = agAccessToken,
+                        emailHint = currentAcc.email
+                    )
+
+                    if (agResult is UsageFetchResult.AuthExpired) {
+                        val agRefresh = credentialStorage.getRefreshToken(currentAcc.id)
+                        if (!agRefresh.isNullOrBlank()) {
+                            when (val reauth = antigravityProvider.refreshToken(agRefresh)) {
+                                is TokenResult.Success -> {
+                                    val vNow = accountCredentialVersions[accountId] ?: 0L
+                                    if (vNow == requestVersion && _accounts.value.any { it.id == accountId }) {
+                                        agAccessToken = reauth.accessToken
+                                        credentialStorage.saveAccessToken(
+                                            currentAcc.id,
+                                            reauth.accessToken,
+                                            System.currentTimeMillis() + (reauth.expiresInSeconds * 1000L)
+                                        )
+                                        if (!reauth.refreshToken.isNullOrBlank()) {
+                                            credentialStorage.saveRefreshToken(currentAcc.id, reauth.refreshToken)
+                                        }
+                                        agResult = antigravityProvider.fetchUsage(
+                                            accountId = currentAcc.id,
+                                            accountAlias = currentAcc.displayTitle,
+                                            accessToken = agAccessToken,
+                                            emailHint = currentAcc.email
+                                        )
+                                    }
+                                }
+                                is TokenResult.ExpiredOrInvalid -> {
+                                    agResult = UsageFetchResult.AuthExpired(reauth.message, 401)
+                                }
+                                is TokenResult.TransientError -> {
+                                    agResult = UsageFetchResult.TransientError("令牌续期临时超时，保留缓存: ${reauth.message}")
+                                }
+                            }
+                        }
+                    }
+
+                    handleFetchResult(currentAcc, agResult, requestVersion)
                     return
                 }
 
@@ -951,13 +1248,22 @@ class CodexAccountRepository(
                 backoffAttempts.remove(accountId)
                 val now = System.currentTimeMillis()
                 val detectedEmail = result.snapshot.email ?: account.email
-                val updatedAlias = if (account.alias.isBlank() || account.alias.contains("账号")) {
+                val updatedAlias = if (account.modelProvider == "ANTIGRAVITY") {
+                    account.alias.ifBlank { "Antigravity" }
+                } else if (account.alias.isBlank() || account.alias.contains("账号")) {
                     (detectedEmail ?: account.alias)
                 } else {
                     account.alias
                 }
+                val updatedAccount = account.copy(
+                    email = detectedEmail,
+                    alias = updatedAlias,
+                    credentialStatus = result.snapshot.credentialStatus,
+                    lastSyncTime = now
+                )
                 val snapToSave = result.snapshot.copy(
-                    accountAlias = updatedAlias,
+                    accountAlias = updatedAccount.displayTitle,
+                    email = detectedEmail,
                     lastSuccessTime = result.snapshot.queriedAt ?: now,
                     isLastGood = false,
                     errorMessage = null,
@@ -965,22 +1271,22 @@ class CodexAccountRepository(
                     retryAfterUnixMs = null
                 )
                 putSnapshot(accountId, snapToSave)
-                updateAccount(account.copy(
-                    email = detectedEmail,
-                    alias = updatedAlias,
-                    credentialStatus = result.snapshot.credentialStatus,
-                    lastSyncTime = now
-                ))
+                updateAccount(updatedAccount)
             }
             is UsageFetchResult.AccessDenied -> {
-                // 403 访问受限：保留上次成功额度和原时间，不清除凭据
+                // 403 访问受限：保留上次成功额度和原时间，不清除凭据（Antigravity 保留 Google 锁区/无资格原因）
                 Log.w(TAG, "Account $accountId access denied (403), preserving last good cache")
                 val lastGoodSnap = _snapshots.value[accountId]
+                val denialMsg = if (account.modelProvider == "ANTIGRAVITY" && result.message.isNotBlank()) {
+                    result.message
+                } else {
+                    "访问受限"
+                }
                 val failedSnap = CodexUsageSnapshot.error(
                     accountId = accountId,
                     alias = account.displayTitle,
                     status = account.credentialStatus,
-                    message = "访问受限",
+                    message = denialMsg,
                     lastGood = lastGoodSnap,
                     modelProvider = account.modelProvider,
                     errorType = SyncErrorType.ACCESS_DENIED
@@ -989,7 +1295,7 @@ class CodexAccountRepository(
             }
             is UsageFetchResult.AuthExpired -> {
                 // 明确鉴权失效（401）：清除 AccessToken 并标记授权失效
-                if (account.modelProvider == "CHATGPT") {
+                if (account.modelProvider == "CHATGPT" || account.modelProvider == "ANTIGRAVITY") {
                     credentialStorage.saveAccessToken(accountId, "", 0L)
                 }
                 val failedSnap = CodexUsageSnapshot.error(

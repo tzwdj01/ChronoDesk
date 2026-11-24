@@ -279,10 +279,10 @@ fun AccountManagerDialog(
 
                     localAntigravityAccounts.forEachIndexed { idx, agAcc ->
                         val tabIdx = agStartIndex + idx
-                        val defaultLabel = "Gemini ${circleSymbols.getOrElse(idx) { "${idx + 1}" }}"
+                        val defaultLabel = "Antigravity ${circleSymbols.getOrElse(idx) { "${idx + 1}" }}"
                         val tabLabel = if (localAntigravityAccounts.size == 1) {
-                            if (agAcc.alias.isNotBlank() && agAcc.alias != "Google Antigravity" && agAcc.alias != "Gemini API") agAcc.alias.take(8) else "Gemini"
-                        } else if (agAcc.alias.isNotBlank() && !agAcc.alias.startsWith("Gemini") && !agAcc.alias.startsWith("Google")) {
+                            if (agAcc.alias.isNotBlank() && agAcc.alias != "Google Antigravity" && agAcc.alias != "Gemini API" && agAcc.alias != "Antigravity") agAcc.alias.take(8) else "Antigravity"
+                        } else if (agAcc.alias.isNotBlank() && !agAcc.alias.startsWith("Gemini") && !agAcc.alias.startsWith("Google") && !agAcc.alias.startsWith("Antigravity")) {
                             agAcc.alias.take(8)
                         } else {
                             defaultLabel
@@ -330,12 +330,12 @@ fun AccountManagerDialog(
                                 if (added != null) {
                                     localAntigravityAccounts = localAntigravityAccounts + added
                                     selectedTab = agStartIndex + localAntigravityAccounts.lastIndex
-                                    Toast.makeText(context, "已新增 Gemini 账号卡槽", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "已新增 Antigravity 账号卡槽", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             text = {
                                 Text(
-                                    text = "+ Gemini",
+                                    text = "+ Antigravity",
                                     fontSize = 11.5.sp,
                                     color = TechCyan,
                                     fontWeight = FontWeight.Bold
@@ -673,7 +673,7 @@ fun AccountManagerDialog(
                             ) {
                                 ModelProviderLogo(provider = AiModelProvider.ANTIGRAVITY, size = 18.dp, isNightMode = true)
                                 Text(
-                                    text = "Gemini API 连接配置",
+                                    text = "Antigravity 账号凭据导入",
                                     color = TextPrimary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
@@ -681,15 +681,15 @@ fun AccountManagerDialog(
                             }
                             val isAgConfigured = curAgAcc.credentialStatus == CredentialStatus.VALID && curAgKeyInput.isNotBlank()
                             val (stColor, stText) = when {
-                                isAgConfigured -> TechEmerald to "已配置 / 正常在线"
-                                curAgAcc.credentialStatus == CredentialStatus.EXPIRED -> TechRose to "Key失效"
-                                else -> TextTertiary to "未配置"
+                                isAgConfigured -> TechEmerald to "已授权"
+                                curAgAcc.credentialStatus == CredentialStatus.EXPIRED -> TechRose to "凭据失效"
+                                else -> TextTertiary to "未授权"
                             }
                             Text(text = stText, color = stColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Text(
-                            text = "直连 Google Generative Language 官方接口验证模型列表与连接状态。支持自定义别名与多 API Key 接入。",
+                            text = "直连 daily-cloudcode-pa 查询 Antigravity 多组实时额度。支持粘贴 OAuth 凭据 JSON 或 Refresh/Access Token。",
                             color = TextSecondary,
                             fontSize = 11.sp,
                             lineHeight = 15.sp
@@ -699,8 +699,8 @@ fun AccountManagerDialog(
                         OutlinedTextField(
                             value = curAgAliasInput,
                             onValueChange = { curAgAliasInput = it },
-                            label = { Text("自定义账号名称 / 备注 (留空显示 Gemini API)", fontSize = 11.sp) },
-                            placeholder = { Text("例如：工作主号、Gemini Flash、实验账号", fontSize = 11.sp) },
+                            label = { Text("自定义账号名称 / 备注 (留空显示 Antigravity)", fontSize = 11.sp) },
+                            placeholder = { Text("例如：主力 Google、工作号", fontSize = 11.sp) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.colors(
@@ -713,12 +713,12 @@ fun AccountManagerDialog(
                             )
                         )
 
-                        // 2. Google API Key 输入框
+                        // 2. OAuth Token / JSON 输入框
                         OutlinedTextField(
                             value = curAgKeyInput,
                             onValueChange = { curAgKeyInput = it },
-                            label = { Text("Gemini API Key (AIzaSy...)", fontSize = 11.sp) },
-                            placeholder = { Text("AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", fontSize = 11.sp) },
+                            label = { Text("Antigravity OAuth 凭据 (1//... 或 ya29... 或 JSON)", fontSize = 11.sp) },
+                            placeholder = { Text("1//... 或 {\"token\":{...}}", fontSize = 11.sp) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             colors = TextFieldDefaults.colors(
@@ -754,8 +754,8 @@ fun AccountManagerDialog(
                                     val aliasToSave = curAgAliasInput.trim()
                                     val saved = onSaveAntigravityAccount(curAgAcc.id, curAgKeyInput.trim(), aliasToSave)
                                     if (saved) {
-                                        val label = aliasToSave.ifBlank { "Gemini API" }
-                                        Toast.makeText(context, "已保存「$label」API Key 并触发验证", Toast.LENGTH_SHORT).show()
+                                        val label = aliasToSave.ifBlank { "Antigravity" }
+                                        Toast.makeText(context, "已保存「$label」凭据并触发额度查询", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     } else {
                                         Toast.makeText(context, "设备安全存储不可用，凭据未保存", Toast.LENGTH_LONG).show()
@@ -777,7 +777,7 @@ fun AccountManagerDialog(
                                 OutlinedButton(
                                     onClick = {
                                         onRemoveAntigravityAccount(curAgAcc.id)
-                                        Toast.makeText(context, "已删除该 Gemini 账号", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "已删除该 Antigravity 账号", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     },
                                     shape = RoundedCornerShape(8.dp),

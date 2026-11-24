@@ -153,7 +153,7 @@ data class DailyDriveItem(
 )
 
 /**
- * 最近一次行驶记录（来自 drives 表）
+ * 最近一次行驶记录（来自 drives 表，包含起点与终点位置）
  */
 data class LastDriveInfo(
     val distanceKm: Double,
@@ -161,7 +161,11 @@ data class LastDriveInfo(
     val eventEpochMs: Long? = null,
     val rawEndDate: String? = null,
     val estimatedWhPerKm: Double? = null,
-    val isOngoing: Boolean = false
+    val isOngoing: Boolean = false,
+    val startEpochMs: Long? = null,
+    val rawStartDate: String? = null,
+    val startLocation: VehicleLocation? = null,
+    val endLocation: VehicleLocation? = null
 ) {
     val formattedDistanceKm: String
         get() = String.format(Locale.US, "%.1f", distanceKm)
@@ -179,6 +183,59 @@ data class LastDriveInfo(
             }
             return formatDriveDateFallback(rawEndDate)
         }
+
+    val formattedStartClockTime: String?
+        get() = formatDriveClockTime(startEpochMs, rawStartDate)
+
+    val formattedEndClockTime: String?
+        get() = if (isOngoing) "行驶中" else formatDriveClockTime(eventEpochMs, rawEndDate)
+
+    fun resolveStartPlace(fallback: String = "起点未记录"): String {
+        val loc = startLocation ?: return fallback
+        val geo = loc.geofenceName?.takeIf { it.isNotBlank() }
+        val addr = loc.resolvedAddress?.takeIf { it.isNotBlank() }
+        return geo ?: addr ?: if (loc.isValid) {
+            String.format(Locale.US, "%.4f, %.4f", loc.latitude, loc.longitude)
+        } else {
+            fallback
+        }
+    }
+
+    fun resolveEndPlace(currentLocation: VehicleLocation? = null): String {
+        val endLoc = endLocation
+        val endGeo = endLoc?.geofenceName?.takeIf { it.isNotBlank() }
+        val endAddr = endLoc?.resolvedAddress?.takeIf { it.isNotBlank() }
+        val curGeo = currentLocation?.geofenceName?.takeIf { it.isNotBlank() }
+        val curAddr = currentLocation?.resolvedAddress?.takeIf { it.isNotBlank() }
+        if (isOngoing) {
+            return curGeo ?: curAddr ?: endGeo ?: endAddr ?: when {
+                currentLocation?.isValid == true -> String.format(
+                    Locale.US, "%.4f, %.4f", currentLocation.latitude, currentLocation.longitude
+                )
+                endLoc?.isValid == true -> String.format(
+                    Locale.US, "%.4f, %.4f", endLoc.latitude, endLoc.longitude
+                )
+                else -> "行驶途中"
+            }
+        }
+        return endGeo ?: endAddr ?: curGeo ?: curAddr ?: when {
+            endLoc?.isValid == true -> String.format(
+                Locale.US, "%.4f, %.4f", endLoc.latitude, endLoc.longitude
+            )
+            currentLocation?.isValid == true -> String.format(
+                Locale.US, "%.4f, %.4f", currentLocation.latitude, currentLocation.longitude
+            )
+            else -> "终点未记录"
+        }
+    }
+}
+
+private fun formatDriveClockTime(epochMs: Long?, rawDate: String?): String? {
+    if (epochMs != null && epochMs > 0L) {
+        val ms = if (epochMs < 100_000_000_000L) epochMs * 1000L else epochMs
+        return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ms))
+    }
+    return formatSampledTime(rawDate)
 }
 
 private fun formatDriveDateFallback(rawDate: String?): String? {
@@ -210,6 +267,7 @@ private fun formatDriveDateFallback(rawDate: String?): String? {
  */
 data class DriveSummary(
     val todayDistanceKm: Double? = null,       // 今日已完成行程总里程 (km)
+    val todayDurationMin: Int? = null,         // 今日已完成行程总时长 (分钟)
     val todayTrips: Int? = null,               // 今日已完成行程次数
     val todayEstimatedWhPerKm: Double? = null, // 今日平均能耗 (Wh/km)
     val todayEnergyKwh: Double? = null,        // 今日行驶净耗电估算 (kWh)
@@ -217,7 +275,17 @@ data class DriveSummary(
     val monthTrips: Int? = null,               // 本月行程总数
     val recent7DaysDrives: List<DailyDriveItem> = emptyList(), // 近7天能耗趋势数据
     val lastDrive: LastDriveInfo? = null       // 最近一次行驶里程详情
-)
+) {
+    val formattedTodayDuration: String
+        get() {
+            val mins = todayDurationMin ?: if (todayTrips == 1) lastDrive?.durationMin else null
+            if (mins == null) {
+                return if ((todayTrips ?: 0) > 0) "—" else "0分钟"
+            }
+            if (mins <= 0) return "0分钟"
+            return if (mins >= 60) "${mins / 60}小时${mins % 60}分" else "${mins}分钟"
+        }
+}
 
 /**
  * 车辆最后有效位置与围栏信息

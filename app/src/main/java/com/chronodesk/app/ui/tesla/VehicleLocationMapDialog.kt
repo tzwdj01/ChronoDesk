@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.chronodesk.app.data.model.LastDriveInfo
 import com.chronodesk.app.data.model.VehicleLocation
 import com.chronodesk.app.data.model.VehicleState
 import com.chronodesk.app.data.utils.CoordinateConverter
@@ -124,7 +125,8 @@ fun VehicleLocationMapDialog(
     vehicleName: String,
     vehicleState: VehicleState,
     isNightMode: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    lastDrive: LastDriveInfo? = null
 ) {
     val context = LocalContext.current
     val lat = location.latitude ?: return
@@ -325,6 +327,39 @@ fun VehicleLocationMapDialog(
                                     color = secondaryText,
                                     fontSize = 10.5.sp
                                 )
+                            }
+
+                            if (lastDrive != null) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(cardBg)
+                                        .border(1.dp, border, RoundedCornerShape(10.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = "最近行程 · ${lastDrive.formattedDistanceKm} km${lastDrive.formattedDuration?.let { " · $it" } ?: ""}",
+                                        color = accent,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "起：${lastDrive.resolveStartPlace()}",
+                                        color = primaryText,
+                                        fontSize = 10.5.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "终：${lastDrive.resolveEndPlace(location)}",
+                                        color = primaryText,
+                                        fontSize = 10.5.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
 

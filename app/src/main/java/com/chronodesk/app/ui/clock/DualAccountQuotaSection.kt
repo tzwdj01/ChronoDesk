@@ -167,7 +167,7 @@ fun MultiAccountQuotaSection(
             )
         }
 
-        // 3. 同一订阅商：Gemini API 专属大框（连接状态与模型验证）
+        // 3. 同一订阅商：Antigravity 专属大框（多桶模型额度与套餐）
         if (antigravityAccounts.isNotEmpty()) {
             GoogleAntigravityUnifiedSubscriptionBox(
                 accounts = antigravityAccounts,
@@ -221,7 +221,7 @@ fun MultiAccountQuotaSection(
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "支持 ChatGPT (Codex) / DeepSeek / Gemini API",
+                        text = "支持 ChatGPT (Codex) / DeepSeek / Antigravity",
                         color = if (isNightMode) TextTertiary else InkTextTertiary,
                         fontSize = if (isCompact) 9.5.sp else 10.5.sp
                     )
@@ -1547,7 +1547,7 @@ private fun SingleDeepSeekAccountItem(
 }
 
 /**
- * Gemini API 专属大框（直连 Google 官方接口展示实时连接状态与模型验证，支持多账号与自定义别名）
+ * Antigravity 专属大框（展示套餐与 Gemini / Claude & GPT 多桶真实额度，支持多账号与自定义别名）
  */
 @Composable
 fun GoogleAntigravityUnifiedSubscriptionBox(
@@ -1577,8 +1577,8 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
             .border(1.dp, cardBorder, RoundedCornerShape(cornerRadius))
             .padding(horizontal = if (isCompact) 10.dp else 14.dp, vertical = if (isCompact) 4.5.dp else 6.5.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 4.5.dp)) {
-            // 大框头部：官方 Google 4 色 Logo + Gemini API 名称 + 账号数状态
+        Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 4.5.dp)) {
+            // 大框头部：Google / Antigravity Logo + Antigravity 名称 + 账号数/状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1590,13 +1590,13 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
                 ) {
                     ModelProviderLogo(
                         provider = AiModelProvider.ANTIGRAVITY,
-                        size = if (isCompact) 22.dp else 28.dp,
+                        size = if (isCompact) 18.dp else 22.dp,
                         isNightMode = isNightMode
                     )
                     Text(
-                        text = "Gemini API",
+                        text = "Antigravity",
                         color = primaryText,
-                        fontSize = if (isCompact) 12.5.sp else 14.sp,
+                        fontSize = if (isCompact) 12.sp else 13.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                     if (isMockMode) {
@@ -1605,15 +1605,31 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
                 }
 
                 val hasConfigured = accounts.any { it.credentialStatus == CredentialStatus.VALID }
+                val hasExpired = accounts.all { it.credentialStatus == CredentialStatus.EXPIRED }
                 val statusColor = if (isNightMode) {
-                    if (hasConfigured) TechEmerald else TextTertiary
+                    when {
+                        hasExpired -> TechRose
+                        hasConfigured -> TechEmerald
+                        else -> TextTertiary
+                    }
                 } else {
-                    if (hasConfigured) InkStatusGreen else InkTextTertiary
+                    when {
+                        hasExpired -> InkWarningRed
+                        hasConfigured -> InkStatusGreen
+                        else -> InkTextTertiary
+                    }
                 }
-                val statusBg = if (isNightMode) statusColor.copy(alpha = 0.12f) else if (hasConfigured) InkStatusTagBg else InkSurfaceElevated
+                val statusBg = if (isNightMode) {
+                    statusColor.copy(alpha = 0.12f)
+                } else if (hasConfigured && !hasExpired) {
+                    InkStatusTagBg
+                } else {
+                    InkSurfaceElevated
+                }
                 val statusTitle = when {
-                    accounts.size > 1 -> "${accounts.size}个账号"
-                    hasConfigured -> "正常"
+                    accounts.size > 1 -> "${accounts.size} 账号"
+                    hasExpired -> "需重新授权"
+                    hasConfigured -> "已授权"
                     else -> "未配置"
                 }
                 Box(
@@ -1625,13 +1641,15 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
                     Text(
                         text = statusTitle,
                         color = statusColor,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
 
-            // 框内遍历展示各个 Gemini API 账号
+            // 框内遍历展示各个 Antigravity 账号
             accounts.forEachIndexed { index, acc ->
                 if (index > 0) {
                     HorizontalDivider(
@@ -1660,7 +1678,7 @@ fun GoogleAntigravityUnifiedSubscriptionBox(
 }
 
 /**
- * 单个 Gemini API 账号行（展示连接状态与模型接口验证时间）
+ * 单个 Antigravity 账号行（展示套餐名称、各组额度桶剩余百分比与重置时间）
  */
 @Composable
 private fun SingleAntigravityAccountItem(
@@ -1680,6 +1698,8 @@ private fun SingleAntigravityAccountItem(
     val primaryText = if (isNightMode) TextPrimary else InkTextPrimary
     val secondaryText = if (isNightMode) TextSecondary else InkTextSecondary
     val mutedText = if (isNightMode) TextTertiary else InkTextTertiary
+    val trackColor = if (isNightMode) DarkProgressTrack else InkProgressTrack
+    val nowUnix = System.currentTimeMillis() / 1000
 
     val syncStatus = snapshot?.computeStatus(
         isConfigured = account.isConfigured,
@@ -1689,6 +1709,11 @@ private fun SingleAntigravityAccountItem(
 
     val remainingCooldown = snapshot?.getRemainingRetrySeconds() ?: 0L
     val isCoolingDown = remainingCooldown > 0L
+
+    val tiers = snapshot?.quotaWindows.orEmpty()
+    val allExhausted = tiers.isNotEmpty() && tiers.all { (it.remainingPercent ?: 100.0) <= 0.0 }
+    val anyExhausted = tiers.any { (it.remainingPercent ?: 100.0) <= 0.0 }
+    val anyLow = !anyExhausted && tiers.any { it.remainingPercent != null && it.remainingPercent in 0.01..15.0 }
 
     val isDemoMock = snapshot?.isMock == true && snapshot.errorMessage == "暂无演示数据"
     val (statusText, statusColor, statusBg) = if (isDemoMock) {
@@ -1713,13 +1738,31 @@ private fun SingleAntigravityAccountItem(
             if (isNightMode) TechCyan else InkProgress,
             (if (isNightMode) TechCyan else InkProgress).copy(alpha = 0.12f)
         )
-        QuotaSyncStatus.UPDATED -> Triple(
-            "连接正常",
-            if (isNightMode) TechEmerald else InkStatusGreen,
-            if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
-        )
+        QuotaSyncStatus.UPDATED -> when {
+            allExhausted -> Triple(
+                "额度耗尽",
+                if (isNightMode) TechRose else InkWarningRed,
+                (if (isNightMode) TechRose else InkWarningRed).copy(alpha = 0.14f)
+            )
+            anyExhausted -> Triple(
+                "部分耗尽",
+                if (isNightMode) TechAmber else InkWarningAmber,
+                (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.14f)
+            )
+            anyLow -> Triple(
+                "即将耗尽",
+                if (isNightMode) TechAmber else InkWarningAmber,
+                (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.14f)
+            )
+            else -> Triple(
+                "正常",
+                if (isNightMode) TechEmerald else InkStatusGreen,
+                if (isNightMode) TechEmerald.copy(alpha = 0.12f) else InkStatusTagBg
+            )
+        }
         QuotaSyncStatus.CACHED_STALE -> Triple(
-            "缓存 · ${snapshot?.errorMessage?.take(6) ?: "异常"}",
+            if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) "访问受限"
+            else "缓存 · ${snapshot?.formattedSuccessTime ?: "异常"}",
             if (isNightMode) TechAmber else InkWarningAmber,
             (if (isNightMode) TechAmber else InkWarningAmber).copy(alpha = 0.12f)
         )
@@ -1765,9 +1808,9 @@ private fun SingleAntigravityAccountItem(
             ) {
                 handleAccountCardTap(syncStatus, areControlsVisible, onAccountClick, onRevealControls)
             },
-        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.5.dp else 3.dp)
+        verticalArrangement = Arrangement.spacedBy(if (isCompact) 2.dp else 2.5.dp)
     ) {
-        // 账号标识行：圆点 + 自定义账号名称 + API 徽标 + 状态徽标 + 操作按钮
+        // 账号标识行：圆点 + 名称/脱敏邮箱 + 真实套餐徽标 + 状态徽标 + 呼出操作按钮
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -1775,7 +1818,7 @@ private fun SingleAntigravityAccountItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.5.dp else 5.dp),
                 modifier = Modifier.weight(1f, fill = false)
             ) {
                 Box(
@@ -1783,9 +1826,19 @@ private fun SingleAntigravityAccountItem(
                         .size(4.5.dp)
                         .background(
                             if (isNightMode) {
-                                if (syncStatus == QuotaSyncStatus.UPDATED) TechCyan else if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) TechRose else TechAmber
+                                when {
+                                    allExhausted || syncStatus == QuotaSyncStatus.AUTH_EXPIRED -> TechRose
+                                    anyExhausted || anyLow -> TechAmber
+                                    syncStatus == QuotaSyncStatus.UPDATED -> TechEmerald
+                                    else -> TechAmber
+                                }
                             } else {
-                                if (syncStatus == QuotaSyncStatus.UPDATED) InkStatusGreen else if (syncStatus == QuotaSyncStatus.AUTH_EXPIRED) InkWarningRed else InkWarningAmber
+                                when {
+                                    allExhausted || syncStatus == QuotaSyncStatus.AUTH_EXPIRED -> InkWarningRed
+                                    anyExhausted || anyLow -> InkWarningAmber
+                                    syncStatus == QuotaSyncStatus.UPDATED -> InkStatusGreen
+                                    else -> InkWarningAmber
+                                }
                             },
                             CircleShape
                         )
@@ -1804,23 +1857,28 @@ private fun SingleAntigravityAccountItem(
                     fontSize = if (isCompact) 10.5.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
-                        .padding(horizontal = 3.dp, vertical = 0.5.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "API",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 7.5.sp else 8.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1
-                    )
+                val plan = snapshot?.planName?.trim()?.takeIf { it.isNotEmpty() }
+                if (plan != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (isNightMode) DarkSurfaceElevated else InkSurfaceElevated)
+                            .padding(horizontal = 3.5.dp, vertical = 0.5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = plan,
+                            color = secondaryText,
+                            fontSize = if (isCompact) 7.5.sp else 8.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
 
@@ -1838,7 +1896,9 @@ private fun SingleAntigravityAccountItem(
                         text = statusText,
                         color = statusColor,
                         fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -1882,15 +1942,13 @@ private fun SingleAntigravityAccountItem(
             }
         }
 
-        // Gemini API 连接状态描述行（真实反映上游模型列表接口调用结果）
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            val verifiedTime = snapshot?.formattedVerifiedTime ?: snapshot?.formattedQueriedAt
-            when {
-                isDemoMock -> {
+        when {
+            isDemoMock -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
                         text = "暂无演示数据",
                         color = secondaryText,
@@ -1902,126 +1960,169 @@ private fun SingleAntigravityAccountItem(
                         fontSize = if (isCompact) 7.5.sp else 8.5.sp
                     )
                 }
-                syncStatus == QuotaSyncStatus.NOT_CONFIGURED -> {
+            }
+            syncStatus == QuotaSyncStatus.NOT_CONFIGURED -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = if (isCompact) 1.dp else 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        text = "未配置 API Key · 点击呼出配置",
+                        text = "未授权账号 · 点击连接 Antigravity",
                         color = secondaryText,
-                        fontSize = if (isCompact) 9.sp else 10.sp
+                        fontSize = if (isCompact) 9.sp else 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "Gemini 连接",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                        text = "连接账号",
+                        color = if (isNightMode) TechCyan else InkProgress,
+                        fontSize = if (isCompact) 8.sp else 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
-                syncStatus == QuotaSyncStatus.AUTH_EXPIRED -> {
+            }
+            syncStatus == QuotaSyncStatus.AUTH_EXPIRED -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = if (isCompact) 1.dp else 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        text = "API Key 鉴权失败 · 点击重新授权",
+                        text = "登录凭据已失效 · 点击重新授权",
                         color = if (isNightMode) TechRose else InkWarningRed,
-                        fontSize = if (isCompact) 9.sp else 10.sp
+                        fontSize = if (isCompact) 9.sp else 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "重新授权",
                         color = if (isNightMode) TechCyan else InkProgress,
                         fontSize = if (isCompact) 8.sp else 9.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
-                syncStatus == QuotaSyncStatus.UPDATED -> {
-                    Text(
-                        text = "官方接口: 连接正常",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = if (verifiedTime != null) "验证于 $verifiedTime" else "刚刚验证",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
-                    )
+            }
+            tiers.isNotEmpty() -> {
+                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 1.5.dp else 2.5.dp)) {
+                    tiers.forEach { window ->
+                        val rem = window.remainingPercent
+                        val isExh = rem != null && rem <= 0.0
+                        val isLow = rem != null && rem in 0.01..15.0
+                        val barColor = if (isNightMode) {
+                            when {
+                                isExh -> TechRose
+                                isLow -> TechAmber
+                                else -> TechEmerald
+                            }
+                        } else {
+                            when {
+                                isExh -> InkWarningRed
+                                isLow -> InkWarningAmber
+                                else -> InkProgress
+                            }
+                        }
+                        val valColor = when {
+                            isExh -> if (isNightMode) TechRose else InkWarningRed
+                            isLow -> if (isNightMode) TechAmber else InkWarningAmber
+                            else -> primaryText
+                        }
+                        val rowLabel = when (window.name) {
+                            com.chronodesk.app.data.model.CodexUsageWindow.TIER_AGY_GEMINI_FIVE_HOUR -> "Gemini 5h"
+                            com.chronodesk.app.data.model.CodexUsageWindow.TIER_AGY_GEMINI_WEEKLY -> "Gemini 周"
+                            com.chronodesk.app.data.model.CodexUsageWindow.TIER_AGY_GEMINI_ARGON_WEEKLY -> "Argon 周"
+                            com.chronodesk.app.data.model.CodexUsageWindow.TIER_AGY_THIRD_PARTY_FIVE_HOUR ->
+                                if (isCompact) "Claude 5h" else "Claude/GPT 5h"
+                            com.chronodesk.app.data.model.CodexUsageWindow.TIER_AGY_THIRD_PARTY_WEEKLY ->
+                                if (isCompact) "Claude 周" else "Claude/GPT 周"
+                            else -> window.label
+                        }
+                        val resetDesc = when {
+                            window.resetAtUnix == null -> "未知"
+                            nowUnix >= window.resetAtUnix -> "待更新"
+                            window.limitWindowSeconds == 18000L -> window.formattedResetTime(nowUnix)
+                            else -> window.formattedCountdown(nowUnix)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 5.dp)
+                        ) {
+                            Text(
+                                text = rowLabel,
+                                color = secondaryText,
+                                fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.width(if (isCompact) 54.dp else 78.dp)
+                            )
+                            LinearProgressIndicator(
+                                progress = {
+                                    if (rem != null && rem.isFinite()) (rem / 100.0).toFloat().coerceIn(0f, 1f) else 0f
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .widthIn(min = if (isCompact) 34.dp else 48.dp)
+                                    .height(if (isCompact) 4.5.dp else 5.5.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = barColor,
+                                trackColor = trackColor
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(if (isCompact) 3.dp else 4.dp)
+                            ) {
+                                Text(
+                                    text = window.formattedRemaining(),
+                                    color = valColor,
+                                    fontSize = if (isCompact) 10.5.sp else 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = resetDesc,
+                                    color = mutedText,
+                                    fontSize = if (isCompact) 7.5.sp else 8.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
-                syncStatus == QuotaSyncStatus.SYNCING -> {
+            }
+            else -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    val hint = when {
+                        syncStatus == QuotaSyncStatus.SYNCING -> "正在同步 Antigravity 额度..."
+                        !snapshot?.errorMessage.isNullOrBlank() -> snapshot!!.errorMessage!!
+                        else -> "等待首次同步 · 点击刷新"
+                    }
                     Text(
-                        text = "正在验证官方接口...",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = "同步中",
-                        color = if (isNightMode) TechCyan else InkProgress,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                syncStatus == QuotaSyncStatus.AWAITING_SYNC -> {
-                    Text(
-                        text = "等待首次同步 · 点击刷新",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = "待同步",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
-                    )
-                }
-                syncStatus == QuotaSyncStatus.CACHED_STALE -> {
-                    Text(
-                        text = "使用缓存状态 · 等待更新",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = if (verifiedTime != null) "验证于 $verifiedTime (缓存)" else "缓存",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
-                    )
-                }
-                syncStatus == QuotaSyncStatus.CACHE_EXPIRED -> {
-                    Text(
-                        text = "缓存已过期 · 等待恢复连接",
-                        color = if (isNightMode) TechRose else InkWarningRed,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = if (verifiedTime != null) "验证于 $verifiedTime (过期)" else "缓存过期",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
-                    )
-                }
-                syncStatus == QuotaSyncStatus.SERVICE_UNAVAILABLE -> {
-                    Text(
-                        text = "官方接口暂不可用 · 点击重试",
-                        color = if (isNightMode) TechRose else InkWarningRed,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = if (verifiedTime != null) "上次 $verifiedTime" else "连接失败",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
-                    )
-                }
-                syncStatus == QuotaSyncStatus.DATA_FORMAT_ERROR -> {
-                    Text(
-                        text = "接口返回格式异常",
-                        color = if (isNightMode) TechRose else InkWarningRed,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = "格式异常",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
-                    )
-                }
-                else -> {
-                    Text(
-                        text = "官方接口受限 · 稍后重试",
-                        color = secondaryText,
-                        fontSize = if (isCompact) 9.sp else 10.sp
-                    )
-                    Text(
-                        text = verifiedTime ?: "暂不可用",
-                        color = mutedText,
-                        fontSize = if (isCompact) 7.5.sp else 8.5.sp
+                        text = hint,
+                        color = if (snapshot?.lastErrorType == SyncErrorType.ACCESS_DENIED) {
+                            if (isNightMode) TechAmber else InkWarningAmber
+                        } else secondaryText,
+                        fontSize = if (isCompact) 8.5.sp else 9.5.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                 }
             }

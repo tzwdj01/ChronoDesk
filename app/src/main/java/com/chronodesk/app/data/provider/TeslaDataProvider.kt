@@ -32,6 +32,13 @@ class TeslaDataProvider(
     private val apiClient: GrafanaApiClient = GrafanaApiClient.instance
 ) {
 
+    private data class GeofenceZone(
+        val name: String,
+        val latitude: Double,
+        val longitude: Double,
+        val radius: Double
+    )
+
     private val tag = "TeslaDataProvider"
 
     /**
@@ -152,19 +159,22 @@ class TeslaDataProvider(
         val auth = "Bearer ${token.trim()}"
         val dsRef = GrafanaDatasourceRef(settings.dataSourceUid, settings.dataSourceType)
 
-        // 1. 查询 A：车辆最新完整采样 (positions)
+        // 1. 预取地理围栏列表（供定位及最近行程起止点复用）
+        val geofences = fetchGeofencesList(service, auth, dsRef)
+
+        // 2. 查询 A：车辆最新完整采样 (positions)
         var vehicleSnap = fetchLatestPositions(service, auth, dsRef, carId, lastSnapshot?.snapshot)
 
-        // 2. 查询 B：车辆状态与会话 (states, drives, charging_processes)
+        // 3. 查询 B：车辆状态与会话 (states, drives, charging_processes)
         val (vehicleState, activeCharging) = fetchVehicleStateAndActiveSession(service, auth, dsRef, carId)
 
-        // 3. 查询 C：行程与能耗统计 (drives, charging_processes)
+        // 4. 查询 C：行程与能耗统计 (drives, charging_processes)
         val (drivesSummary, totalCharges) = fetchDriveAndChargeSummaries(
-            service, auth, dsRef, carId, settings.timeZone, lastSnapshot?.drives?.lastDrive
+            service, auth, dsRef, carId, settings.timeZone, lastSnapshot?.drives?.lastDrive, geofences
         )
 
-        // 4. 查询 D：车辆最后有效位置与围栏 (positions, geofences)
-        val vehicleLocation = fetchLatestLocation(service, auth, dsRef, carId, lastSnapshot?.location)
+        // 5. 查询 D：车辆最后有效位置与围栏 (positions, geofences)
+        val vehicleLocation = fetchLatestLocation(service, auth, dsRef, carId, lastSnapshot?.location, geofences)
 
         // 合并充电快照
         val finalCharging = activeCharging.copy(
@@ -228,7 +238,8 @@ class TeslaDataProvider(
         auth: String,
         dsRef: GrafanaDatasourceRef,
         carId: Int,
-        previousLocation: VehicleLocation?
+        previousLocation: VehicleLocation?,
+        geofences: List<GeofenceZone> = emptyList()
     ): com.chronodesk.app.data.model.VehicleLocation {
         val sqlLoc = """
             SELECT date, latitude, longitude
@@ -243,30 +254,8 @@ class TeslaDataProvider(
                 val lat = row.getDouble("latitude")
                 val lng = row.getDouble("longitude")
                 val sampledAt = row.getString("date")
-                val geofenceName = if (lat != null && lng != null) {
-                    resolveMatchedGeofenceName(service, auth, dsRef, lat, lng)
-                } else {
-                    null
-                }
-                val resolvedAddress = if (lat != null && lng != null && lat.isFinite() && lng.isFinite()) {
-                    val requireZh = VehicleLocationResolver.isInGreaterChina(lat, lng)
-                    val prevAddr = previousLocation?.resolvedAddress?.takeIf {
-                        it.isNotBlank() &&
-                            !it.endsWith("附近") &&
-                            (!requireZh || VehicleLocationResolver.containsChinese(it))
-                    }
-                    val prevLat = previousLocation?.latitude
-                    val prevLng = previousLocation?.longitude
-                    if (prevAddr != null && prevLat != null && prevLng != null &&
-                        haversineMeters(lat, lng, prevLat, prevLng) < 50.0
-                    ) {
-                        prevAddr
-                    } else {
-                        resolveNearestTeslaMateAddress(service, auth, dsRef, lat, lng)
-                    }
-                } else {
-                    null
-                }
+                val geofenceName = matchGeofenceByCoords(geofences, lat, lng)
+                val resolvedAddress = resolveAddressWithReuse(service, auth, dsRef, lat, lng, previousLocation)
                 com.chronodesk.app.data.model.VehicleLocation(
                     latitude = lat,
                     longitude = lng,
@@ -283,38 +272,74 @@ class TeslaDataProvider(
         }
     }
 
-    /**
-     * 可选地理围栏匹配：单独查询 geofences 并用 Haversine 距离判定，失败时静默降级仅展示坐标
-     */
-    private suspend fun resolveMatchedGeofenceName(
+    private suspend fun resolveAddressWithReuse(
         service: com.chronodesk.app.data.network.GrafanaRetrofitService,
         auth: String,
         dsRef: GrafanaDatasourceRef,
-        lat: Double,
-        lng: Double
+        lat: Double?,
+        lng: Double?,
+        previousLocation: VehicleLocation?
     ): String? {
+        if (lat == null || lng == null || !lat.isFinite() || !lng.isFinite() || (lat == 0.0 && lng == 0.0)) {
+            return null
+        }
+        val requireZh = VehicleLocationResolver.isInGreaterChina(lat, lng)
+        val prevAddr = previousLocation?.resolvedAddress?.takeIf {
+            it.isNotBlank() &&
+                !it.endsWith("附近") &&
+                (!requireZh || VehicleLocationResolver.containsChinese(it))
+        }
+        val prevLat = previousLocation?.latitude
+        val prevLng = previousLocation?.longitude
+        if (prevAddr != null && prevLat != null && prevLng != null &&
+            haversineMeters(lat, lng, prevLat, prevLng) < 50.0
+        ) {
+            return prevAddr
+        }
+        return resolveNearestTeslaMateAddress(service, auth, dsRef, lat, lng)
+    }
+
+    /**
+     * 拉取地理围栏列表并用 Haversine 匹配最近围栏，失败时静默降级返回空列表
+     */
+    private suspend fun fetchGeofencesList(
+        service: com.chronodesk.app.data.network.GrafanaRetrofitService,
+        auth: String,
+        dsRef: GrafanaDatasourceRef
+    ): List<GeofenceZone> {
         return try {
             val sqlGeo = "SELECT name, latitude, longitude, radius FROM geofences LIMIT 100"
             val geoResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, sqlGeo))))
             val geoRows = GrafanaFrameParser.parseResultToRows(geoResp, "A")
-            var matchedName: String? = null
-            var bestDistance = Double.MAX_VALUE
-            for (gRow in geoRows) {
-                val gLat = gRow.getDouble("latitude") ?: continue
-                val gLng = gRow.getDouble("longitude") ?: continue
-                val gName = gRow.getString("name")?.takeIf { it.isNotBlank() } ?: continue
+            geoRows.mapNotNull { gRow ->
+                val gLat = gRow.getDouble("latitude") ?: return@mapNotNull null
+                val gLng = gRow.getDouble("longitude") ?: return@mapNotNull null
+                val gName = gRow.getString("name")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val radius = gRow.getDouble("radius") ?: 50.0
-                val dist = haversineMeters(lat, lng, gLat, gLng)
-                if (dist <= radius && dist < bestDistance) {
-                    bestDistance = dist
-                    matchedName = gName
-                }
+                GeofenceZone(gName, gLat, gLng, radius)
             }
-            matchedName
         } catch (e: Exception) {
-            Log.d(tag, "Optional geofence match skipped: ${e.message}")
-            null
+            Log.d(tag, "Optional geofence fetch skipped: ${e.message}")
+            emptyList()
         }
+    }
+
+    private fun matchGeofenceByCoords(
+        geofences: List<GeofenceZone>,
+        lat: Double?,
+        lng: Double?
+    ): String? {
+        if (lat == null || lng == null || !lat.isFinite() || !lng.isFinite()) return null
+        var matchedName: String? = null
+        var bestDistance = Double.MAX_VALUE
+        for (zone in geofences) {
+            val dist = haversineMeters(lat, lng, zone.latitude, zone.longitude)
+            if (dist <= zone.radius && dist < bestDistance) {
+                bestDistance = dist
+                matchedName = zone.name
+            }
+        }
+        return matchedName
     }
 
     /**
@@ -352,47 +377,72 @@ class TeslaDataProvider(
                 }
             }
             val row = bestRow ?: return null
-            val formatted = if (bestDist <= 500.0) {
-                val cityPart = row.getString("city")?.takeIf { it.isNotBlank() }
-                    ?: row.getString("state")?.takeIf { it.isNotBlank() }
-                val districtPart = row.getString("county")?.takeIf { it.isNotBlank() }
-                    ?: row.getString("neighbourhood")?.takeIf { it.isNotBlank() }
-                val streetPart = row.getString("road")?.takeIf { it.isNotBlank() }
-                    ?: row.getString("name")?.takeIf { it.isNotBlank() }
-                val parts = listOfNotNull(cityPart, districtPart, streetPart)
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                if (parts.isNotEmpty()) {
-                    parts.joinToString(" · ")
-                } else {
-                    row.getString("display_name")
-                        ?.split(",", "，")
-                        ?.map { it.trim() }
-                        ?.filter { it.isNotBlank() }
-                        ?.take(2)
-                        ?.distinct()
-                        ?.joinToString(" · ")
-                        ?.takeIf { it.isNotBlank() }
-                }
-            } else if (bestDist <= 3000.0) {
-                val areaParts = listOfNotNull(
-                    row.getString("city")?.takeIf { it.isNotBlank() },
-                    row.getString("county")?.takeIf { it.isNotBlank() }
-                        ?: row.getString("neighbourhood")?.takeIf { it.isNotBlank() }
-                ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
-                if (areaParts.isNotEmpty()) "${areaParts.joinToString(" · ")}附近" else null
-            } else {
-                null
-            }
-            if (formatted != null && VehicleLocationResolver.isInGreaterChina(lat, lng) && !VehicleLocationResolver.containsChinese(formatted)) {
-                null
-            } else {
-                formatted
-            }
+            formatAddressFields(
+                city = row.getString("city"),
+                state = row.getString("state"),
+                county = row.getString("county"),
+                neighbourhood = row.getString("neighbourhood"),
+                road = row.getString("road"),
+                name = row.getString("name"),
+                displayName = row.getString("display_name"),
+                lat = lat,
+                lng = lng,
+                distanceMeters = bestDist
+            )
         } catch (e: Exception) {
             Log.d(tag, "Optional addresses lookup skipped: ${e.message}")
             null
+        }
+    }
+
+    private fun formatAddressFields(
+        city: String?,
+        state: String?,
+        county: String?,
+        neighbourhood: String?,
+        road: String?,
+        name: String?,
+        displayName: String?,
+        lat: Double?,
+        lng: Double?,
+        distanceMeters: Double = 0.0
+    ): String? {
+        val formatted = if (distanceMeters <= 500.0) {
+            val cityPart = city?.takeIf { it.isNotBlank() } ?: state?.takeIf { it.isNotBlank() }
+            val districtPart = county?.takeIf { it.isNotBlank() } ?: neighbourhood?.takeIf { it.isNotBlank() }
+            val streetPart = road?.takeIf { it.isNotBlank() } ?: name?.takeIf { it.isNotBlank() }
+            val parts = listOfNotNull(cityPart, districtPart, streetPart)
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (parts.isNotEmpty()) {
+                parts.joinToString(" · ")
+            } else {
+                displayName
+                    ?.split(",", "，")
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotBlank() }
+                    ?.take(2)
+                    ?.distinct()
+                    ?.joinToString(" · ")
+                    ?.takeIf { it.isNotBlank() }
+            }
+        } else if (distanceMeters <= 3000.0) {
+            val areaParts = listOfNotNull(
+                city?.takeIf { it.isNotBlank() },
+                county?.takeIf { it.isNotBlank() } ?: neighbourhood?.takeIf { it.isNotBlank() }
+            ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            if (areaParts.isNotEmpty()) "${areaParts.joinToString(" · ")}附近" else null
+        } else {
+            null
+        }
+        return if (formatted != null && lat != null && lng != null &&
+            VehicleLocationResolver.isInGreaterChina(lat, lng) &&
+            !VehicleLocationResolver.containsChinese(formatted)
+        ) {
+            null
+        } else {
+            formatted
         }
     }
 
@@ -596,7 +646,8 @@ class TeslaDataProvider(
         dsRef: GrafanaDatasourceRef,
         carId: Int,
         timeZoneString: String,
-        previousLastDrive: LastDriveInfo? = null
+        previousLastDrive: LastDriveInfo? = null,
+        geofences: List<GeofenceZone> = emptyList()
     ): Pair<DriveSummary, ChargingSnapshot> {
         val zoneId = try { ZoneId.of(timeZoneString) } catch (_: Exception) { ZoneId.of("Asia/Shanghai") }
         val nowInZone = ZonedDateTime.now(zoneId)
@@ -611,10 +662,11 @@ class TeslaDataProvider(
         val monthStartUtc = monthStart.format(fmt)
         val sevenDaysStartUtc = sevenDaysStart.format(fmt)
 
-        // 1. 今日已完成行程与平均能耗
-        val todayDrivesSql = """
+        // 1. 今日看板：总里程 / 时长 / 平均能耗 / 耗电量 / 驾驶次数
+        val todayDrivesPrimarySql = """
             SELECT COUNT(*) AS trips,
                    COALESCE(SUM(d.distance), 0) AS distance_km,
+                   COALESCE(SUM(COALESCE(d.duration_min, EXTRACT(EPOCH FROM (d.end_date - d.start_date)) / 60.0)), 0)::int AS today_minutes,
                    SUM((d.start_rated_range_km - d.end_rated_range_km) * c.efficiency * 1000)
                      FILTER (WHERE d.distance > 0 AND d.start_rated_range_km IS NOT NULL AND d.end_rated_range_km IS NOT NULL AND c.efficiency > 0)
                    / NULLIF(SUM(d.distance) FILTER (WHERE d.distance > 0 AND d.start_rated_range_km IS NOT NULL AND d.end_rated_range_km IS NOT NULL AND c.efficiency > 0), 0) AS estimated_wh_per_km,
@@ -625,23 +677,39 @@ class TeslaDataProvider(
               AND d.start_date >= TIMESTAMP '$todayStartUtc'
               AND d.start_date < TIMESTAMP '$todayEndUtc'
         """.trimIndent()
+        val todayDrivesFallbackSql = """
+            SELECT COUNT(*) AS trips,
+                   COALESCE(SUM(distance), 0) AS distance_km,
+                   COALESCE(SUM(EXTRACT(EPOCH FROM (end_date - start_date)) / 60.0), 0)::int AS today_minutes
+            FROM drives
+            WHERE car_id = $carId AND end_date IS NOT NULL
+              AND start_date >= TIMESTAMP '$todayStartUtc'
+              AND start_date < TIMESTAMP '$todayEndUtc'
+        """.trimIndent()
 
         var todayDist: Double? = 0.0
+        var todayDurMin: Int? = 0
         var todayTrips: Int? = 0
         var todayWhKm: Double? = null
         var todayEnergy: Double? = null
 
-        try {
-            val tdResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, todayDrivesSql))))
-            val tdRow = GrafanaFrameParser.parseResultToRows(tdResp, "A").firstOrNull()
-            if (tdRow != null) {
-                todayDist = tdRow.getDouble("distance_km")
-                todayTrips = tdRow.getInt("trips")
-                todayWhKm = tdRow.getDouble("estimated_wh_per_km")
-                todayEnergy = tdRow.getDouble("energy_kwh")
+        for (tdSql in listOf(todayDrivesPrimarySql, todayDrivesFallbackSql)) {
+            try {
+                val tdResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, tdSql))))
+                val tdRow = GrafanaFrameParser.parseResultToRows(tdResp, "A").firstOrNull()
+                if (tdRow != null) {
+                    todayDist = tdRow.getDouble("distance_km")
+                    todayDurMin = tdRow.getInt("today_minutes")
+                        ?: tdRow.getInt("duration_min")
+                        ?: tdRow.getDouble("today_minutes")?.toInt()
+                    todayTrips = tdRow.getInt("trips")
+                    todayWhKm = tdRow.getDouble("estimated_wh_per_km")
+                    todayEnergy = tdRow.getDouble("energy_kwh")
+                }
+                break
+            } catch (e: Exception) {
+                Log.w(tag, "Query today drives candidate skipped: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(tag, "Query today drives failed: ${e.message}")
         }
 
         // 2. 本月已完成行程里程
@@ -702,11 +770,43 @@ class TeslaDataProvider(
             Log.w(tag, "Query 7 days drives failed: ${e.message}")
         }
 
-        // 5. 最近一次行驶记录（独立只读查询 drives，兼容精简列结构）
+        // 5. 最近一次行程（起点与终点、里程、时长、能耗；兼容精简表结构）
         var lastDrive: LastDriveInfo? = previousLastDrive
+        val lastDriveRichSql = """
+            SELECT d.distance AS distance_km,
+                   d.duration_min AS duration_min,
+                   (EXTRACT(EPOCH FROM d.start_date) * 1000)::bigint AS start_epoch_ms,
+                   (EXTRACT(EPOCH FROM COALESCE(d.end_date, d.start_date)) * 1000)::bigint AS event_epoch_ms,
+                   CASE WHEN d.end_date IS NULL THEN 1 ELSE 0 END AS is_ongoing,
+                   CASE WHEN d.distance > 0.2 AND d.start_rated_range_km IS NOT NULL AND d.end_rated_range_km IS NOT NULL AND c.efficiency > 0
+                        THEN ((d.start_rated_range_km - d.end_rated_range_km) * c.efficiency * 1000.0) / d.distance
+                        ELSE NULL END AS estimated_wh_per_km,
+                   sg.name AS start_geofence_name,
+                   eg.name AS end_geofence_name,
+                   COALESCE(sp.latitude, sa.latitude) AS start_lat,
+                   COALESCE(sp.longitude, sa.longitude) AS start_lng,
+                   COALESCE(ep.latitude, ea.latitude) AS end_lat,
+                   COALESCE(ep.longitude, ea.longitude) AS end_lng,
+                   sa.name AS sa_name, sa.road AS sa_road, sa.neighbourhood AS sa_neighbourhood,
+                   sa.city AS sa_city, sa.county AS sa_county, sa.state AS sa_state, sa.display_name AS sa_display_name,
+                   ea.name AS ea_name, ea.road AS ea_road, ea.neighbourhood AS ea_neighbourhood,
+                   ea.city AS ea_city, ea.county AS ea_county, ea.state AS ea_state, ea.display_name AS ea_display_name
+            FROM drives d
+            LEFT JOIN cars c ON c.id = d.car_id
+            LEFT JOIN geofences sg ON sg.id = d.start_geofence_id
+            LEFT JOIN geofences eg ON eg.id = d.end_geofence_id
+            LEFT JOIN positions sp ON sp.id = d.start_position_id
+            LEFT JOIN positions ep ON ep.id = d.end_position_id
+            LEFT JOIN addresses sa ON sa.id = d.start_address_id
+            LEFT JOIN addresses ea ON ea.id = d.end_address_id
+            WHERE d.car_id = $carId AND d.distance IS NOT NULL
+            ORDER BY COALESCE(d.end_date, d.start_date) DESC
+            LIMIT 1
+        """.trimIndent()
         val lastDrivePrimarySql = """
             SELECT d.distance AS distance_km,
                    d.duration_min AS duration_min,
+                   (EXTRACT(EPOCH FROM d.start_date) * 1000)::bigint AS start_epoch_ms,
                    (EXTRACT(EPOCH FROM COALESCE(d.end_date, d.start_date)) * 1000)::bigint AS event_epoch_ms,
                    CASE WHEN d.end_date IS NULL THEN 1 ELSE 0 END AS is_ongoing,
                    CASE WHEN d.distance > 0.2 AND d.start_rated_range_km IS NOT NULL AND d.end_rated_range_km IS NOT NULL AND c.efficiency > 0
@@ -725,7 +825,7 @@ class TeslaDataProvider(
             LIMIT 1
         """.trimIndent()
         var lastDriveQueried = false
-        for ((idx, ldSql) in listOf(lastDrivePrimarySql, lastDriveFallbackSql).withIndex()) {
+        for ((idx, ldSql) in listOf(lastDriveRichSql, lastDrivePrimarySql, lastDriveFallbackSql).withIndex()) {
             try {
                 val ldResp = service.queryDataSource(auth, GrafanaQueryBody(queries = listOf(GrafanaQueryEntry("A", dsRef, ldSql))))
                 val ldRows = GrafanaFrameParser.parseResultToRows(ldResp, "A")
@@ -733,18 +833,67 @@ class TeslaDataProvider(
                 if (row != null) {
                     val dist = row.getDouble("distance_km")
                     if (dist != null) {
-                        val durMin = if (idx == 0) row.getInt("duration_min") else null
-                        val epochMs = if (idx == 0) row.getDouble("event_epoch_ms")?.toLong() else null
-                        val ongoing = if (idx == 0) (row.getInt("is_ongoing") == 1) else (row.getString("end_date").isNullOrBlank())
-                        val rawDate = row.getString("end_date") ?: row.getString("start_date")
-                        val estWhKm = if (idx == 0) row.getDouble("estimated_wh_per_km") else null
+                        val durMin = if (idx <= 1) row.getInt("duration_min") else null
+                        val startEpochMs = if (idx <= 1) row.getDouble("start_epoch_ms")?.toLong() else null
+                        val epochMs = if (idx <= 1) row.getDouble("event_epoch_ms")?.toLong() else null
+                        val ongoing = if (idx <= 1) (row.getInt("is_ongoing") == 1) else (row.getString("end_date").isNullOrBlank())
+                        val rawStart = row.getString("start_date")
+                        val rawDate = row.getString("end_date") ?: rawStart
+                        val estWhKm = if (idx <= 1) row.getDouble("estimated_wh_per_km") else null
+
+                        val startLoc = if (idx == 0) {
+                            buildTripEndpointLocation(
+                                service = service,
+                                auth = auth,
+                                dsRef = dsRef,
+                                lat = row.getDouble("start_lat"),
+                                lng = row.getDouble("start_lng"),
+                                joinedGeofence = row.getString("start_geofence_name"),
+                                city = row.getString("sa_city"),
+                                state = row.getString("sa_state"),
+                                county = row.getString("sa_county"),
+                                neighbourhood = row.getString("sa_neighbourhood"),
+                                road = row.getString("sa_road"),
+                                name = row.getString("sa_name"),
+                                displayName = row.getString("sa_display_name"),
+                                sampledAt = rawStart ?: startEpochMs?.toString(),
+                                previousLocation = previousLastDrive?.startLocation,
+                                geofences = geofences
+                            )
+                        } else null
+
+                        val endLoc = if (idx == 0) {
+                            buildTripEndpointLocation(
+                                service = service,
+                                auth = auth,
+                                dsRef = dsRef,
+                                lat = row.getDouble("end_lat"),
+                                lng = row.getDouble("end_lng"),
+                                joinedGeofence = row.getString("end_geofence_name"),
+                                city = row.getString("ea_city"),
+                                state = row.getString("ea_state"),
+                                county = row.getString("ea_county"),
+                                neighbourhood = row.getString("ea_neighbourhood"),
+                                road = row.getString("ea_road"),
+                                name = row.getString("ea_name"),
+                                displayName = row.getString("ea_display_name"),
+                                sampledAt = rawDate ?: epochMs?.toString(),
+                                previousLocation = previousLastDrive?.endLocation,
+                                geofences = geofences
+                            )
+                        } else null
+
                         lastDrive = LastDriveInfo(
                             distanceKm = dist,
                             durationMin = durMin,
                             eventEpochMs = epochMs,
                             rawEndDate = rawDate,
                             estimatedWhPerKm = estWhKm,
-                            isOngoing = ongoing
+                            isOngoing = ongoing,
+                            startEpochMs = startEpochMs,
+                            rawStartDate = rawStart,
+                            startLocation = startLoc,
+                            endLocation = endLoc
                         )
                     } else {
                         lastDrive = null
@@ -764,6 +913,7 @@ class TeslaDataProvider(
 
         val driveSummary = DriveSummary(
             todayDistanceKm = todayDist,
+            todayDurationMin = todayDurMin,
             todayTrips = todayTrips,
             todayEstimatedWhPerKm = todayWhKm,
             todayEnergyKwh = todayEnergy,
@@ -779,6 +929,55 @@ class TeslaDataProvider(
         )
 
         return driveSummary to chargingSnapshot
+    }
+
+    private suspend fun buildTripEndpointLocation(
+        service: com.chronodesk.app.data.network.GrafanaRetrofitService,
+        auth: String,
+        dsRef: GrafanaDatasourceRef,
+        lat: Double?,
+        lng: Double?,
+        joinedGeofence: String?,
+        city: String?,
+        state: String?,
+        county: String?,
+        neighbourhood: String?,
+        road: String?,
+        name: String?,
+        displayName: String?,
+        sampledAt: String?,
+        previousLocation: VehicleLocation?,
+        geofences: List<GeofenceZone>
+    ): VehicleLocation? {
+        val geofenceName = joinedGeofence?.takeIf { it.isNotBlank() }
+            ?: matchGeofenceByCoords(geofences, lat, lng)
+        val joinedAddress = formatAddressFields(
+            city = city,
+            state = state,
+            county = county,
+            neighbourhood = neighbourhood,
+            road = road,
+            name = name,
+            displayName = displayName,
+            lat = lat,
+            lng = lng,
+            distanceMeters = 0.0
+        )
+        val resolvedAddress = joinedAddress ?: resolveAddressWithReuse(
+            service, auth, dsRef, lat, lng, previousLocation
+        )
+        if ((lat == null || lng == null || (lat == 0.0 && lng == 0.0)) &&
+            geofenceName == null && resolvedAddress == null
+        ) {
+            return null
+        }
+        return VehicleLocation(
+            latitude = lat,
+            longitude = lng,
+            geofenceName = geofenceName,
+            resolvedAddress = resolvedAddress,
+            sampledAt = sampledAt
+        )
     }
 
     private fun mapException(e: Exception): Exception {

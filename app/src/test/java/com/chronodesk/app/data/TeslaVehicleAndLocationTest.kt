@@ -387,4 +387,61 @@ class TeslaVehicleAndLocationTest {
             minServer.shutdown()
         }
     }
+
+    @Test
+    fun testFetchVehicleSnapshot_parsesTodayDashboardMetricsAndRecentTripEndpoints() = runBlocking {
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val sql = request.body.readUtf8()
+                return when {
+                    sql.contains("today_minutes") -> grafanaFrameJson(
+                        """[{"name":"trips"},{"name":"distance_km"},{"name":"today_minutes"},{"name":"estimated_wh_per_km"},{"name":"energy_kwh"}]""",
+                        """[[4],[56.8],[84],[141.5],[8.04]]"""
+                    )
+                    sql.contains("start_geofence_name") -> grafanaFrameJson(
+                        """[{"name":"distance_km"},{"name":"duration_min"},{"name":"start_epoch_ms"},{"name":"event_epoch_ms"},{"name":"is_ongoing"},{"name":"estimated_wh_per_km"},{"name":"start_geofence_name"},{"name":"end_geofence_name"},{"name":"start_lat"},{"name":"start_lng"},{"name":"end_lat"},{"name":"end_lng"},{"name":"sa_city"},{"name":"sa_county"},{"name":"sa_road"},{"name":"ea_city"},{"name":"ea_county"},{"name":"ea_road"}]""",
+                        """[[14.2],[22],[1795400000000],[1795401320000],[0],[136.0],["家 · 地下车库"],[null],[31.9367],[120.9431],[31.9812],[120.8920],["南通市"],["崇川区"],["工农路"],["南通市"],["崇川区"],["世纪大道"]]"""
+                    )
+                    sql.contains("SELECT date, latitude, longitude") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"latitude"},{"name":"longitude"}]""",
+                        """[[1795401320000],[31.9812],[120.8920]]"""
+                    )
+                    sql.contains("FROM positions") -> grafanaFrameJson(
+                        """[{"name":"date"},{"name":"battery_level"}]""",
+                        """[[1795401320000],[72]]"""
+                    )
+                    sql.contains("FROM states") -> grafanaFrameJson(
+                        """[{"name":"state"},{"name":"start_date"}]""",
+                        """[["online"],["2026-11-24T08:00:00Z"]]"""
+                    )
+                    else -> grafanaFrameJson("[]", "[]")
+                }
+            }
+        }
+        server.start()
+        try {
+            val provider = TeslaDataProvider(GrafanaApiClient())
+            val settings = TeslaSettings(true, server.url("/").toString(), "ds_test", carId = 1, allowHttp = true)
+            val snap = provider.fetchVehicleSnapshot(settings, "token")
+
+            // 验证「今日看板」全部 5 项指标
+            assertEquals(4, snap.drives.todayTrips)
+            assertEquals(56.8, snap.drives.todayDistanceKm ?: 0.0, 0.01)
+            assertEquals(84, snap.drives.todayDurationMin)
+            assertEquals("1小时24分", snap.drives.formattedTodayDuration)
+            assertEquals(141.5, snap.drives.todayEstimatedWhPerKm ?: 0.0, 0.01)
+            assertEquals(8.04, snap.drives.todayEnergyKwh ?: 0.0, 0.01)
+
+            // 验证「最近行程」起点（优先围栏）与终点（中文地址）
+            val drive = snap.drives.lastDrive
+            assertNotNull(drive)
+            assertEquals("家 · 地下车库", drive!!.resolveStartPlace())
+            assertEquals("南通市 · 崇川区 · 世纪大道", drive.resolveEndPlace(snap.location))
+            assertNotNull(drive.formattedStartClockTime)
+            assertNotNull(drive.formattedEndClockTime)
+        } finally {
+            server.shutdown()
+        }
+    }
 }

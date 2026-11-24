@@ -1,6 +1,8 @@
 package com.chronodesk.app.data.model
 
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -81,6 +83,63 @@ data class CodexUsageWindow(
     }
 
     companion object {
+        const val TIER_AGY_GEMINI_FIVE_HOUR = "agy_gemini_five_hour"
+        const val TIER_AGY_GEMINI_WEEKLY = "agy_gemini_weekly"
+        const val TIER_AGY_GEMINI_ARGON_WEEKLY = "agy_gemini_argon_weekly"
+        const val TIER_AGY_THIRD_PARTY_FIVE_HOUR = "agy_third_party_five_hour"
+        const val TIER_AGY_THIRD_PARTY_WEEKLY = "agy_third_party_weekly"
+
+        fun antigravitySortOrder(name: String): Int = when (name) {
+            TIER_AGY_GEMINI_FIVE_HOUR -> 0
+            TIER_AGY_GEMINI_WEEKLY -> 1
+            TIER_AGY_GEMINI_ARGON_WEEKLY -> 2
+            TIER_AGY_THIRD_PARTY_FIVE_HOUR -> 3
+            else -> 4
+        }
+
+        fun fromAntigravityBucket(
+            bucketId: String?,
+            remainingFraction: Double?,
+            resetTimeIso: String?
+        ): CodexUsageWindow? {
+            if (remainingFraction == null || !remainingFraction.isFinite()) return null
+            val (name, label, windowSeconds) = when (bucketId?.trim()) {
+                "gemini-5h" -> Triple(TIER_AGY_GEMINI_FIVE_HOUR, "Gemini 5h", 18000L)
+                "gemini-weekly" -> Triple(TIER_AGY_GEMINI_WEEKLY, "Gemini 周", 604800L)
+                "gemini-argon-wtu-weekly" -> Triple(TIER_AGY_GEMINI_ARGON_WEEKLY, "Argon 周", 604800L)
+                "3p-5h" -> Triple(TIER_AGY_THIRD_PARTY_FIVE_HOUR, "Claude/GPT 5h", 18000L)
+                "3p-weekly" -> Triple(TIER_AGY_THIRD_PARTY_WEEKLY, "Claude/GPT 周", 604800L)
+                else -> return null
+            }
+            val clampedRemaining = remainingFraction.coerceIn(0.0, 1.0)
+            val remainingPercent = clampedRemaining * 100.0
+            val usedPercent = (1.0 - clampedRemaining) * 100.0
+            val cleanIso = resetTimeIso?.trim()?.takeIf { it.isNotEmpty() }
+            val resetUnix = parseIsoToUnixSeconds(cleanIso)
+            return CodexUsageWindow(
+                name = name,
+                label = label,
+                limitWindowSeconds = windowSeconds,
+                usedPercent = usedPercent,
+                remainingPercent = remainingPercent,
+                resetAtUnix = resetUnix,
+                resetAtIso = cleanIso
+            )
+        }
+
+        fun parseIsoToUnixSeconds(iso: String?): Long? {
+            val clean = iso?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            return try {
+                Instant.parse(clean).epochSecond
+            } catch (_: Exception) {
+                try {
+                    OffsetDateTime.parse(clean).toEpochSecond()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+
         fun fromRaw(
             usedPercent: Double?,
             limitWindowSeconds: Long?,
